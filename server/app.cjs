@@ -24,7 +24,7 @@ async function createApp(config, deps = {}) {
     if (!capability) {
       const res = await fetch(new URL('/capabilities', config.worker), { headers: { authorization: 'Bearer ' + config.secret }, signal: AbortSignal.timeout(10000) });
       if (!res.ok) throw fail('Conversion worker unavailable.', 503);
-      const text = await res.text(); if (text.length > 512000) throw fail('Invalid worker capabilities.', 502); capability = JSON.parse(text);
+      const text = await res.text(); if (text.length > 2_000_000) throw fail('Invalid worker capabilities.', 502); capability = JSON.parse(text);
     } return capability;
   }
   function session(user) {

@@ -23,6 +23,17 @@ test('filenames reject traversal, injected options, devices and control characte
   for (const f of ['../../etc/passwd', '/etc/shadow', 'a\\b', '-flag.mp4', '.secret', 'x\n.svg', 'C:drive', '', 'a'.repeat(181)]) assert.throws(() => filename(f));
   assert.equal(filename('holiday 日本.mp4'), 'holiday 日本.mp4');
 });
+test('the complete engine catalog loads through the authenticated state endpoint', async t => {
+  const http=require('node:http'), dir=await fs.mkdtemp(path.join(os.tmpdir(),'flux-catalog-test-'));
+  const catalog={formats:[{input:'png',family:'image',targets:['jpg']}],engineInfo:'x'.repeat(600000)};
+  const worker=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(catalog));});
+  await new Promise(r=>worker.listen(0,'127.0.0.1',r));
+  const app=await createApp({storage:dir,worker:'http://127.0.0.1:'+worker.address().port,secret:'test-secret'}, {auth:async()=>({id:'a',email:'test@example.com'})});
+  await new Promise(r=>app.server.listen(0,'127.0.0.1',r));
+  t.after(async()=>{await app.close();await new Promise(r=>worker.close(r));await fs.rm(dir,{recursive:true,force:true});});
+  const response=await fetch('http://127.0.0.1:'+app.server.address().port+'/api/state');
+  assert.equal(response.status,200);const state=await response.json();assert.deepEqual(state.formats,catalog.formats);assert.equal(state.user,'test@example.com');
+});
 test('the global queue is bounded and executes one job at a time', async () => {
   const queue = new Queue(2); let release, active = 0, peak = 0;
   const first = queue.add(async () => { active++; peak = Math.max(peak, active); await new Promise(r => release = r); active--; });
