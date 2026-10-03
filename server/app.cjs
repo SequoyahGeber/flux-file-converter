@@ -81,8 +81,10 @@ async function createApp(config, deps = {}) {
         if (upload.busy || offset !== upload.offset || !Number.isSafeInteger(size) || size < 1 || size > LIMITS.chunk || offset + size > upload.size || req.headers['content-type'] !== 'application/octet-stream') throw fail('Invalid upload chunk.', 409);
         if (uploading >= 2) throw fail('Too many simultaneous uploads.', 429);
         upload.busy = true; uploading++; s.active++; let handle, received = 0;
-        try { handle = await fs.open(upload.path, 'r+'); for await (const chunk of req) { received += chunk.length; if (received > size) throw fail('Chunk too large.', 413); await handle.write(chunk, 0, chunk.length, offset + received - chunk.length); } if (received !== size) throw fail('Incomplete chunk.'); upload.offset += size; send(res, { offset: upload.offset }); }
-        finally { try { await handle?.close(); } finally { upload.busy = false; uploading--; s.active--; } } return;
+        try { handle = await fs.open(upload.path, 'r+'); for await (const chunk of req) { received += chunk.length; if (received > size) throw fail('Chunk too large.', 413); await handle.write(chunk, 0, chunk.length, offset + received - chunk.length); } if (received !== size) throw fail('Incomplete chunk.'); upload.offset += size; }
+        finally { try { await handle?.close(); } finally { upload.busy = false; uploading--; s.active--; } }
+        // A successful response means the next chunk/completion can begin.
+        send(res, { offset: upload.offset }); return;
       }
       if (req.method === 'POST' && /^\/api\/uploads\/[a-f0-9-]{36}\/complete$/.test(url.pathname)) {
         const id = url.pathname.split('/')[3], upload = s.uploads.get(id); if (!upload || upload.busy || upload.offset !== upload.size) throw fail('Upload is incomplete.', 409);

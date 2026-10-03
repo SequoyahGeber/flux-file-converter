@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY electron ./electron
-COPY server ./server
-COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
+COPY server/sandbox.c server/linux-pdf.py server/compat.py ./server/
 COPY native/archive.py native/advanced.py native/models.py resources/office-formats.json resources/requirements.txt ./resources/
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r resources/requirements.txt \
     && gcc -O2 -Wall -Wextra server/sandbox.c -lseccomp -o /usr/local/bin/flux-sandbox \
@@ -35,6 +34,8 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r res
     && install -m755 server/compat.py /usr/bin/ditto \
     && install -m755 server/compat.py /usr/bin/sips \
     && ln -s /usr/bin/7z /usr/local/bin/7zz
+COPY server ./server
+COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
 # The policy is copied separately so it cannot be silently omitted from a build.
 COPY deploy/imagemagick-policy.xml /etc/ImageMagick-6/policy.xml
 RUN node server/build-catalog.cjs && apt-get purge -y gcc libc6-dev libseccomp-dev && apt-get autoremove -y && rm -rf /root/.cache /tmp/*

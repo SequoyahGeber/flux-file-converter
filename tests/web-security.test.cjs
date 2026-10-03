@@ -92,8 +92,9 @@ test('the overall job deadline aborts scanning and publishes no file', async t =
   await new Promise(r => app.server.listen(0, '127.0.0.1', r)); const base = 'http://127.0.0.1:' + app.server.address().port;
   t.after(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
   const first = await (await fetch(base + '/api/uploads', { method: 'POST', body: JSON.stringify({ name: 'slow.txt', size: 4 }) })).json();
-  await fetch(base + '/api/uploads/' + first.id, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '0' }, body: 'test' });
-  const queued = await (await fetch(base + '/api/uploads/' + first.id + '/complete', { method: 'POST' })).json();
+  const written=await fetch(base + '/api/uploads/' + first.id, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '0' }, body: 'test' });
+  assert.equal(written.status,200);
+  const response=await fetch(base + '/api/uploads/' + first.id + '/complete', { method: 'POST' });assert.equal(response.status,202);const queued=await response.json();
   let state, job;
   for (let i=0;i<100;i++) { state = await (await fetch(base + '/api/status')).json(); job = state.jobs.find(j=>j.id===queued.id); if(job?.status==='error') break; await new Promise(r=>setTimeout(r,5)); }
   assert.equal(aborted,true); assert.equal(job.status,'error'); assert.match(job.error,/ten-minute limit/); assert.equal(state.files.length,0); assert.equal(state.history.length,0);
