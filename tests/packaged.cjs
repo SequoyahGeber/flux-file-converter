@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const root = path.resolve('.test-output/packaged');
 (async () => {
+  await fs.rm(root, { recursive: true, force: true });
   await fs.mkdir(path.join(root, 'state'), { recursive: true });
   const app = await _electron.launch({
     executablePath: path.resolve('release/Flux.app/Contents/MacOS/Flux'),
@@ -17,6 +18,9 @@ const root = path.resolve('.test-output/packaged');
     assert.ok(state.enginePaths.python.includes('Flux.app/Contents/Resources/python-runtime'));
     const isPackaged = await app.evaluate(({ app }) => app.isPackaged);
     assert.equal(isPackaged, true);
+    const modules = path.resolve('release/Flux.app/Contents/Resources/app/node_modules');
+    for (const name of ['electron', 'prettier', 'jose', 'react', 'react-dom', 'lucide-react'])
+      await assert.rejects(fs.access(path.join(modules, name)), { code: 'ENOENT' });
     await app.evaluate(
       ({ dialog }, dir) => {
         dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] });
@@ -43,7 +47,7 @@ const root = path.resolve('.test-output/packaged');
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
     }, pdf);
     await page.getByRole('button', { name: /Choose files/ }).click();
-    await page.getByLabel('Output format for Project notes.pdf').selectOption('docx');
+    await page.getByLabel(`Output format for ${path.basename(pdf)}`).selectOption('docx');
     await page.locator('.queue-bottom .primary-button').click();
     await page.waitForFunction(
       () => document.querySelectorAll('.result-button').length === 1,

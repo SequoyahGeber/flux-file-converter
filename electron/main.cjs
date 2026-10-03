@@ -1,26 +1,48 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeImage } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  Menu,
+  nativeImage,
+  protocol,
+  net,
+} = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { pathToFileURL } = require('node:url');
+const { APP_URL, CSP, assetPath, jobView } = require('./desktop-policy.cjs');
+const { FileScopes } = require('./file-scopes.cjs');
 const { detectEngines, inspectFile, convert, catalog } = require('./engine.cjs');
 const { compress, compressionOptions } = require('./compression.cjs');
 const { archiveFiles } = require('./archives.cjs');
 if (process.env.FLUX_TEST_DATA_DIR) app.setPath('userData', process.env.FLUX_TEST_DATA_DIR);
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 let win,
   engines,
   resources,
   outputDir,
+  outputBookmark,
   history = [],
   running = false,
   controller,
   quitting = false;
+const scopes = new FileScopes((bookmark) => app.startAccessingSecurityScopedResource(bookmark));
 const files = new Map(),
+  filesByPath = new Map(),
   jobs = new Map();
 let pendingOpen = [];
 const userState = () => path.join(app.getPath('userData'), 'state.json');
 async function persist() {
   const temp = userState() + '.tmp';
-  await fs.writeFile(temp, JSON.stringify({ outputDir, history }, null, 2));
+  await fs.writeFile(temp, JSON.stringify({ outputDir, outputBookmark, history }, null, 2), {
+    mode: 0o600,
+  });
+  await fs.chmod(temp, 0o600);
   await fs.rename(temp, userState());
 }
 let saving = Promise.resolve();
@@ -35,14 +57,15 @@ function state() {
     outputDir,
     history,
     running,
-    jobs: [...jobs.values()],
+    files: [...files.values()],
+    jobs: [...jobs.values()].map(jobView),
     families: catalog.families,
     version: app.getVersion(),
   };
 }
 function emit(job) {
   jobs.set(job.id, job);
-  if (win && !win.isDestroyed()) win.webContents.send('job-update', job);
+  if (win && !win.isDestroyed()) win.webContents.send('job-update', jobView(job));
 }
 async function addPaths(paths) {
   if (
@@ -51,10 +74,12 @@ async function addPaths(paths) {
     paths.some((p) => typeof p !== 'string' || !path.isAbsolute(p))
   )
     throw new Error('Choose up to 300 files at a time.');
+  if (files.size + [...new Set(paths)].filter((input) => !filesByPath.has(input)).length > 300)
+    throw new Error('Remove files before adding more than 300.');
   const result = [];
   for (const input of [...new Set(paths)]) {
     try {
-      const existing = [...files.values()].find((f) => f.path === input);
+      const existing = files.get(filesByPath.get(input));
       if (existing) {
         result.push(existing);
         continue;
@@ -81,7 +106,9 @@ async function addPaths(paths) {
       };
       if (info.warning && info.family !== 'unsupported')
         file.compressionOptions = file.compressionOptions.filter((o) => o.id === 'archive');
+      if (files.size >= 300) throw new Error('Remove files before adding more than 300.');
       files.set(id, file);
+      filesByPath.set(input, id);
       result.push(file);
     } catch (error) {
       result.push({
@@ -99,9 +126,30 @@ async function addPaths(paths) {
   }
   return result;
 }
+async function chooseInputs(properties, title, buttonLabel) {
+  const result = await dialog.showOpenDialog(win, {
+    properties,
+    title,
+    buttonLabel,
+    securityScopedBookmarks: Boolean(process.mas),
+  });
+  if (result.canceled) return [];
+  try {
+    result.filePaths.forEach((file, index) => scopes.acquire(file, result.bookmarks?.[index]));
+    return await addPaths(result.filePaths);
+  } finally {
+    for (const file of result.filePaths) if (!filesByPath.has(file)) scopes.release(file);
+  }
+}
 function handler(channel, callback) {
   ipcMain.handle(channel, (event, ...args) => {
-    if (event.sender !== win?.webContents || event.senderFrame !== win.webContents.mainFrame)
+    if (
+      !win ||
+      win.isDestroyed() ||
+      event.sender !== win.webContents ||
+      event.senderFrame !== win.webContents.mainFrame ||
+      event.senderFrame.url !== APP_URL
+    )
       throw new Error('Invalid sender.');
     return callback(...args);
   });
@@ -126,9 +174,12 @@ async function createWindow() {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.on('will-redirect', (e) => e.preventDefault());
+  win.webContents.on('will-attach-webview', (e) => e.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
     callback(false),
   );
+  win.webContents.session.setPermissionCheckHandler(() => false);
   win.webContents.on('did-finish-load', async () => {
     if (pendingOpen.length) {
       const results = await addPaths(pendingOpen);
@@ -136,7 +187,7 @@ async function createWindow() {
       win.webContents.send('files-added', results);
     }
   });
-  await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  await win.loadURL(APP_URL);
   win.show();
 }
 app.on('open-file', (event, filePath) => {
@@ -153,44 +204,95 @@ else {
     }
   });
   app.whenReady().then(async () => {
+    protocol.handle('app', async (request) => {
+      try {
+        if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405 });
+        const asset = await assetPath(request.url, path.join(__dirname, '..', 'dist'));
+        const response = await net.fetch(pathToFileURL(asset).href);
+        const headers = new Headers(response.headers);
+        headers.set('Content-Security-Policy', CSP);
+        headers.set('X-Content-Type-Options', 'nosniff');
+        return new Response(request.method === 'HEAD' ? null : response.body, {
+          status: response.status,
+          headers,
+        });
+      } catch {
+        return new Response(null, { status: 404 });
+      }
+    });
     resources = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', 'resources');
     engines = await detectEngines(resources);
-    outputDir = path.join(app.getPath('downloads'), 'Flux');
+    const defaultOutput = process.mas
+      ? path.join(app.getPath('userData'), 'Converted Files')
+      : path.join(app.getPath('downloads'), 'Flux');
+    outputDir = defaultOutput;
     try {
+      if ((await fs.stat(userState())).size > 2 * 1024 * 1024)
+        throw new Error('Saved state is too large.');
       const saved = JSON.parse(await fs.readFile(userState(), 'utf8'));
-      outputDir =
-        typeof saved.outputDir === 'string' && path.isAbsolute(saved.outputDir)
-          ? saved.outputDir
-          : outputDir;
-      history = Array.isArray(saved.history) ? saved.history.slice(0, 100) : [];
+      history = Array.isArray(saved.history)
+        ? saved.history
+            .filter(
+              (item) =>
+                item &&
+                typeof item.id === 'string' &&
+                typeof item.path === 'string' &&
+                path.isAbsolute(item.path) &&
+                typeof item.name === 'string' &&
+                Number.isFinite(item.completedAt),
+            )
+            .slice(0, 100)
+        : [];
+      if (typeof saved.outputDir === 'string' && path.isAbsolute(saved.outputDir)) {
+        if (process.mas && saved.outputDir !== defaultOutput) {
+          if (typeof saved.outputBookmark !== 'string' || saved.outputBookmark.length > 65536)
+            throw new Error('Choose the output folder again.');
+          scopes.acquire('output', saved.outputBookmark);
+          outputBookmark = saved.outputBookmark;
+        }
+        outputDir = saved.outputDir;
+      }
     } catch {}
     handler('state', state);
-    handler('select-files', async () => {
-      const result = await dialog.showOpenDialog(win, {
-        properties: ['openFile', 'multiSelections'],
-        title: 'Add files to Flux',
-        buttonLabel: 'Add files',
-      });
-      return result.canceled ? [] : addPaths(result.filePaths);
-    });
-    handler('select-folder', async () => {
-      const result = await dialog.showOpenDialog(win, {
-        properties: ['openDirectory'],
-        title: 'Add a folder to your ZIP',
-        buttonLabel: 'Add folder',
-      });
-      return result.canceled ? [] : addPaths(result.filePaths);
-    });
+    handler('select-files', () =>
+      chooseInputs(['openFile', 'multiSelections'], 'Add files to Flux', 'Add files'),
+    );
+    handler('select-folder', () =>
+      chooseInputs(['openDirectory'], 'Add a folder to your ZIP', 'Add folder'),
+    );
     handler('add-paths', addPaths);
+    handler('release-files', (ids) => {
+      if (
+        running ||
+        !Array.isArray(ids) ||
+        ids.length > 300 ||
+        ids.some((id) => typeof id !== 'string')
+      )
+        throw new Error('Finish the batch before removing files.');
+      for (const id of ids) {
+        const file = files.get(id);
+        if (file) {
+          filesByPath.delete(file.path);
+          scopes.release(file.path);
+        }
+        files.delete(id);
+        jobs.delete(id);
+      }
+      return true;
+    });
     handler('select-output', async () => {
+      if (running) throw new Error('Finish the batch before changing the output folder.');
       const result = await dialog.showOpenDialog(win, {
         properties: ['openDirectory', 'createDirectory'],
         title: 'Choose output folder',
         defaultPath: outputDir,
         buttonLabel: 'Choose folder',
+        securityScopedBookmarks: Boolean(process.mas),
       });
       if (!result.canceled) {
+        scopes.acquire('output', result.bookmarks?.[0]);
         outputDir = result.filePaths[0];
+        outputBookmark = result.bookmarks?.[0];
         await save();
       }
       return outputDir;
@@ -384,10 +486,15 @@ else {
               label: 'Add Files…',
               accelerator: 'CmdOrCtrl+O',
               click: async () => {
-                const r = await dialog.showOpenDialog(win, {
-                  properties: ['openFile', 'multiSelections'],
-                });
-                if (!r.canceled) win.webContents.send('files-added', await addPaths(r.filePaths));
+                if (win && !win.isDestroyed())
+                  win.webContents.send(
+                    'files-added',
+                    await chooseInputs(
+                      ['openFile', 'multiSelections'],
+                      'Add files to Flux',
+                      'Add files',
+                    ),
+                  );
               },
             },
             { role: 'close' },
@@ -433,4 +540,5 @@ else {
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
+  app.on('will-quit', () => scopes.releaseAll());
 }

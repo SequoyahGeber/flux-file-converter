@@ -1,3 +1,4 @@
+const { writeAll } = require('../electron/io.cjs');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const fss = require('node:fs');
@@ -32,7 +33,7 @@ async function receive(req, files, root) {
         if (!handle)
           handle = await fs.open(path.join(root, 'input', files[index].name), 'wx', 0o600);
         const take = Math.min(chunk.length - at, files[index].size - offset);
-        await handle.write(chunk.subarray(at, at + take));
+        await writeAll(handle, chunk.subarray(at, at + take));
         at += take;
         offset += take;
       }

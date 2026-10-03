@@ -63,6 +63,14 @@ npm run package          # Build the Mac .app
 
 The renderer is sandboxed, with Node integration off and an isolated preload bridge. Only narrow operations are exposed. Engine invocations use argument arrays, without a shell. Files are processed locally; output history is kept in the app's local application-support directory. Clear history removes records, not output files.
 
+Desktop assets use a restricted `app://` origin with a content security policy. The bridge checks the sending frame; dropped files must be native selected files, and removing queue items releases their inspection records. Progress updates carry small job summaries. Conversion subprocesses receive an explicit environment without application credentials, have bounded output buffers and time limits, and cancellation terminates their local process groups. FFmpeg accepts local file/pipe protocols, LibreOffice macros are disabled, and image/media processing uses bounded thread counts. The local archive excludes development dependencies, browser/server-only packages, Python test fixtures and bytecode caches.
+
+## Mac TestFlight preparation
+
+Run `npm run testflight:check` for the release gate. The new MAS build commands and sandbox entitlements are documented in [packaging/mas/README.md](packaging/mas/README.md). The local ad-hoc app and its ZIP remain developer builds. TestFlight is blocked until the full offline engine bundle is portable, Flux has its own profiles/Apple distribution signing, and the actual MAS sandbox build passes clean-Mac acceptance. No TestFlight upload or external release is performed by these commands.
+
+`npm run format:check` checks source formatting; `npm run test:web` covers browser saves and invite UI. The GitHub security job also checks process hardening, full streaming writes, desktop asset isolation, bookmark lifetime, and MAS signing/engine boundaries.
+
 ## Engine references
 
 Supported formats are discovered from [ImageMagick](https://imagemagick.org/formats/), [FFmpeg](https://ffmpeg.org/ffmpeg.html), [Pandoc](https://pandoc.org/MANUAL.html), and the bundled LibreOffice registry. Compression uses [QPDF](https://qpdf.readthedocs.io/en/latest/cli.html) and [Ghostscript](https://ghostscript.com/blog/optimizing-pdfs.html). Additional routes use [Calibre](https://manual.calibre-ebook.com/generated/en/ebook-convert.html), [fontTools](https://fonttools.readthedocs.io/en/latest/ttLib/ttFont.html), and [Blender](https://docs.blender.org/api/main/bpy.ops.wm.html).

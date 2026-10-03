@@ -5,6 +5,11 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { detectEngines } = require('../electron/engine.cjs');
+const {
+  desktopManifest,
+  copyDesktopDependencies,
+  runtimeFile,
+} = require('./desktop-dependencies.cjs');
 const root = path.resolve(__dirname, '..');
 const releasePath = path.join(root, 'release', 'Flux.app');
 const buildRoot = path.join(os.tmpdir(), 'flux-package-' + require('node:crypto').randomUUID());
@@ -29,28 +34,8 @@ async function main() {
   for (const name of ['dist', 'electron'])
     await copy(path.join(root, name), path.join(application, name));
   const pkg = require('../package.json');
-  await fs.writeFile(
-    path.join(application, 'package.json'),
-    JSON.stringify({
-      name: pkg.name,
-      version: pkg.version,
-      main: pkg.main,
-      dependencies: pkg.dependencies,
-    }),
-  );
-  const modules = execFileSync('npm', ['ls', '--omit=dev', '--all', '--parseable'], {
-    cwd: root,
-    encoding: 'utf8',
-  })
-    .trim()
-    .split('\n')
-    .filter((p) => p.startsWith(path.join(root, 'node_modules') + path.sep));
-  const copied = [];
-  for (const module of modules.sort((a, b) => a.length - b.length)) {
-    if (copied.some((p) => module.startsWith(p + path.sep))) continue;
-    await copy(module, path.join(application, path.relative(root, module)));
-    copied.push(module);
-  }
+  await fs.writeFile(path.join(application, 'package.json'), JSON.stringify(desktopManifest(pkg)));
+  await copyDesktopDependencies(root, application);
   await fs.mkdir(path.join(application, 'resources'), { recursive: true });
   await copy(path.join(root, 'resources/icon.png'), path.join(application, 'resources/icon.png'));
   for (const file of ['pdf-tool', 'archive.py', 'advanced.py', 'models.py', 'office-formats.json'])
@@ -68,7 +53,7 @@ async function main() {
     console.log('Bundling font, table, and PDF libraries…');
     const runtime = path.resolve(engines.python, '../..');
     const bundled = path.join(resources, 'python-runtime');
-    await copy(runtime, bundled);
+    await fs.cp(runtime, bundled, { recursive: true, verbatimSymlinks: true, filter: runtimeFile });
     // Keep the venv's relative interpreter links, with a private binary to sign.
     const interpreter = path.join(bundled, 'bin/python3.12');
     await fs.rm(interpreter, { force: true });
@@ -94,12 +79,22 @@ async function main() {
   });
   execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', dest], { stdio: 'inherit' });
   await fs.mkdir(path.dirname(releasePath), { recursive: true });
+  const zipPath = path.join(root, 'release', `Flux-${pkg.version}-local.zip`);
+  execFileSync('/usr/bin/ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', dest, zipPath]);
   await fs.rm(releasePath, { recursive: true, force: true });
   await copy(dest, releasePath);
+  execFileSync('/usr/bin/xattr', ['-cr', releasePath]);
+  execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', releasePath], {
+    stdio: 'inherit',
+  });
   await fs.rm(buildRoot, { recursive: true, force: true });
-  console.log(`Created ${releasePath}`);
+  console.log(
+    `Created ${releasePath}\nSigned local archive: ${zipPath}\nThis ad-hoc build is not a TestFlight distribution build.`,
+  );
 }
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => fs.rm(buildRoot, { recursive: true, force: true }));

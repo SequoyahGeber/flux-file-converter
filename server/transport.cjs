@@ -1,3 +1,4 @@
+const { writeAll } = require('../electron/io.cjs');
 const http = require('node:http');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -70,7 +71,7 @@ async function rpc(spec, files, output, config, signal) {
       for await (const c of res) {
         size += c.length;
         if (size > info.size) throw fail('Worker returned an invalid output.', 502);
-        await handle.write(c);
+        await writeAll(handle, c);
       }
       if (size !== info.size) throw fail('Worker output was incomplete.', 502);
     } finally {

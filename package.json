@@ -1,9 +1,9 @@
 {
   "name": "flux-file-converter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "A local-first file converter for macOS",
-  "author": "Flux",
+  "author": "Sequoyah Geber",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -14,7 +14,13 @@
     "package": "npm run native && npm run build && npm run formats && node scripts/package.cjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:desktop": "npm run build && node tests/desktop.cjs",
-    "formats": "node scripts/export-formats.cjs"
+    "formats": "node scripts/export-formats.cjs",
+    "format": "prettier --write electron server src scripts tests package.json",
+    "format:check": "prettier --check electron server src scripts tests package.json",
+    "test:web": "node tests/web-ui.cjs && node tests/invite-ui.cjs",
+    "testflight:check": "node scripts/mas.cjs --check",
+    "package:mas:dev": "npm run native && npm run build && npm run formats && node scripts/mas.cjs --development",
+    "package:mas": "npm run native && npm run build && npm run formats && node scripts/mas.cjs"
   },
   "dependencies": {
     "csv-parse": "^7.0.3",
@@ -29,9 +35,12 @@
     "yaml": "^2.8.0"
   },
   "devDependencies": {
+    "@electron/osx-sign": "2.7.1",
+    "@electron/packager": "20.3.0",
     "@vitejs/plugin-react": "^5.1.0",
     "electron": "^44.5.1",
     "playwright": "^1.63.0",
+    "prettier": "3.9.9",
     "vite": "^7.3.0"
   }
 }

@@ -2,9 +2,12 @@ const fs = require('node:fs/promises');
 const fss = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { run } = require('./process.cjs');
+const { bundledEngines } = require('./bundled-engines.cjs');
 const { pathToFileURL } = require('node:url');
 const sharp = require('sharp');
+sharp.concurrency(process.env.FLUX_SERVER === '1' ? 1 : 2);
+sharp.cache({ memory: 64, files: 20, items: 100 });
 const { PDFDocument } = require('pdf-lib');
 const YAML = require('yaml');
 const { XMLParser, XMLBuilder, XMLValidator } = require('fast-xml-parser');
@@ -13,71 +16,6 @@ const { stringify } = require('csv-stringify/sync');
 const catalog = require('./catalog.cjs');
 const HOME = os.homedir();
 const cancelled = () => Object.assign(new Error('Conversion cancelled.'), { code: 'CANCELLED' });
-function run(command, args, { signal, onLine, timeout = 30 * 60 * 1000, cwd } = {}) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(cancelled());
-    let stdout = '',
-      stderr = '',
-      pending = '',
-      timedOut = false;
-    if (process.env.FLUX_SERVER === '1') {
-      timeout = Math.min(timeout, 600000);
-      if (/^(ffmpeg|ffprobe)$/.test(path.basename(command)))
-        args = ['-protocol_whitelist', 'file,pipe', '-threads', '1', ...args];
-      if (path.basename(command) === 'pandoc') args = ['--sandbox', ...args];
-    }
-    const child = spawn(command, args, {
-      cwd,
-      shell: false,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONDONTWRITEBYTECODE: '1',
-        PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
-      },
-    });
-    const abort = () => {
-      child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), 1500);
-      killTimer.unref();
-    };
-    let killTimer;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      abort();
-    }, timeout);
-    timer.unref();
-    signal?.addEventListener('abort', abort, { once: true });
-    const consume = (buffer, isErr) => {
-      const text = buffer.toString();
-      if (isErr) stderr = (stderr + text).slice(-100000);
-      else stdout = (stdout + text).slice(-1000000);
-      pending += text;
-      const lines = pending.split(/[\r\n]+/);
-      pending = lines.pop();
-      lines.forEach((line) => onLine?.(line));
-    };
-    child.stdout.on('data', (x) => consume(x, false));
-    child.stderr.on('data', (x) => consume(x, true));
-    child.on('error', reject);
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      clearTimeout(killTimer);
-      signal?.removeEventListener('abort', abort);
-      if (signal?.aborted) return reject(cancelled());
-      if (timedOut) return reject(new Error('Conversion exceeded the 30 minute time limit.'));
-      if (code !== 0)
-        return reject(
-          new Error(
-            (stderr.trim() || stdout.trim() || `Conversion engine exited with code ${code}.`).slice(
-              -1600,
-            ),
-          ),
-        );
-      resolve({ stdout, stderr });
-    });
-  });
-}
 async function findExecutable(candidates) {
   for (const candidate of candidates.filter(Boolean)) {
     try {
@@ -87,38 +25,52 @@ async function findExecutable(candidates) {
   }
   return null;
 }
-async function detectEngines(resources = path.join(__dirname, '..', 'resources')) {
+async function detectEngines(
+  resources = path.join(__dirname, '..', 'resources'),
+  { bundledOnly = Boolean(process.mas) } = {},
+) {
+  const bundled = bundledOnly ? await bundledEngines(resources) : null;
   const cache = path.join(HOME, '.cache/codex-runtimes/codex-primary-runtime/dependencies');
   const [ffmpeg, ffprobe, office, pandoc, pdf, archive] = await Promise.all([
-    findExecutable([
-      '/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg',
-      '/opt/homebrew/bin/ffmpeg',
-      '/usr/local/bin/ffmpeg',
-      '/usr/bin/ffmpeg',
-    ]),
-    findExecutable([
-      '/opt/homebrew/opt/ffmpeg-full/bin/ffprobe',
-      '/opt/homebrew/bin/ffprobe',
-      '/usr/local/bin/ffprobe',
-      '/usr/bin/ffprobe',
-    ]),
-    findExecutable([
-      path.join(resources, 'libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice'),
-      '/Applications/LibreOffice.app/Contents/MacOS/soffice',
-      '/opt/homebrew/bin/soffice',
-      '/usr/bin/soffice',
-      path.join(
-        cache,
-        'native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice',
-      ),
-    ]),
-    findExecutable(['/opt/homebrew/bin/pandoc', '/usr/local/bin/pandoc', '/usr/bin/pandoc']),
-    findExecutable([path.join(resources, 'pdf-tool')]),
-    findExecutable([
-      '/opt/homebrew/bin/python3',
-      '/opt/homebrew/bin/python3.12',
-      '/usr/bin/python3',
-    ]),
+    bundled
+      ? bundled.ffmpeg
+      : findExecutable([
+          '/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg',
+          '/opt/homebrew/bin/ffmpeg',
+          '/usr/local/bin/ffmpeg',
+          '/usr/bin/ffmpeg',
+        ]),
+    bundled
+      ? bundled.ffprobe
+      : findExecutable([
+          '/opt/homebrew/opt/ffmpeg-full/bin/ffprobe',
+          '/opt/homebrew/bin/ffprobe',
+          '/usr/local/bin/ffprobe',
+          '/usr/bin/ffprobe',
+        ]),
+    bundled
+      ? bundled.office
+      : findExecutable([
+          path.join(resources, 'libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice'),
+          '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+          '/opt/homebrew/bin/soffice',
+          '/usr/bin/soffice',
+          path.join(
+            cache,
+            'native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice',
+          ),
+        ]),
+    bundled
+      ? bundled.pandoc
+      : findExecutable(['/opt/homebrew/bin/pandoc', '/usr/local/bin/pandoc', '/usr/bin/pandoc']),
+    bundled ? bundled.pdf : findExecutable([path.join(resources, 'pdf-tool')]),
+    bundled
+      ? bundled.python
+      : findExecutable([
+          '/opt/homebrew/bin/python3',
+          '/opt/homebrew/bin/python3.12',
+          '/usr/bin/python3',
+        ]),
   ]);
   const extras = {};
   for (const [key, name] of Object.entries({
@@ -130,30 +82,40 @@ async function detectEngines(resources = path.join(__dirname, '..', 'resources')
     magick: 'magick',
     sevenzip: '7zz',
   })) {
-    extras[key] = await findExecutable([
-      ...(key === 'magick' ? ['/opt/homebrew/opt/imagemagick-full/bin/magick'] : []),
-      `/opt/homebrew/bin/${name}`,
-      `/usr/local/bin/${name}`,
-      `/usr/bin/${name}`,
-    ]);
+    extras[key] = bundled
+      ? bundled[key]
+      : await findExecutable([
+          ...(key === 'magick' ? ['/opt/homebrew/opt/imagemagick-full/bin/magick'] : []),
+          `/opt/homebrew/bin/${name}`,
+          `/usr/local/bin/${name}`,
+          `/usr/bin/${name}`,
+        ]);
   }
-  extras.python = await findExecutable([
-    path.join(resources, 'python-runtime/bin/python'),
-    '/opt/venv/bin/python',
-  ]);
-  extras.tesseract = await findExecutable([
-    '/opt/homebrew/bin/tesseract',
-    '/usr/local/bin/tesseract',
-    '/usr/bin/tesseract',
-  ]);
-  extras.calibre = await findExecutable([
-    '/Applications/calibre.app/Contents/MacOS/ebook-convert',
-    '/usr/bin/ebook-convert',
-  ]);
-  extras.blender = await findExecutable([
-    '/Applications/Blender.app/Contents/MacOS/Blender',
-    '/usr/bin/blender',
-  ]);
+  extras.python = bundled
+    ? bundled.python
+    : await findExecutable([
+        path.join(resources, 'python-runtime/bin/python'),
+        '/opt/venv/bin/python',
+      ]);
+  extras.tesseract = bundled
+    ? bundled.tesseract
+    : await findExecutable([
+        '/opt/homebrew/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/usr/bin/tesseract',
+      ]);
+  extras.calibre = bundled
+    ? bundled.calibre
+    : await findExecutable([
+        '/Applications/calibre.app/Contents/MacOS/ebook-convert',
+        '/usr/bin/ebook-convert',
+      ]);
+  extras.blender = bundled
+    ? bundled.blender
+    : await findExecutable([
+        '/Applications/Blender.app/Contents/MacOS/Blender',
+        '/usr/bin/blender',
+      ]);
   const registry = { images: [], media: [], documents: [] };
   if (office)
     try {
@@ -566,12 +528,10 @@ function escapeHTML(text) {
 async function officeConvert(input, target, stage, engines, signal, group = 'document') {
   const dir = await fs.mkdtemp(path.join(stage, 'office-'));
   const profile = await fs.mkdtemp(path.join(stage, 'profile-'));
-  if (process.env.FLUX_SERVER === '1') {
-    await fs.writeFile(
-      path.join(profile, 'registrymodifications.xcu'),
-      '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item></oor:items>',
-    );
-  }
+  await fs.writeFile(
+    path.join(profile, 'registrymodifications.xcu'),
+    '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item></oor:items>',
+  );
   const filters = {
     document: {
       pdf: 'pdf:writer_pdf_Export',

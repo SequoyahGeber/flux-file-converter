@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "engines": {
+    "ffmpeg": "bin/ffmpeg",
+    "ffprobe": "bin/ffprobe",
+    "office": "libreoffice/LibreOffice.app/Contents/MacOS/soffice",
+    "pandoc": "bin/pandoc",
+    "pdf": "pdf-tool",
+    "python": "python-runtime/bin/python3",
+    "qpdf": "bin/qpdf",
+    "ghostscript": "bin/gs",
+    "jpegtran": "bin/jpegtran",
+    "oxipng": "bin/oxipng",
+    "cwebp": "bin/cwebp",
+    "magick": "bin/magick",
+    "sevenzip": "bin/7zz",
+    "tesseract": "bin/tesseract",
+    "calibre": "calibre.app/Contents/MacOS/ebook-convert",
+    "blender": "Blender.app/Contents/MacOS/Blender"
+  }
+}

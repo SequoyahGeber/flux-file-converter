@@ -24,20 +24,15 @@ import {
   Clock3,
   Settings2,
   Grid2X2,
-  HardDrive,
   Check,
   CheckCircle2,
   Loader2,
   CircleAlert,
   Minimize2,
-  Download,
   SlidersHorizontal,
   RotateCcw,
-  Play,
   LockKeyhole,
   Box,
-  Sparkles,
-  ArrowDownToLine,
   Upload,
   Zap,
   Cuboid,
@@ -48,6 +43,7 @@ import {
   PenTool,
 } from 'lucide-react';
 import './styles.css';
+import { mergeJob } from './queue.mjs';
 
 const icons = {
   image: FileImage,
@@ -146,6 +142,15 @@ function Logo({ small = false }) {
     </div>
   );
 }
+function SideButton({ id, icon: Icon, children, count, active, onNavigate }) {
+  return (
+    <button className={`side-button ${active ? 'active' : ''}`} onClick={() => onNavigate(id)}>
+      <Icon size={18} />
+      <span>{children}</span>
+      {count > 0 && <b>{count}</b>}
+    </button>
+  );
+}
 function App() {
   const [route, setRoute] = useState('convert'),
     [queue, setQueue] = useState([]),
@@ -197,7 +202,11 @@ function App() {
     if (!api) return;
     api
       .getState()
-      .then(applyState)
+      .then((s) => {
+        applyState(s);
+        add(s.files || []);
+        for (const job of s.jobs || []) setQueue((q) => mergeJob(q, job));
+      })
       .catch((e) => setError(e.message));
     const off = api.onUpdate((job) => {
       if (job.batchComplete) {
@@ -206,21 +215,7 @@ function App() {
         setToast('Batch finished. Your results are ready.');
         return;
       }
-      setQueue((q) =>
-        q.map((f) =>
-          job.operation === 'pack' && job.includeFiles?.some((x) => x.id === f.id)
-            ? {
-                ...f,
-                status: job.status,
-                progress: job.progress,
-                result: job.result,
-                error: job.error,
-              }
-            : f.id === job.id
-              ? { ...f, ...job, ...(job.file || {}) }
-              : f,
-        ),
-      );
+      setQueue((q) => mergeJob(q, job));
     });
     const offFiles = api.onFiles(add);
     return () => {
@@ -322,11 +317,7 @@ function App() {
     }
     setAdding(true);
     try {
-      add(
-        await api.addPaths(
-          [...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean),
-        ),
-      );
+      add(await api.addDroppedFiles([...e.dataTransfer.files]));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -371,19 +362,9 @@ function App() {
     );
     setBulkTarget('');
   }
-  function SideButton({ id, icon: Icon, children, count }) {
-    return (
-      <button
-        className={`side-button ${route === id ? 'active' : ''}`}
-        onClick={() =>
-          ['convert', 'compress', 'archive'].includes(id) ? switchMode(id) : setRoute(id)
-        }
-      >
-        <Icon size={18} />
-        <span>{children}</span>
-        {count > 0 && <b>{count}</b>}
-      </button>
-    );
+
+  function navigate(id) {
+    ['convert', 'compress', 'archive'].includes(id) ? switchMode(id) : setRoute(id);
   }
   const detailFamily = selectedFormat && families.find((f) => f.formats.includes(selectedFormat));
   return (
@@ -414,22 +395,49 @@ function App() {
         </div>
         <div className="sidebar-label">WORKSPACE</div>
         <nav>
-          <SideButton id="convert" icon={ArrowRightLeft} count={queue.length}>
+          <SideButton
+            active={route === 'convert'}
+            onNavigate={navigate}
+            id="convert"
+            icon={ArrowRightLeft}
+            count={queue.length}
+          >
             Convert files
           </SideButton>
-          <SideButton id="compress" icon={Minimize2}>
+          <SideButton
+            active={route === 'compress'}
+            onNavigate={navigate}
+            id="compress"
+            icon={Minimize2}
+          >
             Compress files
           </SideButton>
-          <SideButton id="archive" icon={FileArchive}>
+          <SideButton
+            active={route === 'archive'}
+            onNavigate={navigate}
+            id="archive"
+            icon={FileArchive}
+          >
             ZIP & Unzip
           </SideButton>
-          <SideButton id="history" icon={Clock3} count={history.length}>
+          <SideButton
+            active={route === 'history'}
+            onNavigate={navigate}
+            id="history"
+            icon={Clock3}
+            count={history.length}
+          >
             Recent files
           </SideButton>
         </nav>
         <div className="sidebar-label second-label">EXPLORE</div>
         <nav>
-          <SideButton id="formats" icon={Grid2X2}>
+          <SideButton
+            active={route === 'formats'}
+            onNavigate={navigate}
+            id="formats"
+            icon={Grid2X2}
+          >
             All formats<span className="nav-mini">{formatCount}</span>
           </SideButton>
         </nav>
@@ -449,7 +457,12 @@ function App() {
               No cloud. No uploads.
             </span>
           </div>
-          <SideButton id="settings" icon={Settings2}>
+          <SideButton
+            active={route === 'settings'}
+            onNavigate={navigate}
+            id="settings"
+            icon={Settings2}
+          >
             Settings
           </SideButton>
           <div className="version">
@@ -746,10 +759,13 @@ function App() {
                       <button
                         className="text-button muted"
                         disabled={running}
-                        onClick={() => {
-                          setQueue([]);
-                          setBulkTarget('');
-                        }}
+                        onClick={() =>
+                          action(async () => {
+                            await api.releaseFiles(queue.map((f) => f.id));
+                            setQueue([]);
+                            setBulkTarget('');
+                          })
+                        }
                       >
                         Clear
                       </button>
@@ -865,7 +881,12 @@ function App() {
                               className="remove-button"
                               aria-label={`Remove ${f.name}`}
                               disabled={running}
-                              onClick={() => setQueue((q) => q.filter((x) => x.id !== f.id))}
+                              onClick={() =>
+                                action(async () => {
+                                  await api.releaseFiles([f.id]);
+                                  setQueue((q) => q.filter((x) => x.id !== f.id));
+                                })
+                              }
                             >
                               <X size={15} />
                             </button>

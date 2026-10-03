@@ -1,3 +1,4 @@
+const { writeAll } = require('../electron/io.cjs');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const fss = require('node:fs');
@@ -266,7 +267,7 @@ async function createApp(config, deps = {}) {
           for await (const chunk of req) {
             received += chunk.length;
             if (received > size) throw fail('Chunk too large.', 413);
-            await handle.write(chunk, 0, chunk.length, offset + received - chunk.length);
+            await writeAll(handle, chunk, offset + received - chunk.length);
           }
           if (received !== size) throw fail('Incomplete chunk.');
           upload.offset += size;

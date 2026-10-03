@@ -3,8 +3,14 @@ contextBridge.exposeInMainWorld('flux', {
   getState: () => ipcRenderer.invoke('state'),
   selectFiles: () => ipcRenderer.invoke('select-files'),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
-  addPaths: (paths) => ipcRenderer.invoke('add-paths', paths),
-  pathForFile: (file) => webUtils.getPathForFile(file),
+  addDroppedFiles: (files) => {
+    if (!Array.isArray(files) || files.length > 300) throw new Error('Choose up to 300 files.');
+    return ipcRenderer.invoke(
+      'add-paths',
+      files.map((file) => webUtils.getPathForFile(file)).filter(Boolean),
+    );
+  },
+  releaseFiles: (ids) => ipcRenderer.invoke('release-files', ids),
   selectOutput: () => ipcRenderer.invoke('select-output'),
   start: (jobs) => ipcRenderer.invoke('start-jobs', jobs),
   cancel: () => ipcRenderer.invoke('cancel-jobs'),

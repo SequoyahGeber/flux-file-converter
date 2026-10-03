@@ -18,7 +18,9 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
-      - run: node --test tests/web-security.test.cjs tests/access.test.cjs
+      - run: node --test tests/web-security.test.cjs tests/access.test.cjs tests/runtime.test.cjs
+      - run: npm run format:check
+      - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
   build:
     needs: security-tests

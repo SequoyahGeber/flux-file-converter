@@ -137,6 +137,21 @@ async function main() {
     await page.getByRole('button', { name: /Recent files/ }).click();
     await page.screenshot({ path: path.join(root, '07-history.png') });
     assert.equal(await page.locator('.history-row').count(), 10);
+    const bridge = await page.evaluate(async () => ({
+      arbitraryPaths: typeof window.flux.addPaths,
+      pathExtraction: typeof window.flux.pathForFile,
+      manufacturedFiles: await window.flux.addDroppedFiles([
+        new File(['synthetic'], 'virtual.txt'),
+      ]),
+      files: (await window.flux.getState()).files.length,
+    }));
+    assert.equal(bridge.arbitraryPaths, 'undefined');
+    assert.equal(bridge.pathExtraction, 'undefined');
+    assert.deepEqual(bridge.manufacturedFiles, []);
+    assert.equal(bridge.files, 1);
+    await page.getByRole('button', { name: /ZIP & Unzip/ }).click();
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    assert.equal((await page.evaluate(() => window.flux.getState())).files.length, 0);
     assert.deepEqual(errors, []);
     console.log(
       'Desktop acceptance passed: batch conversion, lossless/lossy compression, ZIP creation, extraction, format search, settings, and history.',
