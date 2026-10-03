@@ -22,7 +22,11 @@ services:
       WORKER_URL: http://flux-worker:8090
       CLAMAV_HOST: flux-scanner
     volumes: [api-work:/work]
-    networks: [jobs, edge, outbound]
+    extra_hosts: [flux-worker:10.77.0.10, flux-scanner:10.77.0.11]
+    networks:
+      jobs: { ipv4_address: 10.77.0.12 }
+      edge: {}
+      outbound: { gw_priority: 1 }
     restart: on-failure:3
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
   worker:
@@ -41,7 +45,8 @@ services:
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700]
     environment: { WORKER_SECRET: "${WORKER_SECRET:?Set a worker secret}" }
     volumes: [worker-work:/work]
-    networks: [jobs]
+    networks:
+      jobs: { ipv4_address: 10.77.0.10 }
     restart: on-failure:3
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
   scanner:
@@ -59,7 +64,8 @@ services:
     pids_limit: 32
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700]
     volumes: [definitions:/var/lib/clamav:ro, scanner-work:/work]
-    networks: [jobs]
+    networks:
+      jobs: { ipv4_address: 10.77.0.11 }
     restart: on-failure:3
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
   definitions:
@@ -96,9 +102,9 @@ services:
     restart: on-failure:3
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
 networks:
-  jobs: { name: flux-jobs, internal: true }
-  edge: { name: flux-edge, internal: true }
-  outbound: { name: flux-outbound }
+  jobs: { name: flux-jobs, internal: true, ipam: { config: [{ subnet: 10.77.0.0/24 }] } }
+  edge: { name: flux-edge, internal: true, ipam: { config: [{ subnet: 10.77.1.0/24 }] } }
+  outbound: { name: flux-outbound, ipam: { config: [{ subnet: 10.77.2.0/24 }] } }
 volumes:
   definitions: { name: flux-antivirus-definitions }
   api-work: { name: flux-api-work, external: true }

@@ -17,9 +17,9 @@ create() {
   fi
 }
 create flux-definitions 0.05 256m 16 32m 10001 --network=flux-outbound --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav ghcr.io/sequoyahgeber/flux-antivirus:stable freshclam --daemon --foreground=true --config-file=/etc/clamav/freshclam.conf
-create flux-scanner 0.25 1900m 32 64m 10001 --runtime=runsc --network=flux-jobs --mount type=volume,source=flux-scanner-work,target=/work --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav,readonly ghcr.io/sequoyahgeber/flux-antivirus:stable
-create flux-worker 1.5 2800m 192 128m 10001 --runtime=runsc --network=flux-jobs --mount type=volume,source=flux-worker-work,target=/work --env-file "$flux_root/worker.env" ghcr.io/sequoyahgeber/flux-worker:stable
-create flux-api 0.15 512m 64 64m 10001 --runtime=runsc --network=flux-jobs --network=flux-edge --network=flux-outbound --mount type=volume,source=flux-api-work,target=/work --env-file "$flux_root/api.env" --label net.unraid.docker.webui=https://fileconverter.sequoyahgeber.com ghcr.io/sequoyahgeber/flux-api:stable
+create flux-scanner 0.25 1900m 32 64m 10001 --runtime=runsc --network=name=flux-jobs,ip=10.77.0.11 --mount type=volume,source=flux-scanner-work,target=/work --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav,readonly ghcr.io/sequoyahgeber/flux-antivirus:stable
+create flux-worker 1.5 2800m 192 128m 10001 --runtime=runsc --network=name=flux-jobs,ip=10.77.0.10 --mount type=volume,source=flux-worker-work,target=/work --env-file "$flux_root/worker.env" ghcr.io/sequoyahgeber/flux-worker:stable
+create flux-api 0.15 512m 64 64m 10001 --runtime=runsc --network=name=flux-jobs,ip=10.77.0.12 --network=flux-edge --network=name=flux-outbound,gw-priority=1 --add-host=flux-worker:10.77.0.10 --add-host=flux-scanner:10.77.0.11 --mount type=volume,source=flux-api-work,target=/work --env-file "$flux_root/api.env" --label net.unraid.docker.webui=https://fileconverter.sequoyahgeber.com ghcr.io/sequoyahgeber/flux-api:stable
 create flux-tunnel 0.05 128m 32 32m 65532 --network=flux-edge --network=flux-outbound --env-file "$flux_root/tunnel.env" cloudflare/cloudflared:latest tunnel --no-autoupdate run
 docker start flux-definitions flux-worker
 # Initial definitions may still be downloading. Start the scanner/API explicitly

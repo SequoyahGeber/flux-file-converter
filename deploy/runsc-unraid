@@ -9,5 +9,20 @@ args=()
 for arg in "$@"; do
   case "$arg" in --no-pivot|--no-pivot=true|--no-pivot=false) ;; *) args+=("$arg");; esac
 done
+# Docker's loopback DNS server is outside gVisor's netstack. Change only
+# Docker's generated per-container resolver file; no host data is mounted.
+# Service names use fixed private addresses via Docker --add-host instead.
+bundle=; previous=; creating=false
+for arg in "${args[@]}"; do
+  if [ "$previous" = --bundle ]; then bundle=$arg; fi
+  case "$arg" in --bundle=*) bundle=${arg#--bundle=};; create) creating=true;; esac
+  previous=$arg
+done
+if "$creating"; then
+  test -n "$bundle"
+  resolver=$(jq -er '.mounts[] | select(.destination=="/etc/resolv.conf") | .source' "$bundle/config.json")
+  [[ "$resolver" =~ ^/var/lib/docker/containers/[a-f0-9]{64}/resolv\.conf$ ]]
+  printf 'nameserver 1.1.1.1\nnameserver 1.0.0.1\noptions timeout:2 attempts:2\n' > "$resolver"
+fi
 exec unshare --mount --propagation private /bin/bash -c \
   'mount --rbind / /; exec chroot /proc/.. /usr/local/bin/runsc "$@"' runsc "${args[@]}"

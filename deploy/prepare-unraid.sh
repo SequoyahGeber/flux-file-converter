@@ -34,8 +34,8 @@ for pair in api:16 worker:24 scanner:8; do
   if ! docker volume inspect "flux-$flux_name-work" >/dev/null 2>&1; then docker volume create --driver local --opt type=none --opt o=bind --opt "device=$flux_mount" "flux-$flux_name-work"; fi
   mountpoint -q "$flux_mount"
 done
-for net in jobs edge; do docker network inspect "flux-$net" >/dev/null 2>&1 || docker network create --internal "flux-$net"; done
-docker network inspect flux-outbound >/dev/null 2>&1 || docker network create flux-outbound
+for pair in jobs:0 edge:1; do net=${pair%:*}; octet=${pair#*:}; docker network inspect "flux-$net" >/dev/null 2>&1 || docker network create --internal --subnet "10.77.$octet.0/24" "flux-$net"; done
+docker network inspect flux-outbound >/dev/null 2>&1 || docker network create --subnet 10.77.2.0/24 flux-outbound
 docker volume inspect flux-antivirus-definitions >/dev/null 2>&1 || docker volume create flux-antivirus-definitions
 docker ps --format '{{.ID}} {{.Names}}' > "$flux_root/receipts/containers-after.txt"
 diff -u "$flux_root/receipts/containers-before.txt" "$flux_root/receipts/containers-after.txt"
