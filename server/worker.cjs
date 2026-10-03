@@ -8,6 +8,7 @@ const { LIMITS, fail, filename, sameSecret } = require('./security.cjs');
 const secret = process.env.WORKER_SECRET;
 if (!secret || secret.length < 32) throw new Error('A strong worker secret is required.');
 let busy = false;
+let idle = Promise.resolve(), release;
 async function receive(req, files, root) {
   await fs.mkdir(path.join(root, 'input')); let index = 0, offset = 0, handle;
   try {
@@ -45,14 +46,21 @@ const server = http.createServer(async (req, res) => {
     if (!sameSecret(req.headers.authorization?.replace(/^Bearer /, ''), secret)) throw fail('Unauthorized.', 401);
     if (req.method === 'GET' && req.url === '/capabilities') { res.setHeader('Content-Type', 'application/json'); res.end(await fs.readFile('/app/server/capabilities.json')); return; }
     if (req.method !== 'POST' || req.url !== '/run') throw fail('Not found.', 404);
-    if (busy) throw fail('Worker is busy.', 503);
+    // A download can finish just before scratch cleanup. Give cleanup a brief
+    // chance to finish before accepting the next request from the serial API.
+    if (busy) {
+      let timer;
+      try { await Promise.race([idle, new Promise((_, reject) => { timer=setTimeout(()=>reject(fail('Worker is busy.',503)),5000); })]); }
+      finally { clearTimeout(timer); }
+      if (busy) throw fail('Worker is busy.',503);
+    }
     const header = req.headers['x-flux-job']; if (typeof header !== 'string' || header.length > 48000) throw fail('Invalid job.');
     const spec = JSON.parse(Buffer.from(header, 'base64url').toString());
     if (!['inspect', 'convert', 'compress', 'pack', 'extract'].includes(spec.operation) || !Array.isArray(spec.files) || !spec.files.length || spec.files.length > LIMITS.files) throw fail('Invalid job.');
     const seen = new Set(); let size = 0;
     for (const file of spec.files) { filename(file.name); if (seen.has(file.name) || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > LIMITS.file) throw fail('Invalid input.'); seen.add(file.name); size += file.size; }
     if (size > LIMITS.storage || Number(req.headers['content-length']) !== size) throw fail('Input exceeds the job limit.', 413);
-    busy = true; claimed = true; root = await fs.mkdtemp('/work/flux-job-'); const controller = new AbortController();
+    busy = true; idle=new Promise(resolve=>{release=resolve;}); claimed = true; root = await fs.mkdtemp('/work/flux-job-'); const controller = new AbortController();
     res.on('close', () => { if (!res.writableFinished) controller.abort(); });
     await receive(req, spec.files, root); await fs.writeFile(path.join(root, 'job.json'), JSON.stringify(spec)); await execute(root, controller.signal);
     const result = JSON.parse(await fs.readFile(path.join(root, 'result.json'), 'utf8'));
@@ -65,7 +73,7 @@ const server = http.createServer(async (req, res) => {
       await pipeline(fss.createReadStream(out), res);
     }
   } catch (e) { if (!res.headersSent) { res.statusCode = e.status || 400; res.end('Job rejected.'); } else res.destroy(); }
-  finally { if (claimed) { await require('./cleanup.cjs').cleanWorker(); busy = false; } }
+  finally { if (claimed) { try { await require('./cleanup.cjs').cleanWorker(); } finally { busy = false; release(); } } }
 });
 server.requestTimeout = 630000; server.headersTimeout = 10000; server.maxConnections = 4;
 require('./cleanup.cjs').cleanWorker().then(()=>server.listen(8090,'0.0.0.0')).catch(e=>{console.error('Scratch cleanup failed.');process.exit(1);});

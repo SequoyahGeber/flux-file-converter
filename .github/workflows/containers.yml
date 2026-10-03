@@ -67,6 +67,9 @@ jobs:
           npm ci --ignore-scripts
           sleep 3
           WORKER_SECRET=ci-only-secret-00000000000000000000000 node tests/container-smoke.cjs
+      - name: Worker diagnostics
+        if: failure() && matrix.target == 'worker'
+        run: docker logs --tail 100 worker || true
       - name: Publish candidate image
         if: github.event_name != 'pull_request'
         run: |

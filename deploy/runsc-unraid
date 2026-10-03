@@ -1,0 +1,9 @@
+#!/bin/bash
+# Unraid's RAM-backed OS makes Docker pass runc's --no-pivot flag.
+# runsc does not accept that runc-only option; keep gVisor's own isolation intact.
+set -euo pipefail
+args=()
+for arg in "$@"; do
+  case "$arg" in --no-pivot|--no-pivot=true|--no-pivot=false) ;; *) args+=("$arg");; esac
+done
+exec /usr/local/bin/runsc "${args[@]}"

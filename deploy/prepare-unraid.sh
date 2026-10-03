@@ -15,6 +15,11 @@ if ! docker info --format '{{json .Runtimes}}' | jq -e 'has("runsc")' >/dev/null
   kill -HUP "$(cat /var/run/dockerd.pid)"
   sleep 2
 fi
+cp "$flux_root/source/deploy/runsc-unraid" /usr/local/bin/runsc-unraid
+chmod 0755 /usr/local/bin/runsc-unraid
+jq '.runtimes.runsc.path="/usr/local/bin/runsc-unraid"' /etc/docker/daemon.json > /etc/docker/daemon.json.flux
+mv /etc/docker/daemon.json.flux /etc/docker/daemon.json
+kill -HUP "$(cat /var/run/dockerd.pid)"
 docker info --format '{{json .Runtimes}}' | jq -e 'has("runsc")' >/dev/null
 chattr +C "$flux_root/storage" 2>/dev/null || true
 for pair in api:16 worker:24 scanner:8; do
