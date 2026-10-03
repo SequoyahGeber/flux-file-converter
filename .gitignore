@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+resources/pdf-tool
+.DS_Store
+.test-output/
+
+resources/python-runtime/
+resources/icon.iconset/
+
+resources/extended-runtime/
+.env
+.env.*
+deploy/*.env
+deploy/receipts/
+server/engines.json
+server/capabilities.json

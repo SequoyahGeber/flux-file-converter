@@ -1,0 +1,17 @@
+*
+!package.json
+!package-lock.json
+!electron/
+!electron/**
+!server/
+!server/**
+!native/
+!native/**
+!resources/
+!resources/requirements.txt
+!resources/office-formats.json
+!deploy/
+!deploy/imagemagick-policy.xml
+!deploy/clamd.conf
+!deploy/freshclam.conf
+!Dockerfile
