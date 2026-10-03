@@ -73,6 +73,20 @@ test('a missing scratch file releases upload capacity after a failed chunk write
   assert.equal((await chunk(first.id)).status, 200);
   const second = await begin('next.txt'); assert.equal((await chunk(second.id)).status, 200);
 });
+test('the overall job deadline aborts scanning and publishes no file', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-deadline-')); let aborted = false;
+  const app = await createApp({ storage: dir }, { jobTimeout: 50, auth: async () => ({ id: 'a', email: 'test@example.com' }), scan: async (_, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => { aborted = true; reject(new Error('Aborted')); }, { once: true });
+  }) });
+  await new Promise(r => app.server.listen(0, '127.0.0.1', r)); const base = 'http://127.0.0.1:' + app.server.address().port;
+  t.after(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
+  const first = await (await fetch(base + '/api/uploads', { method: 'POST', body: JSON.stringify({ name: 'slow.txt', size: 4 }) })).json();
+  await fetch(base + '/api/uploads/' + first.id, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '0' }, body: 'test' });
+  const queued = await (await fetch(base + '/api/uploads/' + first.id + '/complete', { method: 'POST' })).json();
+  let state, job;
+  for (let i=0;i<100;i++) { state = await (await fetch(base + '/api/status')).json(); job = state.jobs.find(j=>j.id===queued.id); if(job?.status==='error') break; await new Promise(r=>setTimeout(r,5)); }
+  assert.equal(aborted,true); assert.equal(job.status,'error'); assert.match(job.error,/ten-minute limit/); assert.equal(state.files.length,0); assert.equal(state.history.length,0);
+});
 test('deployment keeps hard aggregate CPU/RAM limits, gVisor and no published ports', async () => {
   const YAML = require('yaml'); const doc = YAML.parse(await fs.readFile(path.join(__dirname,'../compose.yaml'),'utf8'));
   let cpu=0,memory=0; const parse = x => parseFloat(x) * (x.endsWith('g') ? 1024 : 1);

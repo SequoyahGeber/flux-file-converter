@@ -34,6 +34,10 @@ async function createApp(config, deps = {}) {
   }
   async function remove(s) { for (const item of [...s.files.values(), ...s.results.values()]) stored -= item.size; for (const upload of s.uploads.values()) reserved -= upload.size; s.files.clear(); s.uploads.clear(); s.results.clear(); s.jobs.clear(); await fs.rm(s.dir, { force: true, recursive: true }); }
   const sweep = setInterval(async () => { for (const [id, s] of sessions) if (!s.active && Date.now() > s.expiry) { sessions.delete(id); await remove(s); } }, 30000); sweep.unref();
+  async function bounded(job, controller, run) {
+    const timer = setTimeout(() => { job.timedOut = true; controller.abort(); }, deps.jobTimeout || LIMITS.job); timer.unref();
+    try { return await run(); } finally { clearTimeout(timer); }
+  }
   function view(s) { return { files: [...s.files.values()].map(f => ({ id: f.id, ...safeMetadata(f) })), jobs: [...s.jobs.values()], history: [...s.results.values()].map(({ path: _, ...r }) => r), expiresInMinutes: 30 }; }
   const server = http.createServer(async (req, res) => {
     headers(res);
@@ -65,13 +69,13 @@ async function createApp(config, deps = {}) {
       if (req.method === 'POST' && /^\/api\/uploads\/[a-f0-9-]{36}\/complete$/.test(url.pathname)) {
         const id = url.pathname.split('/')[3], upload = s.uploads.get(id); if (!upload || upload.busy || upload.offset !== upload.size) throw fail('Upload is incomplete.', 409);
         upload.busy = true; s.active++; let committed = false; const jobId = crypto.randomUUID(), job = { id: jobId, fileId: id, fileIds: [id], name: upload.name, operation: 'upload', status: 'queued', createdAt: Date.now() }, controller = new AbortController(); Object.defineProperty(job,'controller',{value:controller}); s.jobs.set(jobId, job);
-        queue.add(async () => {
+        queue.add(() => bounded(job, controller, async () => {
           if(controller.signal.aborted)throw fail('Cancelled.');job.status = 'running'; const scanMode = await scanner(upload.path,{signal:controller.signal}); const inspected = await worker({ operation: 'inspect' }, [upload], null, config,controller.signal);
           if (upload.size > LIMITS.scanFull && (!['video', 'audio'].includes(inspected.family) || (!inspected.hasAudio && !inspected.hasVideo))) throw fail('Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.', 413);
           const info = { ...safeMetadata(inspected), path: upload.path, name: upload.name, size: upload.size, id, scanMode };
           if (scanMode === 'chunked') info.warning = 'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
           s.files.set(id, info); stored += upload.size; committed = true; job.status = 'done'; job.file = { id, ...safeMetadata(info), scanMode };
-        }).catch(e => { job.status = controller.signal.aborted?'cancelled':'error'; job.error = e.status ? e.message : 'The file scan could not finish.'; }).finally(async () => { s.uploads.delete(id); reserved -= upload.size; s.active--; if (!committed) await fs.rm(upload.path, { force: true }); });
+        })).catch(e => { job.status = job.timedOut ? 'error' : controller.signal.aborted ? 'cancelled' : 'error'; job.error = job.timedOut ? 'Job exceeded the ten-minute limit.' : e.status ? e.message : 'The file scan could not finish.'; }).finally(async () => { s.uploads.delete(id); reserved -= upload.size; s.active--; if (!committed) await fs.rm(upload.path, { force: true }); });
         send(res, { id: jobId }, 202); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/files') throw fail('Use the bounded chunked upload API.', 410);
@@ -92,14 +96,14 @@ async function createApp(config, deps = {}) {
         if (stored + reserved + LIMITS.output > LIMITS.storage) throw fail('Insufficient output space. Clear previous results first.', 503);
         reserved += LIMITS.output; s.active++; s.jobs.set(id, job);
         const controller = new AbortController(); Object.defineProperty(job, 'controller', { value: controller });
-        queue.add(async () => {
+        queue.add(() => bounded(job, controller, async () => {
           if (controller.signal.aborted) throw fail('Cancelled.'); job.status = 'running';
           const info = await worker({ operation: op, target: spec.target, compression: spec.compression, options: options(spec.options) }, files, output, config, controller.signal);
           const scanMode = await scanner(output,{signal:controller.signal}); if (info.size > LIMITS.scanFull && !['mp4','mkv','mov','webm','avi','m4v','mpg','mpeg','flv','3gp','ts','mts','m2ts','vob','wmv','ogv','mp3','wav','flac','aac','m4a','ogg','opus','aiff','aif','wma','amr','ac3','caf'].includes(info.target)) throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
           if (controller.signal.aborted) throw fail('Cancelled.');
           filename(info.name); const stat = await fs.lstat(output); if (!stat.isFile() || stat.size > LIMITS.output) throw fail('Invalid output.', 502);
           const result = { id, ...info, size: stat.size, path: output, operation: op, scanMode }; stored += stat.size; s.results.set(id, result); job.status = 'done'; job.result = { ...result, path: undefined };
-        }).catch(async e => { job.status = controller.signal.aborted ? 'cancelled' : 'error'; job.error = e.status ? e.message : 'The conversion could not finish. Try a smaller file or another format.'; await fs.rm(output, { force: true }); }).finally(() => { reserved -= LIMITS.output; s.active--; });
+        })).catch(async e => { job.status = job.timedOut ? 'error' : controller.signal.aborted ? 'cancelled' : 'error'; job.error = job.timedOut ? 'Job exceeded the ten-minute limit.' : e.status ? e.message : 'The conversion could not finish. Try a smaller file or another format.'; await fs.rm(output, { force: true }); }).finally(() => { reserved -= LIMITS.output; s.active--; });
         send(res, { id }, 202); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/cancel') { const body = await json(req); const job = s.jobs.get(body.id); if (job?.controller) job.controller.abort(); send(res, { ok: true }); return; }

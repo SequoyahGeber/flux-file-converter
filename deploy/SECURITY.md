@@ -22,7 +22,7 @@ A compromised parser can still corrupt its result or crash its own container. Th
 
 The complete stack is capped at two CPU cores and under 6 GB container RAM: worker 1.5 CPUs / 2800 MiB, scanner 0.25 / 1900 MiB, API 0.15 / 512 MiB, definition updater 0.05 / 256 MiB, tunnel 0.05 / 128 MiB. Swap is disabled. These are ceilings, not reservations; verify running cgroups and Docker stats after installation.
 
-One conversion/inspection runs at a time, at most eight jobs can queue, and conversions time out after ten minutes. Users are limited to 20 files, two active requests/jobs, six conversion submissions per minute and 30 per hour. Aggregate uploads/results are limited to 12 GB. Uploads use 16 MiB chunks to fit Cloudflare Free's per-request limit. Chunks cannot skip ahead, exceed declared size or overwrite another user's upload.
+One conversion/inspection runs at a time, at most eight jobs can queue, and each running job has a ten-minute deadline shared by scanning and conversion. Users are limited to 20 files, two active requests/jobs, six conversion submissions per minute and 30 per hour. Aggregate uploads/results are limited to 12 GB. Uploads use 16 MiB chunks to fit Cloudflare Free's per-request limit. Chunks cannot skip ahead, exceed declared size or overwrite another user's upload.
 
 Scratch data is on dedicated bounded filesystems inside preallocated disk images: API 16 GiB, worker 24 GiB and scanner 8 GiB. Docker named volumes refer only to these filesystems, mounted `noexec,nosuid,nodev`. Uploaded data cannot fill the rest of the cache or Docker image. Preparing them reserves 48 GiB of cache space. Definitions use a separate Docker-managed volume. No Unraid data shares are mounted into the app.
 

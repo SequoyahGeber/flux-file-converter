@@ -4,6 +4,12 @@ The browser version supports conversion, lossy/lossless compression, ZIP/extract
 
 [GitHub source and releases](https://github.com/SequoyahGeber/flux-file-converter). Unraid templates in `deploy/templates` pull GHCR `stable` tags for Docker-tab updates; `compose.yaml` has equivalent settings. Production requires gVisor, Cloudflare Access and bounded scratch volumes prepared by `deploy/prepare-unraid.sh`. Do not replace them with server shares or remove isolation/resource limits.
 
+For Unraid installation, save the Access issuer/audience, a random worker secret, and the dedicated tunnel token in root-only `/mnt/cache/appdata/flux-deployment/config.env`. Copy this repository into that directory's `source` folder. Run `prepare-unraid.sh`, `install-templates.sh`, and `install-boot-unraid.sh` from `source/deploy`, then `start-unraid.sh`. After antivirus definitions finish downloading, use `start-unraid.sh --activate`. Flux owns private `10.77.0.0/24`, `10.77.1.0/24`, and `10.77.2.0/24` Docker networks; those subnets must be free. Preserve the private networks and boot script when updating.
+
+In Unraid's Docker tab, use **Check for Updates**, then **Update** on `flux-api`, `flux-worker`, `flux-scanner`, and `flux-definitions`. Download your results first; temporary uploads/results are purged on restart. The tunnel uses the official Cloudflare image. The XML templates retain every private network, fixed service address, sandbox setting, and resource limit when containers are recreated.
+
+The browser lets you edit the output filename before **Save as**. Chrome/Edge can stream directly into a chosen local file. In Safari, set **Settings → General → File download location → Ask for each download** to choose the destination each time.
+
 Flux converts files locally, compresses supported content, creates ZIPs from files and folders, and extracts archives. The installed app is `/Applications/Flux.app`; a rebuildable copy lives in `release/Flux.app`. Results default to `~/Downloads/Flux`; choose another destination in the app.
 
 The full input-to-output reference is in `reference/Conversion matrix.html` (searchable) and `reference/Conversion matrix.csv` (all rows). Run `npm run formats` to regenerate it from the installed engines.
