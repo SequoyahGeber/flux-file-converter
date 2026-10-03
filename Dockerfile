@@ -50,3 +50,21 @@ COPY deploy/freshclam.conf /etc/clamav/freshclam.conf
 USER 10001:10001
 EXPOSE 3310
 CMD ["clamd", "--foreground=true", "--config-file=/etc/clamav/clamd.conf"]
+
+FROM debian:trixie-slim AS launcher
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+COPY server/supervisor.c /src/supervisor.c
+RUN gcc -O2 -Wall -Wextra /src/supervisor.c -o /flux-supervisor
+
+FROM cloudflare/cloudflared:latest AS cloudflared
+
+FROM worker AS unified
+USER 0:0
+RUN apt-get update && apt-get install -y --no-install-recommends clamav-daemon clamav-freshclam && rm -rf /var/lib/apt/lists/* && mkdir -p /work/api /work/worker /work/scanner /var/lib/clamav
+COPY --from=launcher /flux-supervisor /usr/local/bin/flux-supervisor
+COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
+COPY deploy/clamd-unified.conf /etc/clamav/clamd-unified.conf
+COPY deploy/freshclam.conf /etc/clamav/freshclam.conf
+HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/flux-supervisor", "--health"]
+ENTRYPOINT ["/usr/local/bin/flux-supervisor"]
+CMD []

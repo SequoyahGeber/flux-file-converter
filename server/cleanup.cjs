@@ -11,10 +11,18 @@ async function remove(entry) {
   } else await fs.unlink(entry);
 }
 async function cleanWorker() {
-  for(const dir of ['/work','/tmp'])for(const entry of await fs.readdir(dir)){
+  for(const dir of [process.env.FLUX_WORKDIR||'/work',process.env.FLUX_TMPDIR||'/tmp'])for(const entry of await fs.readdir(dir)){
     const full=path.join(dir,entry),stat=await fs.lstat(full);
     if(entry==='lost+found'&&stat.isDirectory()&&stat.uid===0)continue;
     await remove(full);
+  }
+  // Some native tools ignore TMPDIR. In the shared container, only remove
+  // entries owned by the worker; the API/scanner/tunnel use different UIDs.
+  if(process.env.FLUX_TMPDIR && process.env.FLUX_TMPDIR!=='/tmp') {
+    for(const entry of await fs.readdir('/tmp')) {
+      const full=path.join('/tmp',entry),stat=await fs.lstat(full);
+      if(stat.uid===process.getuid() && full!==process.env.FLUX_TMPDIR)await remove(full);
+    }
   }
 }
 async function cleanApi(root) {

@@ -129,9 +129,9 @@ async function createApp(config, deps = {}) {
   return { server, close: async () => { clearInterval(sweep); for (const s of sessions.values()) for (const job of s.jobs.values()) job.controller?.abort(); await new Promise(resolve => server.close(resolve)); await fs.rm(root, { force: true, recursive: true }); } };
 }
 async function main() {
-  const config = { issuer: process.env.ACCESS_ISSUER, audience: process.env.ACCESS_AUD, origin: process.env.PUBLIC_ORIGIN, worker: process.env.WORKER_URL || 'http://flux-worker:8090', secret: process.env.WORKER_SECRET };
+  const config = { storage: process.env.FLUX_STORAGE, issuer: process.env.ACCESS_ISSUER, audience: process.env.ACCESS_AUD, origin: process.env.PUBLIC_ORIGIN, worker: process.env.WORKER_URL || 'http://flux-worker:8090', secret: process.env.WORKER_SECRET };
   if (!config.secret || config.secret.length < 32) throw new Error('A strong worker secret is required.');
-  const app = await createApp(config); app.server.listen(8080, '0.0.0.0');
+  const app = await createApp(config); app.server.listen(8080, process.env.FLUX_BIND || '0.0.0.0');
   const stop = async () => { await app.close(); process.exit(0); }; process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }
 if (require.main === module) main().catch(e => { console.error(e.message); process.exit(1); });

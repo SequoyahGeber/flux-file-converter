@@ -6,6 +6,7 @@ function showError(e) { $('error').textContent = e.message || String(e); $('erro
 async function api(url, { method = 'GET', body, headers = {} } = {}) {
   const response = await fetch('/api/' + url, { method, credentials: 'same-origin', headers: { ...(method !== 'GET' ? { 'X-Flux-Request': '1' } : {}), ...(body && !(body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body instanceof Blob ? body : body ? JSON.stringify(body) : undefined });
   if (response.status === 401) { showError(new Error('Your login expired. Reload this page to sign in.')); throw new Error('Login required.'); }
+  if(!response.headers.get('content-type')?.includes('application/json'))throw new Error(response.status>=500?'The converter is restarting or unavailable. Try reloading shortly.':'Reload this page to reconnect through Cloudflare Access.');
   const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Request failed.'); return result;
 }
 function node(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }

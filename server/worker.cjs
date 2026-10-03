@@ -60,7 +60,7 @@ const server = http.createServer(async (req, res) => {
     const seen = new Set(); let size = 0;
     for (const file of spec.files) { filename(file.name); if (seen.has(file.name) || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > LIMITS.file) throw fail('Invalid input.'); seen.add(file.name); size += file.size; }
     if (size > LIMITS.storage || Number(req.headers['content-length']) !== size) throw fail('Input exceeds the job limit.', 413);
-    busy = true; idle=new Promise(resolve=>{release=resolve;}); claimed = true; root = await fs.mkdtemp('/work/flux-job-'); const controller = new AbortController();
+    busy = true; idle=new Promise(resolve=>{release=resolve;}); claimed = true; root = await fs.mkdtemp(path.join(process.env.FLUX_WORKDIR||'/work','flux-job-')); const controller = new AbortController();
     res.on('close', () => { if (!res.writableFinished) controller.abort(); });
     await receive(req, spec.files, root); await fs.writeFile(path.join(root, 'job.json'), JSON.stringify(spec)); await execute(root, controller.signal);
     const result = JSON.parse(await fs.readFile(path.join(root, 'result.json'), 'utf8'));
@@ -76,4 +76,4 @@ const server = http.createServer(async (req, res) => {
   finally { if (claimed) { try { await require('./cleanup.cjs').cleanWorker(); } finally { busy = false; release(); } } }
 });
 server.requestTimeout = 630000; server.headersTimeout = 10000; server.maxConnections = 4;
-require('./cleanup.cjs').cleanWorker().then(()=>server.listen(8090,'0.0.0.0')).catch(e=>{console.error('Scratch cleanup failed.');process.exit(1);});
+require('./cleanup.cjs').cleanWorker().then(()=>server.listen(8090,process.env.FLUX_BIND||'0.0.0.0')).catch(e=>{console.error('Scratch cleanup failed.');process.exit(1);});

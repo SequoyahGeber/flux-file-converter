@@ -87,9 +87,14 @@ test('the overall job deadline aborts scanning and publishes no file', async t =
   for (let i=0;i<100;i++) { state = await (await fetch(base + '/api/status')).json(); job = state.jobs.find(j=>j.id===queued.id); if(job?.status==='error') break; await new Promise(r=>setTimeout(r,5)); }
   assert.equal(aborted,true); assert.equal(job.status,'error'); assert.match(job.error,/ten-minute limit/); assert.equal(state.files.length,0); assert.equal(state.history.length,0);
 });
-test('deployment keeps hard aggregate CPU/RAM limits, gVisor and no published ports', async () => {
+test('the single container retains hard limits, gVisor and no published ports', async () => {
   const YAML = require('yaml'); const doc = YAML.parse(await fs.readFile(path.join(__dirname,'../compose.yaml'),'utf8'));
-  let cpu=0,memory=0; const parse = x => parseFloat(x) * (x.endsWith('g') ? 1024 : 1);
-  for (const [name,s] of Object.entries(doc.services)) { cpu+=s.cpus; memory+=parse(s.mem_limit); assert.equal(s.mem_limit,s.memswap_limit); assert.equal(s.read_only,true); assert.deepEqual(s.cap_drop,['ALL']); assert.ok(s.security_opt.includes('no-new-privileges:true')); assert.ok(s.pids_limit); assert.equal(s.ports,undefined); assert.equal(s.privileged,undefined); assert.equal(s.network_mode,undefined); assert.ok(!(s.volumes||[]).some(v=>v.includes('/var/run/docker')||v.startsWith('/mnt/'))); if (['worker','scanner'].includes(name)) assert.equal(s.runtime,'runsc'); }
-  assert.ok(cpu<=2.001); assert.ok(memory<=6144); assert.equal(doc.networks.jobs.internal,true); assert.equal(doc.networks.edge.internal,true); assert.equal(LIMITS.file,5_000_000_000); assert.equal(LIMITS.job,600000);
+  assert.deepEqual(Object.keys(doc.services),['flux']); const s=doc.services.flux;
+  assert.equal(s.cpus,2); assert.equal(s.mem_limit,'5700m'); assert.equal(s.memswap_limit,s.mem_limit);
+  assert.equal(s.read_only,true); assert.deepEqual(s.cap_drop,['ALL']);
+  assert.deepEqual(s.cap_add,['CHOWN','SETUID','SETGID','SETPCAP']);
+  assert.ok(s.security_opt.includes('no-new-privileges:true')); assert.equal(s.runtime,'runsc');
+  assert.equal(s.pids_limit,256); assert.equal(s.ports,undefined); assert.equal(s.privileged,undefined); assert.equal(s.network_mode,undefined);
+  assert.ok(!s.volumes.some(v=>v.includes('/var/run/docker')||v.startsWith('/mnt/')));
+  assert.equal(LIMITS.file,5_000_000_000); assert.equal(LIMITS.job,600000);
 });

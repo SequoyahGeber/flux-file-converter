@@ -5,6 +5,24 @@ const os = require('node:os');
 const sharp = require('sharp');
 const { rpc } = require('../server/transport.cjs');
 async function main() {
+  if(process.env.FLUX_VERIFY_PRIVILEGES==='1') {
+    assert.equal(process.getuid(),10001);
+    const status=await fs.readFile('/proc/self/status','utf8');
+    for(const field of ['CapInh','CapPrm','CapEff','CapBnd','CapAmb'])assert.match(status,new RegExp(field+':\\s+0+\\b'));
+    await assert.rejects(fs.readdir('/work/worker'),{code:'EACCES'});
+    let found=false;
+    for(const pid of (await fs.readdir('/proc')).filter(p=>/^\d+$/.test(p))) {
+      try {
+        const workerStatus=await fs.readFile('/proc/'+pid+'/status','utf8');
+        if(!/^Uid:\s+10002\s/m.test(workerStatus))continue;
+        found=true;
+        for(const field of ['CapInh','CapPrm','CapEff','CapBnd','CapAmb'])assert.match(workerStatus,new RegExp(field+':\\s+0+\\b'));
+        await assert.rejects(fs.readFile('/proc/'+pid+'/environ'),{code:'EACCES'});
+      } catch(e) { if(e.code!=='ENOENT')throw e; }
+    }
+    assert.ok(found,'The worker runs under its separate UID');
+    console.log('Passed non-root UID, zero capability sets and private worker directory/environment checks.');
+  }
   const dir = await fs.mkdtemp(path.join(os.tmpdir(),'flux-container-test-'));
   const config = { worker: process.env.WORKER_URL || 'http://127.0.0.1:8090', secret: process.env.WORKER_SECRET };
   try {

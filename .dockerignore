@@ -13,6 +13,7 @@
 !deploy/
 !deploy/imagemagick-policy.xml
 !deploy/clamd.conf
+!deploy/clamd-unified.conf
 !deploy/freshclam.conf
 !Dockerfile
 !tests/

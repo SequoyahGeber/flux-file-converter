@@ -30,14 +30,14 @@ for pair in api:16 worker:24 scanner:8; do
   fi
   mkdir -p "$flux_mount"
   if ! mountpoint -q "$flux_mount"; then mount -o loop,noexec,nosuid,nodev "$flux_image" "$flux_mount"; fi
-  chown 10001:10001 "$flux_mount"; chmod 0700 "$flux_mount"
+  case "$flux_name" in api) flux_uid=10001;; worker) flux_uid=10002;; scanner) flux_uid=10003;; esac
+  chown "$flux_uid:$flux_uid" "$flux_mount"; chmod 0700 "$flux_mount"
   if ! docker volume inspect "flux-$flux_name-work" >/dev/null 2>&1; then docker volume create --driver local --opt type=none --opt o=bind --opt "device=$flux_mount" "flux-$flux_name-work"; fi
   mountpoint -q "$flux_mount"
 done
-for pair in jobs:0 edge:1; do net=${pair%:*}; octet=${pair#*:}; docker network inspect "flux-$net" >/dev/null 2>&1 || docker network create --internal --subnet "10.77.$octet.0/24" "flux-$net"; done
 docker network inspect flux-outbound >/dev/null 2>&1 || docker network create --subnet 10.77.2.0/24 flux-outbound
 docker volume inspect flux-antivirus-definitions >/dev/null 2>&1 || docker volume create flux-antivirus-definitions
 docker ps --format '{{.ID}} {{.Names}}' > "$flux_root/receipts/containers-after.txt"
 diff -u "$flux_root/receipts/containers-before.txt" "$flux_root/receipts/containers-after.txt"
 df -h /mnt/flux-work-api /mnt/flux-work-worker /mnt/flux-work-scanner > "$flux_root/receipts/storage.txt"
-echo 'Flux sandbox, private networks, and bounded scratch disks are ready. Existing containers were not restarted.'
+echo 'Flux sandbox, dedicated network, and bounded scratch disks are ready. Existing containers were not restarted.'

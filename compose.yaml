@@ -1,110 +1,32 @@
 name: flux
 services:
-  api:
+  flux:
     image: ghcr.io/sequoyahgeber/flux-api:stable
-    build: { context: ., target: api }
-    container_name: flux-api
+    build: { context: ., target: unified }
+    container_name: flux
     runtime: runsc
-    user: "10001:10001"
+    user: "0:0"
     read_only: true
     cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, SETPCAP]
     security_opt: [no-new-privileges:true]
-    cpus: 0.15
-    mem_limit: 512m
-    memswap_limit: 512m
-    pids_limit: 64
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700]
+    cpus: 2
+    mem_limit: 5700m
+    memswap_limit: 5700m
+    pids_limit: 256
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777]
+    extra_hosts: [flux-api:127.0.0.1]
     environment:
-      PUBLIC_ORIGIN: https://fileconverter.sequoyahgeber.com
       ACCESS_ISSUER: ${ACCESS_ISSUER:?Set the Cloudflare Access issuer}
       ACCESS_AUD: ${ACCESS_AUD:?Set the Access application audience}
       WORKER_SECRET: ${WORKER_SECRET:?Set a random 32-byte worker secret}
-      WORKER_URL: http://flux-worker:8090
-      CLAMAV_HOST: flux-scanner
-    volumes: [api-work:/work]
-    extra_hosts: [flux-worker:10.77.0.10, flux-scanner:10.77.0.11]
-    networks:
-      jobs: { ipv4_address: 10.77.0.12 }
-      edge: {}
-      outbound: { gw_priority: 1 }
-    restart: on-failure:3
-    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
-  worker:
-    image: ghcr.io/sequoyahgeber/flux-worker:stable
-    build: { context: ., target: worker }
-    container_name: flux-worker
-    runtime: runsc
-    user: "10001:10001"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    cpus: 1.5
-    mem_limit: 2800m
-    memswap_limit: 2800m
-    pids_limit: 192
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700]
-    environment: { WORKER_SECRET: "${WORKER_SECRET:?Set a worker secret}" }
-    volumes: [worker-work:/work]
-    networks:
-      jobs: { ipv4_address: 10.77.0.10 }
-    restart: on-failure:3
-    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
-  scanner:
-    image: ghcr.io/sequoyahgeber/flux-antivirus:stable
-    build: { context: ., target: antivirus }
-    container_name: flux-scanner
-    runtime: runsc
-    user: "10001:10001"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    cpus: 0.25
-    mem_limit: 1900m
-    memswap_limit: 1900m
-    pids_limit: 32
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700]
-    volumes: [definitions:/var/lib/clamav:ro, scanner-work:/work]
-    networks:
-      jobs: { ipv4_address: 10.77.0.11 }
-    restart: on-failure:3
-    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
-  definitions:
-    image: ghcr.io/sequoyahgeber/flux-antivirus:stable
-    container_name: flux-definitions
-    command: [freshclam, --daemon, --foreground=true, --config-file=/etc/clamav/freshclam.conf]
-    user: "10001:10001"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    cpus: 0.05
-    mem_limit: 256m
-    memswap_limit: 256m
-    pids_limit: 16
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700]
-    volumes: [definitions:/var/lib/clamav]
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set the Cloudflare tunnel token}
+    volumes: [api-work:/work/api, worker-work:/work/worker, scanner-work:/work/scanner, definitions:/var/lib/clamav]
     networks: [outbound]
     restart: on-failure:3
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: flux-tunnel
-    command: [tunnel, --no-autoupdate, run]
-    user: "65532:65532"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    cpus: 0.05
-    mem_limit: 128m
-    memswap_limit: 128m
-    pids_limit: 32
-    environment: { TUNNEL_TOKEN: "${TUNNEL_TOKEN:?Set the Cloudflare tunnel token}" }
-    networks: [edge, outbound]
-    restart: on-failure:3
-    logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
 networks:
-  jobs: { name: flux-jobs, internal: true, ipam: { config: [{ subnet: 10.77.0.0/24 }] } }
-  edge: { name: flux-edge, internal: true, ipam: { config: [{ subnet: 10.77.1.0/24 }] } }
-  outbound: { name: flux-outbound, ipam: { config: [{ subnet: 10.77.2.0/24 }] } }
+  outbound: { name: flux-outbound, external: true }
 volumes:
   definitions: { name: flux-antivirus-definitions }
   api-work: { name: flux-api-work, external: true }

@@ -24,10 +24,6 @@ jobs:
     needs: security-tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [api, worker, antivirus]
     permissions:
       contents: read
       packages: write
@@ -44,37 +40,35 @@ jobs:
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: .
-          target: ${{ matrix.target }}
+          target: unified
           load: true
-          tags: ghcr.io/sequoyahgeber/flux-${{ matrix.target }}:candidate
+          tags: ghcr.io/sequoyahgeber/flux-api:candidate
           labels: |
             org.opencontainers.image.source=https://github.com/SequoyahGeber/flux-file-converter
             org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          cache-from: |
+            type=gha,scope=unified
+            type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=unified
       - name: Scan image for fixable critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
-          image-ref: ghcr.io/sequoyahgeber/flux-${{ matrix.target }}:candidate
+          image-ref: ghcr.io/sequoyahgeber/flux-api:candidate
           exit-code: '1'
           severity: CRITICAL
           ignore-unfixed: true
-      - name: Verify conversion sandbox and run real conversions
-        if: matrix.target == 'worker'
+      - name: Verify privilege dropping, conversion sandbox and real conversions
         run: |
-          docker run --rm --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges --entrypoint /usr/local/bin/flux-sandbox ghcr.io/sequoyahgeber/flux-worker:candidate /usr/local/bin/node -e "const net=require('net');net.connect(443,'1.1.1.1').on('connect',()=>process.exit(1)).on('error',e=>process.exit(e.code==='EPERM'?0:1))"
-          docker run -d --name worker --read-only --cap-drop ALL --security-opt no-new-privileges --cpus 1.5 --memory 3g --pids-limit 192 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001 --tmpfs /work:rw,noexec,nosuid,nodev,size=512m,uid=10001,gid=10001 -e WORKER_SECRET=ci-only-secret-00000000000000000000000 -p 127.0.0.1:8090:8090 ghcr.io/sequoyahgeber/flux-worker:candidate
-          npm ci --ignore-scripts
-          sleep 3
-          WORKER_SECRET=ci-only-secret-00000000000000000000000 node tests/container-smoke.cjs
-      - name: Worker diagnostics
-        if: failure() && matrix.target == 'worker'
-        run: docker logs --tail 100 worker || true
+          docker run --rm --user 10002:10002 --cap-drop ALL --security-opt no-new-privileges --entrypoint /usr/local/bin/flux-sandbox ghcr.io/sequoyahgeber/flux-api:candidate /usr/local/bin/node -e "const net=require('net');net.connect(443,'1.1.1.1').on('connect',()=>process.exit(1)).on('error',e=>process.exit(e.code==='EPERM'?0:1))"
+          docker run --name flux-test --read-only --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID --cap-add SETPCAP --security-opt no-new-privileges --cpus 2 --memory 5700m --memory-swap 5700m --pids-limit 256 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 --tmpfs /work:rw,noexec,nosuid,nodev,size=512m -e WORKER_SECRET=ci-only-secret-00000000000000000000000 ghcr.io/sequoyahgeber/flux-api:candidate --verify
+      - name: Diagnostics
+        if: failure()
+        run: docker logs --tail 100 flux-test || true
       - name: Publish candidate image
         if: github.event_name != 'pull_request'
         run: |
-          docker tag ghcr.io/sequoyahgeber/flux-${{ matrix.target }}:candidate ghcr.io/sequoyahgeber/flux-${{ matrix.target }}:sha-${{ github.sha }}
-          docker push ghcr.io/sequoyahgeber/flux-${{ matrix.target }}:sha-${{ github.sha }}
+          docker tag ghcr.io/sequoyahgeber/flux-api:candidate ghcr.io/sequoyahgeber/flux-api:sha-${{ github.sha }}
+          docker push ghcr.io/sequoyahgeber/flux-api:sha-${{ github.sha }}
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -84,13 +78,17 @@ jobs:
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac
-      - name: Promote tested images to stable and sign digests
+      - name: Promote tested image to stable and sign its digest
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          for target in api worker antivirus; do
-            image=ghcr.io/sequoyahgeber/flux-$target
-            docker pull "$image:sha-${{ github.sha }}"
+          image=ghcr.io/sequoyahgeber/flux-api
+          docker pull "$image:sha-${{ github.sha }}"
+          # A slow, older release must never replace the current main release.
+          current=$(gh api repos/SequoyahGeber/flux-file-converter/commits/main --jq .sha)
+          if [ "$current" = "${{ github.sha }}" ]; then
             docker tag "$image:sha-${{ github.sha }}" "$image:stable"
             docker push "$image:stable"
-            digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$image:sha-${{ github.sha }}")
-            cosign sign --yes "$digest"
-          done
+          fi
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$image:sha-${{ github.sha }}")
+          cosign sign --yes "$digest"
