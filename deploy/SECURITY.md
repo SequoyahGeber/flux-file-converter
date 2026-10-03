@@ -12,6 +12,8 @@ There is no unauthenticated production mode, server path selector, Docker socket
 
 The API, worker and antivirus scanner require gVisor's `runsc` runtime. Every service runs as non-root with all Linux capabilities dropped, a read-only image, `no-new-privileges`, bounded process counts and bounded logs. Missing gVisor prevents these services from starting.
 
+Unraid's initial RAM filesystem needs a compatibility entrypoint: the trusted runtime creates a private mount namespace and bind-mounted root before invoking unmodified gVisor. This keeps gVisor's normal pivot-root and user-namespace isolation enabled. The Docker default runtime and other containers are unchanged.
+
 The worker sees immutable conversion tools and its dedicated scratch filesystem. Uploaded code is never intentionally executed. Blender automatic scripts and LibreOffice macros are disabled. Pandoc uses `--sandbox`; ImageMagick delegates, executable coders and remote protocols are disabled. FFmpeg permits file/pipe protocols. Conversion children inherit a seccomp filter denying IP sockets, tracing, namespace creation, mounts and process daemonisation. Their process group is killed on completion, cancellation or timeout. No Cloudflare login tokens or tunnel credentials are sent to the worker.
 
 A compromised parser can still corrupt its result or crash its own container. The sandbox, host kernel, conversion tools and client viewers all require security updates.
@@ -23,6 +25,8 @@ The complete stack is capped at two CPU cores and under 6 GB container RAM: work
 One conversion/inspection runs at a time, at most eight jobs can queue, and conversions time out after ten minutes. Users are limited to 20 files, two active requests/jobs, six conversion submissions per minute and 30 per hour. Aggregate uploads/results are limited to 12 GB. Uploads use 16 MiB chunks to fit Cloudflare Free's per-request limit. Chunks cannot skip ahead, exceed declared size or overwrite another user's upload.
 
 Scratch data is on dedicated bounded filesystems inside preallocated disk images: API 16 GiB, worker 24 GiB and scanner 8 GiB. Docker named volumes refer only to these filesystems, mounted `noexec,nosuid,nodev`. Uploaded data cannot fill the rest of the cache or Docker image. Preparing them reserves 48 GiB of cache space. Definitions use a separate Docker-managed volume. No Unraid data shares are mounted into the app.
+
+Containers use bounded `on-failure` restarts. A boot entrypoint waits for cache and Docker, restores gVisor and mounts the scratch disks, then starts Flux. This avoids starting against empty mount directories before the array is available. Scanner database reloads block scanning rather than loading a second engine into memory; the definition updater skips the duplicate engine-loading test to stay inside its RAM cap. Database signature validation remains enabled.
 
 Files/results belong to the signed-in token identity. Downloads cannot resolve arbitrary paths. Files expire after 30 minutes of inactivity and can be deleted immediately. Startup must purge previous Flux scratch directories. Download results before restarting/updating the API. The boot restoration script must mount scratch disks and restore gVisor before starting Flux; do not enable ordinary Unraid autostart for Flux without that prerequisite.
 

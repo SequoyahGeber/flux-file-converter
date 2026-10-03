@@ -1,9 +1,13 @@
 #!/bin/bash
 # Unraid's RAM-backed OS makes Docker pass runc's --no-pivot flag.
-# runsc does not accept that runc-only option; keep gVisor's own isolation intact.
+# runsc does not accept that runc-only option. Give the trusted runtime a private
+# mount namespace with a bind-mounted root so its normal pivot_root and user
+# namespaces work. /proc/.. traverses the mount stack, unlike a bare chroot /.
+# No mount changes propagate to the host; gVisor's isolation remains enabled.
 set -euo pipefail
 args=()
 for arg in "$@"; do
   case "$arg" in --no-pivot|--no-pivot=true|--no-pivot=false) ;; *) args+=("$arg");; esac
 done
-exec /usr/local/bin/runsc "${args[@]}"
+exec unshare --mount --propagation private /bin/bash -c \
+  'mount --rbind / /; exec chroot /proc/.. /usr/local/bin/runsc "$@"' runsc "${args[@]}"
