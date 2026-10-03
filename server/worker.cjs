@@ -65,7 +65,7 @@ const server = http.createServer(async (req, res) => {
       await pipeline(fss.createReadStream(out), res);
     }
   } catch (e) { if (!res.headersSent) { res.statusCode = e.status || 400; res.end('Job rejected.'); } else res.destroy(); }
-  finally { if (root) await fs.rm(root, { recursive: true, force: true }); if (claimed) busy = false; }
+  finally { if (claimed) { await require('./cleanup.cjs').cleanWorker(); busy = false; } }
 });
 server.requestTimeout = 630000; server.headersTimeout = 10000; server.maxConnections = 4;
-server.listen(8090, '0.0.0.0');
+require('./cleanup.cjs').cleanWorker().then(()=>server.listen(8090,'0.0.0.0')).catch(e=>{console.error('Scratch cleanup failed.');process.exit(1);});

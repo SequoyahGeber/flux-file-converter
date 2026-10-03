@@ -17,6 +17,7 @@ async function createApp(config, deps = {}) {
   const authenticate = deps.auth || await createAuth(config);
   const scanner = deps.scan || scan, worker = deps.rpc || ((...args) => rpc(...args));
   const sessions = new Map(), limits = new RateLimit(), queue = new Queue(); let stored = 0, reserved = 0, uploading = 0, capability;
+  await require('./cleanup.cjs').cleanApi(config.storage||'/work');
   const root = await fs.mkdtemp(path.join(config.storage || '/work', 'flux-api-'));
   async function capabilities() {
     if (!capability && deps.capabilities) capability = deps.capabilities;
