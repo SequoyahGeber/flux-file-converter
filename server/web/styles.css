@@ -421,6 +421,10 @@ footer {
   .job-state {
     grid-column: 2/-1;
   }
+  .row .save-control {
+    grid-column: 2/-1;
+    min-width: 0;
+  }
   .format-row {
     grid-template-columns: 75px 1fr;
   }

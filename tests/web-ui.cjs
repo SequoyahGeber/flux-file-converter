@@ -26,6 +26,7 @@ async function main() {
             size: files[0].size,
             targets: ['jpg'],
             details: '40 × 30',
+            notes: { jpg: 'Transparency is filled with a white background.' },
             compressionOptions: [
               { id: 'lossy', name: 'Smaller WebP', target: 'webp' },
               { id: 'archive', name: 'Lossless ZIP', target: 'zip' },
@@ -79,6 +80,21 @@ async function main() {
     assert.equal((await sharp(path.join(dir, 'download.jpg')).metadata()).width, 40);
     await fs.mkdir('.test-output', { recursive: true });
     await page.screenshot({ path: '.test-output/web-converter.png', fullPage: true });
+    await page.setViewportSize({ width: 800, height: 960 });
+    const compactBounds = await page.evaluate(() => {
+      const save = document.querySelector('#rows .save-control').getBoundingClientRect();
+      const note = document.querySelector('#rows .note').getBoundingClientRect();
+      const row = document.querySelector('#rows .row').getBoundingClientRect();
+      return {
+        saveBottom: save.bottom,
+        noteTop: note.top,
+        saveRight: save.right,
+        rowRight: row.right,
+      };
+    });
+    assert(compactBounds.saveBottom <= compactBounds.noteTop, JSON.stringify(compactBounds));
+    assert(compactBounds.saveRight <= compactBounds.rowRight, JSON.stringify(compactBounds));
+    await page.screenshot({ path: '.test-output/web-compact.png', fullPage: true });
     await page.getByRole('button', { name: '▦ All formats' }).click();
     await page.locator('#search').fill('jpg');
     await page.locator('.format-row').waitFor();
