@@ -1,4 +1,4 @@
-# Flux for Mac and Unraid
+# Flux for Mac, iPhone and Unraid
 
 The browser version supports conversion, lossy/lossless compression, ZIP/extraction, editable download names and browser save-location selection. It is designed for invite-only access at `fileconverter.sequoyahgeber.com`. See [server security and deployment boundaries](deploy/SECURITY.md). The single Flux container is limited to two CPU cores and under 6 GB RAM, with a ten-minute conversion timeout and 5 GB media uploads (1.9 GB for other files because of antivirus limits).
 
@@ -65,9 +65,13 @@ The renderer is sandboxed, with Node integration off and an isolated preload bri
 
 Desktop assets use a restricted `app://` origin with a content security policy. The bridge checks the sending frame; dropped files must be native selected files, and removing queue items releases their inspection records. Progress updates carry small job summaries. Conversion subprocesses receive an explicit environment without application credentials, have bounded output buffers and time limits, and cancellation terminates their local process groups. FFmpeg accepts local file/pipe protocols, LibreOffice macros are disabled, and image/media processing uses bounded thread counts. The local archive excludes development dependencies, browser/server-only packages, Python test fixtures and bytecode caches.
 
-## Mac TestFlight preparation
+## Mac and iPhone TestFlight preparation
 
-Run `npm run testflight:check` for the release gate. The new MAS build commands and sandbox entitlements are documented in [packaging/mas/README.md](packaging/mas/README.md). The local ad-hoc app and its ZIP remain developer builds. TestFlight is blocked until the full offline engine bundle is portable, Flux has its own profiles/Apple distribution signing, and the actual MAS sandbox build passes clean-Mac acceptance. No TestFlight upload or external release is performed by these commands.
+The native SwiftUI/WebKit server client is documented in [mac/README.md](mac/README.md). It provides native file and save dialogs, invitation entry, bounded downloads and Finder shortcuts without bundling conversion engines. `python3 scripts/mac-release.py --build BUILD_NUMBER` creates an Apple-signed universal Mac package. The client uploads selected files to the private Unraid converter; this is disclosed before connecting and in the file picker and privacy sheet. App Store Connect validation, production WebKit login/MFA and reviewer access still need independent verification before TestFlight release.
+
+The iPhone SwiftUI/WebKit client is documented in [ios/README.md](ios/README.md). It shares the Mac client's URL/invitation restrictions and privacy manifest, and adds Files selection, native downloads, filename changes, Save to Files and sharing. `python3 scripts/ios-release.py --build BUILD_NUMBER` creates an Apple-signed iPhone IPA. It requires iOS 18.4 or later.
+
+The separate Electron app continues to convert locally. `npm run testflight:check` applies to that offline target; the MAS engine-bundling instructions are in [packaging/mas/README.md](packaging/mas/README.md). Its full offline engine bundle still needs portability and redistribution clearance before Apple distribution. The local ad-hoc ZIP is a developer build. None of the packaging commands uploads or releases a build to testers.
 
 `npm run format:check` checks source formatting; `npm run test:web` covers browser saves and invite UI. The GitHub security job also checks process hardening, full streaming writes, desktop asset isolation, bookmark lifetime, and MAS signing/engine boundaries.
 

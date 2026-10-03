@@ -266,6 +266,7 @@ test('TestFlight signing rejects mismatched, expired, development or unprovision
     { identifier: '8MLN9FH4F9.com.other.app' },
     { expires: '2000-01-01T00:00:00Z' },
     { development: true },
+    { allDevices: true },
     { certificates: [] },
   ])
     assert.throws(() => validateProfile({ ...profile, ...change }, options));

@@ -23,6 +23,8 @@ function command(executable, args, options = {}) {
 }
 
 function validateProfile(profile, { bundleId, team, development, certificate }) {
+  if (profile.allDevices)
+    throw new Error('Use a device-bound development or Mac App Store profile for Flux.');
   if (profile.team !== team || profile.identifier !== `${team}.${bundleId}`)
     throw new Error('The provisioning profile does not belong to this Flux bundle ID and team.');
   if (!Number.isFinite(Date.parse(profile.expires)) || Date.parse(profile.expires) <= Date.now())
@@ -94,7 +96,7 @@ async function auditResources(directory) {
 function readProfile(file) {
   const decoded = command('/usr/bin/security', ['cms', '-D', '-i', file]);
   const script =
-    "import sys,plistlib,json,hashlib; p=plistlib.loads(sys.stdin.buffer.read());e=p['Entitlements'];print(json.dumps({'team':p['TeamIdentifier'][0],'identifier':e.get('com.apple.application-identifier'),'expires':p['ExpirationDate'].isoformat()+'Z','development':e.get('com.apple.security.get-task-allow',False),'certificates':[hashlib.sha1(c).hexdigest().upper() for c in p['DeveloperCertificates']]}))";
+    "import sys,plistlib,json,hashlib; p=plistlib.loads(sys.stdin.buffer.read());e=p['Entitlements'];print(json.dumps({'team':p['TeamIdentifier'][0],'identifier':e.get('com.apple.application-identifier'),'expires':p['ExpirationDate'].isoformat()+'Z','development':bool(p.get('ProvisionedDevices')),'allDevices':bool(p.get('ProvisionsAllDevices')),'certificates':[hashlib.sha1(c).hexdigest().upper() for c in p['DeveloperCertificates']]}))";
   return JSON.parse(command('/usr/bin/python3', ['-c', script], { input: decoded }));
 }
 
@@ -321,4 +323,4 @@ if (require.main === module)
     console.error(error.message);
     process.exitCode = 1;
   });
-module.exports = { validateProfile, preflight, auditResources, allowedLoader };
+module.exports = { validateProfile, readProfile, preflight, auditResources, allowedLoader };

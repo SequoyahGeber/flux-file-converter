@@ -83,6 +83,16 @@ async function main() {
     await page.locator('#search').fill('jpg');
     await page.locator('.format-row').waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.getByRole('link', { name: 'Sign out ↗' }).isVisible());
+    await page.getByRole('button', { name: '⇄ Convert files' }).click();
+    await page.locator('#rows button.download').waitFor();
+    const mobileBounds = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+      save: document.querySelector('#rows button.download').getBoundingClientRect().height,
+    }));
+    assert(mobileBounds.content <= mobileBounds.width, JSON.stringify(mobileBounds));
+    assert(mobileBounds.save >= 44, 'Mobile save controls need a usable touch target.');
     await page.screenshot({ path: '.test-output/web-mobile.png', fullPage: true });
     await page.getByRole('button', { name: '◷ Recent results' }).click();
     await page.locator('#result-list button.download').waitFor();

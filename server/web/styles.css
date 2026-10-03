@@ -568,3 +568,65 @@ footer {
 #access a {
   color: #7866bf;
 }
+
+@media (max-width: 580px) {
+  button,
+  input,
+  select,
+  .account a {
+    min-height: 44px;
+  }
+  input,
+  select,
+  .save-control input,
+  .row select,
+  #invite-link {
+    font-size: 16px;
+  }
+  nav button {
+    font-size: 13px;
+  }
+  .account {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+  .account a {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .account span {
+    overflow-wrap: anywhere;
+  }
+  .row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .row select,
+  .row .save-control,
+  .row .job-state {
+    grid-column: 2 / -1;
+    max-width: 100%;
+  }
+  .save-control {
+    width: 100%;
+  }
+  .save-control input {
+    flex: 1;
+    width: 120px;
+    min-width: 0;
+  }
+  .result-row {
+    flex-wrap: wrap;
+    gap: 12px;
+    overflow-wrap: anywhere;
+  }
+  .tools select,
+  .tools label {
+    max-width: 100%;
+  }
+}

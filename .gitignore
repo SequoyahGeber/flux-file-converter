@@ -15,3 +15,9 @@ deploy/*.env
 deploy/receipts/
 server/engines.json
 server/capabilities.json
+mac/Flux/Flux.icns
+mac/Flux.xcodeproj/xcuserdata/
+mac/DerivedData/
+__pycache__/
+ios/Flux.xcodeproj/xcuserdata/
+ios/DerivedData/

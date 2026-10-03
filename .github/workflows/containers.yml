@@ -22,8 +22,21 @@ jobs:
       - run: npm run format:check
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
+  mac-client-tests:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - run: python3 scripts/mac-project.py
+      - name: Check URL restrictions and safe file replacement
+        run: xcrun swiftc mac/Flux/ClientPolicy.swift mac/Flux/SafeSave.swift tests/mac-policy.swift -o /tmp/flux-mac-policy && /tmp/flux-mac-policy
+      - name: Build the universal native client without signing credentials
+        run: xcodebuild -project mac/Flux.xcodeproj -scheme Flux -configuration Release -derivedDataPath /tmp/flux-native-ci CODE_SIGNING_ALLOWED=NO build
+      - run: python3 scripts/ios-project.py
+      - name: Build the iPhone client without signing credentials
+        run: xcodebuild -project ios/Flux.xcodeproj -scheme Flux -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/flux-ios-ci CODE_SIGNING_ALLOWED=NO build
   build:
-    needs: security-tests
+    needs: [security-tests, mac-client-tests]
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -79,7 +92,12 @@ jobs:
     permissions: { contents: read, packages: write, id-token: write }
     steps:
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+        with:
+          {
+            registry: ghcr.io,
+            username: '${{ github.actor }}',
+            password: '${{ secrets.GITHUB_TOKEN }}',
+          }
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac
       - name: Promote tested image to stable and sign its digest
         env:
