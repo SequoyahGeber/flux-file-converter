@@ -1525,3 +1525,22 @@ select {
   max-height: 88vh;
   overflow: auto;
 }
+
+.native-output-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px 12px 76px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.native-output-name input {
+  min-width: 120px;
+  max-width: 360px;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 7px 10px;
+  color: #242630;
+}

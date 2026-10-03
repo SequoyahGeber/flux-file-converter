@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Archive and sign the iPhone client; never upload or release it to testers."""
+"""Archive and sign the on-device iPhone app; never upload or release it to testers."""
 import argparse
 import hashlib
 import json
@@ -57,7 +57,7 @@ def main():
     installed.write_bytes(profile_path.read_bytes())
     installed.chmod(0o600)
     command(["python3", str(ROOT / "scripts/ios-project.py")])
-    version = json.loads((ROOT / "package.json").read_text())["version"]
+    version = (ROOT / "native/VERSION").read_text().strip()
     output = ROOT / "release/native"
     output.mkdir(parents=True, exist_ok=True)
     logs = ROOT / ".test-output"
@@ -71,7 +71,7 @@ def main():
                       "-configuration", "Release", "-destination", "generic/platform=iOS",
                       "-derivedDataPath", str(temporary / "build"), "-archivePath", str(archive),
                       "archive", "CURRENT_PROJECT_VERSION=" + args.build, "MARKETING_VERSION=" + version,
-                      "CODE_SIGN_IDENTITY=" + identity, "PROVISIONING_PROFILE_SPECIFIER=" + p["Name"],
+                      "FLUX_SIGNING_IDENTITY=" + identity, "FLUX_PROFILE=" + p["Name"],
                       "DEVELOPMENT_TEAM=" + settings["team"], "PRODUCT_BUNDLE_IDENTIFIER=" + chosen["bundleId"]]
         if keychain:
             build_args.append("OTHER_CODE_SIGN_FLAGS=--keychain " + shlex.quote(keychain))
@@ -91,7 +91,7 @@ def main():
         if "--test-origin=" in command(["strings", "-a", str(binary)], text=True):
             raise SystemExit("A test endpoint override was included in the release binary.")
         manifest = plistlib.loads((app / "PrivacyInfo.xcprivacy").read_bytes())
-        if manifest.get("NSPrivacyTracking") is not False:
+        if manifest.get("NSPrivacyTracking") is not False or manifest.get("NSPrivacyCollectedDataTypes") != []:
             raise SystemExit("The app's privacy manifest is missing or incorrect.")
         # The archive is already signed with its App Store profile. This client has
         # no extensions/embedded frameworks or thinning assets; preserve the signed

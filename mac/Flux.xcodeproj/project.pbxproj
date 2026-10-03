@@ -1,34 +1,42 @@
 // !$*UTF8*$!
 { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
-3ACB310EDDE85C8023AC5BF6 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClientModel.swift"; sourceTree = "<group>"; };
-3A1EFC92BD265E3019E1F91E = { isa = PBXBuildFile; fileRef = 3ACB310EDDE85C8023AC5BF6; };
-4AB456343C0D65D8FDA39761 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ClientPolicy.swift"; sourceTree = "<group>"; };
-4A7B7B80CC522BCAE3CC6AA9 = { isa = PBXBuildFile; fileRef = 4AB456343C0D65D8FDA39761; };
+FAAFA001EF563FB5A1B0F459 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DesktopBridge.swift"; sourceTree = "<group>"; };
+8994D8464E925124052F779A = { isa = PBXBuildFile; fileRef = FAAFA001EF563FB5A1B0F459; };
 1CD0FD49DC3AAC3BE715B8A2 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FluxApp.swift"; sourceTree = "<group>"; };
 F768FA8D843394FBE3080C3C = { isa = PBXBuildFile; fileRef = 1CD0FD49DC3AAC3BE715B8A2; };
 6A5C5C0117926777609CB530 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SafeSave.swift"; sourceTree = "<group>"; };
 F7430D6FFEF03C8C93B35A8F = { isa = PBXBuildFile; fileRef = 6A5C5C0117926777609CB530; };
+5166FF9FC2257DE1ADF2382F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../native/App/LocalModel.swift"; sourceTree = "<group>"; };
+4A5F0C29345F2E8A619BDB7E = { isa = PBXBuildFile; fileRef = 5166FF9FC2257DE1ADF2382F; };
+8E044872BB926150FCFD3360 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../native/App/LocalView.swift"; sourceTree = "<group>"; };
+96F0E5A0EFF408014FC4459B = { isa = PBXBuildFile; fileRef = 8E044872BB926150FCFD3360; };
 6D123AE8AB04EEE632CC6C18 = { isa = PBXFileReference; lastKnownFileType = file; path = "PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
 9BB407718D9D26EDD1309082 = { isa = PBXBuildFile; fileRef = 6D123AE8AB04EEE632CC6C18; };
 9899415097DC9B0E18D52DB1 = { isa = PBXFileReference; lastKnownFileType = file; path = "Flux.icns"; sourceTree = "<group>"; };
 092A8FDC8347F19ED049F592 = { isa = PBXBuildFile; fileRef = 9899415097DC9B0E18D52DB1; };
+075B35DCB9FAF84869323D50 = { isa = PBXFileReference; lastKnownFileType = folder; path = DesktopUI; sourceTree = "<group>"; };
+4BF1938783295D98E204A13E = { isa = PBXBuildFile; fileRef = 075B35DCB9FAF84869323D50; };
 9AC3B5AD93CBC0305C62F78F = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 A4444FB5B52D77F9AAED3B3A = { isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flux.entitlements; sourceTree = "<group>"; };
-A8792157CB4F27FB949C035F = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux Connect.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-1455444174429298B0F374B3 = { isa = PBXGroup; children = (3ACB310EDDE85C8023AC5BF6, 4AB456343C0D65D8FDA39761, 1CD0FD49DC3AAC3BE715B8A2, 6A5C5C0117926777609CB530, 6D123AE8AB04EEE632CC6C18, 9899415097DC9B0E18D52DB1, 9AC3B5AD93CBC0305C62F78F, A4444FB5B52D77F9AAED3B3A); path = Flux; sourceTree = "<group>"; };
+A8792157CB4F27FB949C035F = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux Local.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+1455444174429298B0F374B3 = { isa = PBXGroup; children = (FAAFA001EF563FB5A1B0F459, 1CD0FD49DC3AAC3BE715B8A2, 6A5C5C0117926777609CB530, 5166FF9FC2257DE1ADF2382F, 8E044872BB926150FCFD3360, 6D123AE8AB04EEE632CC6C18, 9899415097DC9B0E18D52DB1, 075B35DCB9FAF84869323D50, 9AC3B5AD93CBC0305C62F78F, A4444FB5B52D77F9AAED3B3A); path = Flux; sourceTree = "<group>"; };
 0A3E27B8CA818264D75C8D81 = { isa = PBXGroup; children = (A8792157CB4F27FB949C035F); name = Products; sourceTree = "<group>"; };
 0D6E4079E36703EBD37C0072 = { isa = PBXGroup; children = (1455444174429298B0F374B3, 0A3E27B8CA818264D75C8D81); sourceTree = "<group>"; };
-878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (3A1EFC92BD265E3019E1F91E, 4A7B7B80CC522BCAE3CC6AA9, F768FA8D843394FBE3080C3C, F7430D6FFEF03C8C93B35A8F); runOnlyForDeploymentPostprocessing = 0; };
-41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (9BB407718D9D26EDD1309082, 092A8FDC8347F19ED049F592); runOnlyForDeploymentPostprocessing = 0; };
-E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (8994D8464E925124052F779A, F768FA8D843394FBE3080C3C, F7430D6FFEF03C8C93B35A8F, 4A5F0C29345F2E8A619BDB7E, 96F0E5A0EFF408014FC4459B); runOnlyForDeploymentPostprocessing = 0; };
+41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (9BB407718D9D26EDD1309082, 092A8FDC8347F19ED049F592, 4BF1938783295D98E204A13E); runOnlyForDeploymentPostprocessing = 0; };
+7CB049C1E155853DF7C57783 = { isa = XCLocalSwiftPackageReference; relativePath = "../native/OfflineKit"; };
+D107888DA1F4C63D31AA6A40 = { isa = XCSwiftPackageProductDependency; package = 7CB049C1E155853DF7C57783; productName = OfflineKit; };
+093D8EFC771FF0B38C7E5FA3 = { isa = PBXBuildFile; productRef = D107888DA1F4C63D31AA6A40; };
+E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (093D8EFC771FF0B38C7E5FA3); runOnlyForDeploymentPostprocessing = 0; };
 73EBF6644258C120893E685D = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }; };
 6C7EFF6369083C8E1F2B1994 = { isa = XCBuildConfiguration; name = Debug; buildSettings = {
-            PRODUCT_NAME = "Flux Connect"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
+            PRODUCT_NAME = "Flux Local"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
+            CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
             ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
-            MARKETING_VERSION = 1.0.1; COMBINE_HIDPI_IMAGES = YES;
+            MARKETING_VERSION = 1.0.2; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = -Onone;
             SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
             SUPPORTED_PLATFORMS = macosx; ARCHS = "$(ARCHS_STANDARD)";
@@ -36,12 +44,13 @@ E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 21
         }; };
 0B0C687DF8B6B8DC790B519C = { isa = XCBuildConfiguration; name = Release; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }; };
 DD75E2CB1C510A828AC72D96 = { isa = XCBuildConfiguration; name = Release; buildSettings = {
-            PRODUCT_NAME = "Flux Connect"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
+            PRODUCT_NAME = "Flux Local"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
+            CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
             ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
-            MARKETING_VERSION = 1.0.1; COMBINE_HIDPI_IMAGES = YES;
+            MARKETING_VERSION = 1.0.2; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = -O;
             SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
             SUPPORTED_PLATFORMS = macosx; ARCHS = "$(ARCHS_STANDARD)";
@@ -51,11 +60,11 @@ DD75E2CB1C510A828AC72D96 = { isa = XCBuildConfiguration; name = Release; buildSe
 82A58AF6F77EDCFC78A65DA6 = { isa = XCConfigurationList; buildConfigurations = (6C7EFF6369083C8E1F2B1994, DD75E2CB1C510A828AC72D96); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 34A04005BCAF206EEC990BD9 = { isa = PBXNativeTarget; buildConfigurationList = 82A58AF6F77EDCFC78A65DA6;
         buildPhases = (878A52FC5FF6A57D50B7B870, E2AA269EB967A8853A258BFA, 41D311A605520FC7B8B9A980); buildRules = (); dependencies = ();
-        name = Flux; productName = "Flux Connect"; productReference = A8792157CB4F27FB949C035F; productType = "com.apple.product-type.application"; };
+        packageProductDependencies = (D107888DA1F4C63D31AA6A40); name = Flux; productName = "Flux Local"; productReference = A8792157CB4F27FB949C035F; productType = "com.apple.product-type.application"; };
 244210E48437B6556980A702 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700;
         TargetAttributes = { 34A04005BCAF206EEC990BD9 = { CreatedOnToolsVersion = 27.0; }; }; };
         buildConfigurationList = 7ED5184A5487DF185E3420D0; compatibilityVersion = "Xcode 14.0";
         developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base);
         mainGroup = 0D6E4079E36703EBD37C0072; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = "";
-        targets = (34A04005BCAF206EEC990BD9); };
+        packageReferences = (7CB049C1E155853DF7C57783); targets = (34A04005BCAF206EEC990BD9); };
 }; rootObject = 244210E48437B6556980A702; }

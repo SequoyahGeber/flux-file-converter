@@ -1,13 +1,15 @@
 # Flux support
 
-Flux for TestFlight has Mac and iPhone clients for the private Unraid converter. You need an internet connection and an invitation from the workspace owner. Open Invitation in the app, paste the link, sign in and complete Cloudflare MFA. Links expire after 24 hours and can be claimed once.
+Flux Local for Mac and iPhone works entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
 
-Select files to upload them, choose Convert files, Compress files or ZIP & Unzip, then run the operation. Use Save as on a completed result to choose its filename and folder in the Mac save dialog. On iPhone, Save as starts a download; use the native Downloads screen to rename it, save to Files, or share it. Keep Flux open during transfers. On Mac, the native Downloads sidebar shows progress, cancellation and Show in Finder. Original files stay on your Mac.
+Choose one file, select an output format and set a name. Convert locally, then use Save to… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract ZIP to folder to unzip. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
-Uploads are limited to 5 GB for eligible media and 1.9 GB for other files. Conversion jobs time out after 10 minutes and share one bounded server queue. Uploads/results expire after 30 minutes of inactivity. An unavailable format, codec, encrypted file or archive that exceeds safety limits may be rejected; arbitrary file types cannot be converted to every other type. All formats lists the actual supported routes.
+The local format screen describes actual support. DOCX PDF/HTML preserves supported fonts, emphasis, colors, basic tables and embedded images, with local pagination. Complex unsupported structures report an error. TXT/MD extraction removes formatting and is labeled separately. ODT/EPUB/HTML currently support text extraction only. Codec/container compatibility is required for lossless media remux. Not every file type can be converted into every other type.
 
-If your session expires, reconnect and sign in again. If a download fails, save the result again before the server session expires. If a completed download cannot be saved in the selected folder, use Choose Save Location in the Mac sidebar. Delete my files removes server uploads and results from your session; it does not delete files already saved on your Mac.
+Local limits: 5 GB per media file and in total, 512 MB other files, 16 MB text, 24 megapixel images, 200 input PDF pages, one job at a time and a 10-minute cooperative deadline. ZIP extraction is limited to 2,000 entries, 1 GB expanded and 200× expansion, with CRC checks; links and unsafe/duplicate paths are rejected. A cooperative deadline cannot interrupt every Apple framework operation immediately. Keep Flux open while converting. Backgrounding cancels active work.
 
-On iPhone, open the Workspace menu for Sign Out. Authenticator MFA is supported; Cloudflare passkeys in the embedded browser need an additional website association and are not yet verified.
+Use Clear to delete Flux’s temporary files. Choosing new files or restarting also clears its previous working results. Saved files and originals are never included in cleanup. Device storage is needed for a working copy and output; lossless formats can be larger than the input.
 
-Support: sequoyahgeber@gmail.com. Public bug reports: [GitHub issues](https://github.com/SequoyahGeber/flux-file-converter/issues). Include the app version, macOS version, file format and error message. Do not attach private files, login credentials or invitation links to public issues.
+The separate website keeps its existing 5 GB eligible media / 1.9 GB other upload limits, 10-minute jobs, server queue and 30-minute inactivity expiry. Native conversion does not contact it.
+
+Support: sequoyahgeber@gmail.com. [Public bug reports](https://github.com/SequoyahGeber/flux-file-converter/issues) should include the app/build, OS, input/output formats and error. Use synthetic files; never post private documents or login details.

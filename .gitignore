@@ -21,3 +21,8 @@ mac/DerivedData/
 __pycache__/
 ios/Flux.xcodeproj/xcuserdata/
 ios/DerivedData/
+
+native/OfflineKit/.build/
+native/OfflineKit/.swiftpm/
+
+mac/Flux/DesktopUI/

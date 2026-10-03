@@ -157,7 +157,9 @@ function App() {
     [history, setHistory] = useState([]),
     [engines, setEngines] = useState({}),
     [enginePaths, setEnginePaths] = useState({}),
-    [families, setFamilies] = useState(fallbackFamilies);
+    [families, setFamilies] = useState(fallbackFamilies),
+    [nativeLocal, setNativeLocal] = useState(false),
+    [mediaMode, setMediaMode] = useState('lossless');
   const [output, setOutput] = useState('Downloads / Flux'),
     [running, setRunning] = useState(false),
     [adding, setAdding] = useState(false),
@@ -168,6 +170,7 @@ function App() {
     [width, setWidth] = useState('0'),
     [compressionMode, setCompressionMode] = useState('lossless'),
     [archiveMode, setArchiveMode] = useState('pack'),
+    [archiveName, setArchiveName] = useState('Archive'),
     [search, setSearch] = useState(''),
     [selectedFormat, setSelectedFormat] = useState(null),
     [formatTargets, setFormatTargets] = useState([]),
@@ -182,6 +185,7 @@ function App() {
     setHistory(s.history);
     setFamilies(s.families);
     setRunning(s.running);
+    setNativeLocal(Boolean(s.nativeLocal));
   };
   const add = (files) => {
     setQueue((q) => [
@@ -194,6 +198,7 @@ function App() {
           compression: f.compressionOptions?.[0]?.id || '',
           status: 'ready',
           progress: 0,
+          outputName: f.name.replace(/\.[^.]+$/, '') + '-converted',
         })),
     ]);
     setError('');
@@ -209,6 +214,22 @@ function App() {
       })
       .catch((e) => setError(e.message));
     const off = api.onUpdate((job) => {
+      if (job.bridgeError) {
+        setError(job.bridgeError);
+        return;
+      }
+      if (job.savedResult) {
+        setHistory(job.history);
+        setQueue((q) =>
+          q.map((f) =>
+            f.result?.id === job.savedResult
+              ? { ...f, result: { ...f.result, saved: true, name: job.name } }
+              : f,
+          ),
+        );
+        setToast('Saved.');
+        return;
+      }
       if (job.batchComplete) {
         setRunning(false);
         setHistory(job.history);
@@ -325,16 +346,22 @@ function App() {
     }
   }
   async function start() {
-    const options = { quality, width: Number(width) };
+    const options = { quality, width: Number(width), lossless: mediaMode === 'lossless' };
     let requests;
     if (mode === 'archive' && archiveMode === 'pack')
       requests = [
-        { id: pending[0]?.id, includeIds: queue.filter(ready).map((f) => f.id), operation: 'pack' },
+        {
+          id: pending[0]?.id,
+          includeIds: queue.filter(ready).map((f) => f.id),
+          operation: 'pack',
+          outputName: nativeLocal ? archiveName : undefined,
+        },
       ];
     else
       requests = pending.map((f) => ({
         id: f.id,
         target: f.target,
+        outputName: nativeLocal ? f.outputName : undefined,
         compression: compatibleCompression(f)?.id,
         operation: mode === 'archive' ? 'extract' : mode,
         options,
@@ -545,7 +572,9 @@ function App() {
                       ? 'Images, videos, documents, and everything in between.'
                       : mode === 'compress'
                         ? 'Make room without giving up more than you want to.'
-                        : 'Create a ZIP from files and folders, or safely extract an archive.'}
+                        : nativeLocal
+                          ? 'Create a ZIP from selected files, or safely extract an archive.'
+                          : 'Create a ZIP from files and folders, or safely extract an archive.'}
                     <br />
                     {mode === 'convert'
                       ? 'One place to turn your files into what you need.'
@@ -650,6 +679,18 @@ function App() {
                   </button>
                 </div>
               )}
+              {nativeLocal && mode === 'archive' && archiveMode === 'pack' && (
+                <label className="native-output-name">
+                  Archive name
+                  <input
+                    aria-label="Archive name"
+                    value={archiveName}
+                    disabled={running}
+                    maxLength={180}
+                    onChange={(e) => setArchiveName(e.target.value)}
+                  />
+                </label>
+              )}
               {!queue.length ? (
                 <div className={`dropzone ${dragging ? 'dragging' : ''}`}>
                   <div className="dropzone-art">
@@ -674,7 +715,9 @@ function App() {
                   </h2>
                   <p>
                     {mode === 'archive' && archiveMode === 'pack'
-                      ? 'Files or folders. Bundle them into one ZIP.'
+                      ? nativeLocal
+                        ? 'Selected files. Bundle them into one ZIP.'
+                        : 'Files or folders. Bundle them into one ZIP.'
                       : 'A single file or a whole batch. You’re in good hands.'}
                   </p>
                   <div className="drop-buttons">
@@ -686,7 +729,7 @@ function App() {
                       {adding ? <Loader2 className="spin" size={17} /> : <Plus size={18} />}Choose
                       files<span className="button-shortcut">⌘ O</span>
                     </button>
-                    {mode === 'archive' && archiveMode === 'pack' && (
+                    {!nativeLocal && mode === 'archive' && archiveMode === 'pack' && (
                       <button
                         className="secondary-button"
                         onClick={() => action(async () => add(await api.selectFolder()))}
@@ -746,7 +789,7 @@ function App() {
                         <Plus size={16} />
                         Add files
                       </button>
-                      {mode === 'archive' && archiveMode === 'pack' && (
+                      {!nativeLocal && mode === 'archive' && archiveMode === 'pack' && (
                         <button
                           className="text-button"
                           disabled={running}
@@ -807,7 +850,7 @@ function App() {
                                   onClick={() => action(() => api.reveal(f.result.id))}
                                 >
                                   <CheckCircle2 size={16} />
-                                  Show in Finder
+                                  {nativeLocal && !f.result.saved ? 'Save as…' : 'Show in Finder'}
                                   <ArrowUpRight size={13} />
                                 </button>
                               ) : f.status === 'running' ? (
@@ -891,6 +934,20 @@ function App() {
                               <X size={15} />
                             </button>
                           </div>
+                          {nativeLocal &&
+                            f.status !== 'done' &&
+                            !(mode === 'archive' && archiveMode === 'pack') && (
+                              <label className="native-output-name">
+                                Output name
+                                <input
+                                  aria-label={`Output name for ${f.name}`}
+                                  value={f.outputName || ''}
+                                  disabled={running}
+                                  maxLength={180}
+                                  onChange={(e) => update(f.id, { outputName: e.target.value })}
+                                />
+                              </label>
+                            )}
                           {(f.error ||
                             f.status === 'cancelled' ||
                             (f.warning && mode === 'convert')) && (
@@ -1009,24 +1066,41 @@ function App() {
                       <option value="small">Smallest file</option>
                     </select>
                   </label>
-                  <label>
-                    Maximum image / video width
-                    <select
-                      value={width}
-                      disabled={running || (mode === 'compress' && compressionMode === 'lossless')}
-                      onChange={(e) => {
-                        setWidth(e.target.value);
-                        setQueue((q) =>
-                          q.map((f) => ({ ...f, status: 'ready', result: undefined })),
-                        );
-                      }}
-                    >
-                      <option value="0">Original size</option>
-                      <option value="1920">1920 px</option>
-                      <option value="1280">1280 px</option>
-                      <option value="720">720 px</option>
-                    </select>
-                  </label>
+                  {!nativeLocal && (
+                    <label>
+                      Maximum image / video width
+                      <select
+                        value={width}
+                        disabled={
+                          running || (mode === 'compress' && compressionMode === 'lossless')
+                        }
+                        onChange={(e) => {
+                          setWidth(e.target.value);
+                          setQueue((q) =>
+                            q.map((f) => ({ ...f, status: 'ready', result: undefined })),
+                          );
+                        }}
+                      >
+                        <option value="0">Original size</option>
+                        <option value="1920">1920 px</option>
+                        <option value="1280">1280 px</option>
+                        <option value="720">720 px</option>
+                      </select>
+                    </label>
+                  )}
+                  {nativeLocal && (
+                    <label>
+                      Media conversion
+                      <select
+                        value={mediaMode}
+                        disabled={running}
+                        onChange={(e) => setMediaMode(e.target.value)}
+                      >
+                        <option value="lossless">Lossless · copy compatible tracks</option>
+                        <option value="lossy">Re-encode · MP4 / MOV / M4A</option>
+                      </select>
+                    </label>
+                  )}
                   <p>
                     Lossless optimization preserves quality. Already compressed files may have
                     little room to shrink.
@@ -1059,7 +1133,7 @@ function App() {
                       [
                         'document',
                         'Documents',
-                        'DOCX, PDF, EPUB, XLSX',
+                        nativeLocal ? 'DOCX, PDF, RTF, EPUB' : 'DOCX, PDF, EPUB, XLSX',
                         'Ready to read, share, or work on.',
                       ],
                     ].map(([id, title, formats, subtitle]) => {
@@ -1166,7 +1240,7 @@ function App() {
                         className="secondary-button small-button"
                         onClick={() => action(() => api.reveal(h.id))}
                       >
-                        Show in Finder
+                        {nativeLocal && !h.saved ? 'Save as…' : 'Show in Finder'}
                         <ArrowUpRight size={13} />
                       </button>
                     </div>
@@ -1246,15 +1320,23 @@ function App() {
                         </div>
                         <p>
                           {f.id === 'pdf'
-                            ? 'Page images and selectable text. Scanned pages can use English OCR.'
+                            ? nativeLocal
+                              ? 'First-page images, extracted text, or lossy rasterized PDF compression.'
+                              : 'Page images and selectable text. Scanned pages can use English OCR.'
                             : f.id === 'archive'
-                              ? 'ZIP creation, safe extraction, and archive repacking.'
+                              ? nativeLocal
+                                ? 'ZIP creation and safe extraction of regular files.'
+                                : 'ZIP creation, safe extraction, and archive repacking.'
                               : f.id === 'video'
-                                ? 'Container conversion, audio extraction, and still frames.'
+                                ? nativeLocal
+                                  ? 'Lossless container changes with compatible codecs, or Apple media re-encoding.'
+                                  : 'Container conversion, audio extraction, and still frames.'
                                 : f.id === 'data'
                                   ? 'Nested data stays structured. Tables require flat records.'
                                   : f.id === 'document'
-                                    ? 'Office documents, rich text, and ebook conversion.'
+                                    ? nativeLocal
+                                      ? 'Styled DOCX/RTF to PDF/HTML; ODT/EPUB/HTML text extraction. Complex layouts may be unsupported.'
+                                      : 'Office documents, rich text, and ebook conversion.'
                                     : f.id === 'image'
                                       ? 'Photos, graphics, icons, and image-to-PDF.'
                                       : f.id === 'spreadsheet'
@@ -1308,8 +1390,9 @@ function App() {
                   Output folder
                 </h3>
                 <p>
-                  New results are saved here. Existing files get a new name and are never
-                  overwritten.
+                  {nativeLocal
+                    ? 'Choose a preferred folder, then use Save as… on each result to pick its final name and location. Existing files are replaced only after the save dialog asks you.'
+                    : 'New results are saved here. Existing files get a new name and are never overwritten.'}
                 </p>
                 <div className="settings-folder">
                   <span title={output}>{output}</span>
@@ -1350,29 +1433,42 @@ function App() {
                 </div>
                 <p>These local tools power the supported formats. No files leave your computer.</p>
                 <div className="engine-list">
-                  {[
-                    ['magick', 'ImageMagick', 'Camera RAW, Photoshop, scientific images, and more'],
-                    [
-                      'python',
-                      'Extended format engine',
-                      'Fonts, data tables, and PDF reconstruction',
-                    ],
-                    ['blender', 'Blender', '3D meshes, models, and scene conversion'],
-                    ['calibre', 'Calibre', 'Kindle and ebook conversion'],
-                    ['sevenzip', '7-Zip', '7Z/RAR extraction and 7Z output'],
-                    ['tesseract', 'Tesseract', 'English OCR for scanned PDF pages'],
-                    ['images', 'Image engine', 'JPG, PNG, WebP, AVIF, TIFF, GIF, icons'],
-                    ['ffmpeg', 'FFmpeg', 'Video, audio, and media compression'],
-                    ['office', 'LibreOffice', 'Documents, spreadsheets, and presentations'],
-                    ['pandoc', 'Pandoc', 'Text, documents, and ebooks'],
-                    ['pdf', 'macOS PDFKit', 'PDF page rendering and text extraction'],
-                    ['qpdf', 'QPDF', 'Lossless PDF compression'],
-                    ['ghostscript', 'Ghostscript', 'Smaller PDFs with image downsampling'],
-                    ['oxipng', 'OxiPNG', 'Lossless PNG optimization'],
-                    ['jpegtran', 'JPEGtran', 'Lossless JPEG optimization'],
-                    ['archive', 'Archive engine', 'ZIP, TAR, GZIP, BZIP2, and XZ'],
-                    ['data', 'Data engine', 'JSON, YAML, XML, CSV, and TSV'],
-                  ].map(([key, name, description]) => (
+                  {(nativeLocal
+                    ? [
+                        [
+                          'local',
+                          'On-device conversion',
+                          'ImageIO, PDFKit, Apple media codecs, bundled FFmpeg, ZIP and structured data',
+                        ],
+                      ]
+                    : [
+                        [
+                          'magick',
+                          'ImageMagick',
+                          'Camera RAW, Photoshop, scientific images, and more',
+                        ],
+                        [
+                          'python',
+                          'Extended format engine',
+                          'Fonts, data tables, and PDF reconstruction',
+                        ],
+                        ['blender', 'Blender', '3D meshes, models, and scene conversion'],
+                        ['calibre', 'Calibre', 'Kindle and ebook conversion'],
+                        ['sevenzip', '7-Zip', '7Z/RAR extraction and 7Z output'],
+                        ['tesseract', 'Tesseract', 'English OCR for scanned PDF pages'],
+                        ['images', 'Image engine', 'JPG, PNG, WebP, AVIF, TIFF, GIF, icons'],
+                        ['ffmpeg', 'FFmpeg', 'Video, audio, and media compression'],
+                        ['office', 'LibreOffice', 'Documents, spreadsheets, and presentations'],
+                        ['pandoc', 'Pandoc', 'Text, documents, and ebooks'],
+                        ['pdf', 'macOS PDFKit', 'PDF page rendering and text extraction'],
+                        ['qpdf', 'QPDF', 'Lossless PDF compression'],
+                        ['ghostscript', 'Ghostscript', 'Smaller PDFs with image downsampling'],
+                        ['oxipng', 'OxiPNG', 'Lossless PNG optimization'],
+                        ['jpegtran', 'JPEGtran', 'Lossless JPEG optimization'],
+                        ['archive', 'Archive engine', 'ZIP, TAR, GZIP, BZIP2, and XZ'],
+                        ['data', 'Data engine', 'JSON, YAML, XML, CSV, and TSV'],
+                      ]
+                  ).map(([key, name, description]) => (
                     <div className="engine-row" key={key}>
                       <div className={engines[key] ? 'engine-check' : 'engine-missing'}>
                         {engines[key] ? <Check size={13} /> : <X size={13} />}

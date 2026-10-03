@@ -1,34 +1,26 @@
-# TestFlight release checklist
+# Flux Local TestFlight
 
-The native Mac and iPhone clients use the existing private Unraid converter. The offline Electron target is packaged separately. No engine bundle is included in either native client.
+Mac and iPhone are on-device apps using one App Store Connect record and bundle ID. The separate server website is not embedded in either app. Previous 1.0.1 server-client betas are obsolete.
 
-## Native targets
+| Target              | Bundle ID               | Minimum OS | Artifact             |
+| ------------------- | ----------------------- | ---------- | -------------------- |
+| Mac, Flux Local.app | `com.sequoyah.flux.mac` | macOS 14   | Signed universal PKG |
+| iPhone, Flux.app    | `com.sequoyah.flux.mac` | iOS 18.4   | Signed arm64 IPA     |
 
-| Target | Bundle ID | Minimum OS | Package |
-| --- | --- | --- | --- |
-| Mac (Flux Connect) | `com.sequoyah.flux.mac` | macOS 14 | Apple-signed universal `.pkg` |
-| iPhone | `com.sequoyah.flux.ios` | iOS 18.4 | Apple-signed arm64 `.ipa` |
+Both platforms use [the Flux app record](https://appstoreconnect.apple.com/apps/6818735397/testflight), a private internal owner group, and no public tester link. The original separate iPhone record is retained only as history and is no longer the release target.
 
-App Store Connect records: [Flux File Converter for Mac](https://appstoreconnect.apple.com/apps/6818735397/testflight) and [Flux File Converter iPhone](https://appstoreconnect.apple.com/apps/6818745721/testflight). Each target has a private internal owner group with public links disabled. The Apple API handles profiles, builds and TestFlight metadata; initial app-record creation needs App Store Connect's website.
+## Build and checks
 
-## Build and verification
+The shared `native/OfflineKit` Swift package pins ZIPFoundation 0.9.20 and Yams 6.2.2. The checked-in static XCFramework embeds FFmpeg 9.0.2 with networking, URL protocols, programs, external libraries, GPL and nonfree features disabled. `python3 scripts/build-local-media.py` reproduces it from checksum-pinned source; the C wrapper permits only explicitly opened file descriptors and denies secondary resource opens. Decoder probing uses one thread per track. FFmpeg only remuxes compatible encoded tracks; Apple frameworks perform supported local image/audio/video encoding.
 
-1. Run `npm test`, `npm run test:mac`, `npm run test:web`, `npm run format:check`, and `npm audit`.
-2. Confirm the Mac and iPhone CI builds pass for the release commit. Signing credentials are never stored in CI.
-3. Build with `python3 scripts/mac-release.py --build BUILD_NUMBER` and `python3 scripts/ios-release.py --build BUILD_NUMBER`. Preserve their receipts and archive ZIPs with symbols. Build numbers must increase after an upload.
-4. Validate the exact signed package with Apple's upload tooling and the private App Store Connect API key. Packaging, local code-signature verification and Apple validation are distinct checks.
-5. Upload privately and verify Apple processing finishes with a valid build. This is separate from assigning a group or making a beta installable.
+Run `swift test --package-path native/OfflineKit` for real conversions, archive attacks, cancellation and styled DOCX output. The suite includes a synthetic H.264/AAC MP4 remux fixture; encoded packet hashes can also be compared with ffprobe. For iPhone simulator tests, run `xcodebuild -scheme OfflineKit -destination "platform=iOS Simulator,id=SIMULATOR_ID" CODE_SIGNING_ALLOWED=NO test` from the package directory. Also run `npm test`, `npm run test:mac` and `npm run format:check`; CI builds both native targets without signing secrets.
 
-Private signing configuration, profiles, keychain passwords, API keys and private keys belong outside the repository. The build scripts check profile/certificate/team/app alignment, expiration, release entitlements, architecture and exclusion of developer endpoints. Neither packaging command uploads or releases a build.
+Generate with `python3 scripts/mac-project.py` and `python3 scripts/ios-project.py`. The native version is in `native/VERSION`. `python3 scripts/mac-release.py --build NUMBER` and `python3 scripts/ios-release.py --build NUMBER` create signed artifacts and receipts without uploading. `--development` is available for Mac sandbox tests. Private settings/profiles/certificates remain in `~/.appstoreconnect/flux`; scripts use the dedicated Flux keychain and stable Xcode without modifying global Xcode selection.
 
-## Runtime and access acceptance
+Verify signature, Mac sandbox and user-selected access with only the WebKit client entitlement (remote resources blocked), arm64 iPhone, universal Mac, privacy manifests and absence of the old server endpoint in each release. Validate/upload the exact hashed artifacts with Apple, verify processing is VALID, then assign the intended private group. Packaging, processing, tester assignment, installation, simulator acceptance and physical-iPhone acceptance remain separate evidence.
 
-- Use synthetic files to verify login, authenticator MFA, invitation claim, conversion, compression and ZIP operations against the production server. The local fixture's synthetic login/scanner does not prove production authentication or scanning.
-- Verify actual Mac selection and save dialogs, and iPhone Files selection, filename changes, export, sharing, cancellation and background interruption. Simulator compilation alone does not prove those flows.
-- Cloudflare passkeys need a website association or system-browser authentication integration in native clients. Authenticator MFA is the prepared path; the owner's authenticator enrollment has been confirmed.
-- Keep Cloudflare login/MFA and application invitation enforcement enabled. New native clients must not use a bundled Cloudflare service token or bypass the Access gateway.
-- External Beta App Review needs dedicated reviewer access and a working walkthrough that does not require the owner's email, password or MFA device. Prepare that access before submitting for review. Do not release an external tester link until the build is approved and assigned to its intended group.
+## Acceptance and disclosure
 
-## Privacy and support
+Use synthetic files for native pickers, conversion, naming/save/export, cancellation and background handling. Confirm the apps can convert with no login/server connection. The local catalog has fewer document/office/3D/ebook engines than the legacy Electron/server catalogs; never claim universal conversion or perfect Office layout fidelity.
 
-Review the shared `mac/Flux/PrivacyInfo.xcprivacy` whenever APIs, SDKs or uploaded data change. Reconcile App Store Connect's privacy answers with [privacy.md](privacy.md), the native privacy screens and actual server retention. [support.md](support.md) documents the two save flows and access requirements. Use synthetic files in screenshots and feedback; never publish invitation tokens or personal uploads.
+Review `docs/privacy.md`, `docs/support.md`, the native format screen and App Store Connect metadata for consistency. The native app collects no user data. Required reasons cover private/user-selected file metadata, disk space checks and conversion timers. Open-source licenses ship in the package resource bundle. Keep TestFlight release private unless external testing is explicitly requested and Apple’s review/group requirements are satisfied.

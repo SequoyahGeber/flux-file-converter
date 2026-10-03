@@ -2,24 +2,24 @@
 
 Updated October 3, 2026.
 
-Flux is maintained by Sequoyah Geber. The TestFlight Mac and iPhone apps connect to the private converter at `fileconverter.sequoyahgeber.com`. The separate offline Electron app processes files locally. Each app's welcome screen identifies which service it uses.
+Flux Local for Mac and iPhone converts files entirely on the device. It has no account, Cloudflare sign-in, file upload, analytics or advertising SDK. The separate Flux website at `fileconverter.sequoyahgeber.com` processes files on the owner’s Unraid server; its access rules do not apply to the local apps.
 
-## Files and conversion
+## Native apps
 
-The server client uploads only files you select or drop into the workspace. It sends their contents, names, sizes and conversion settings through Cloudflare to the owner's Unraid server. Files may contain documents, photos, video, audio or other user content. They are used for malware scanning, conversion, compression, archive creation/extraction and delivering results. They are not used for advertising, profiling or training an AI model.
+Only files explicitly selected through the system picker or dropped into the Mac app are read. Flux makes a private working copy, converts locally using Apple frameworks and bundled open-source libraries, and lets you choose the output name and destination. It never automatically opens or executes results. Files selected from a cloud-backed Files provider may be downloaded by that provider; Flux does not upload them for conversion.
 
-Server uploads and results expire after 30 minutes of inactivity. You can remove your session's uploads and results sooner with Delete my files. Downloads are staged in the app's private cache. Failed or cancelled transfers are removed; completed results that could not be saved are retained for choosing another location until cleared or the next launch. Results you save to a chosen folder, Files or another app remain there until you manage them yourself. Flux does not automatically open or execute downloaded files.
+Working files are stored in Flux’s private disk cache, excluded from backups. Failed and cancelled jobs remove their working files. On Mac, completed results remain in Recent files until Clear history or an app restart. On iPhone, they remain until you clear the job, choose a new file, or restart the app. Saved copies and original files are not deleted by this cleanup. Converting large files requires free device storage; they are streamed rather than loaded completely into RAM.
 
-## Accounts and access
+The native apps collect no personal information. File metadata is used to validate selected files and bound work; free disk capacity is checked before writing; elapsed time limits conversion jobs. None of this information is sent off-device by Flux.
 
-Cloudflare Access handles login, MFA and connection security. The workspace receives the authenticated email and identity it needs to enforce access. The owner can see invited members' emails, join dates and invitation status, and can revoke access. Membership records remain while access is granted; pending invitations expire after 24 hours. The native app uses WebKit's app-specific website storage to retain login/session information. Sign out in the workspace to end the current login.
+## Separate website
 
-Cloudflare processes connection and security information, including IP addresses and browser/device information, under its [privacy policy](https://www.cloudflare.com/privacypolicy/). Flux includes no advertising or tracking SDK. Access records and your uploaded files are not shared with other invited users by the application.
+The website uploads the files you select, including names, contents, sizes and conversion settings, through Cloudflare to the owner’s private Unraid server for scanning and conversion. Server uploads/results expire after 30 minutes of inactivity and can be removed sooner with Delete my files. Saved downloads remain wherever you put them. Files are not used for advertising, profiling or training an AI model.
 
-## TestFlight
+Cloudflare Access handles website login, MFA and connection security. The website stores the authenticated email and membership/invitation records used to enforce access. The owner can revoke access. Invitations expire after 24 hours and work once. Cloudflare processes security/connection information under its [privacy policy](https://www.cloudflare.com/privacypolicy/). Website access and files are not shared with other invited users by Flux.
 
-Apple separately collects TestFlight crash reports, usage information and feedback under its [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/). Do not include private document contents, invitation tokens or login information in feedback or public bug reports.
+## TestFlight and support
 
-## Questions and deletion
+Apple separately collects TestFlight usage, crash reports and feedback under its [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/). Avoid including private file contents in feedback.
 
-Contact the workspace owner to revoke your membership or ask about account records. For app support, contact sequoyahgeber@gmail.com or report a problem through the [Flux repository](https://github.com/SequoyahGeber/flux-file-converter/issues). Use private communication for sensitive details; GitHub issues are public.
+Contact sequoyahgeber@gmail.com for support or website membership deletion. [GitHub issues](https://github.com/SequoyahGeber/flux-file-converter/issues) are public; do not attach private files, credentials or invitation links.

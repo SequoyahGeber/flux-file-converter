@@ -20,10 +20,10 @@ def generate():
         return identifier(name)
 
     sources = sorted((MAC / "Flux").glob("*.swift"))
-    sources.append(ROOT / "mac/Flux/ClientPolicy.swift")
+    sources += sorted((ROOT / "native/App").glob("*.swift"))
     source_refs, source_builds = [], []
     for file in sources:
-        source_path = file.name if file.parent == MAC / "Flux" else "../../mac/Flux/" + file.name
+        source_path = file.name if file.parent == MAC / "Flux" else "../../native/App/" + file.name
         ref = add(file.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "{source_path}"; sourceTree = "<group>";')
         source_refs.append(ref)
         source_builds.append(add(file.name + "build", f"isa = PBXBuildFile; fileRef = {ref};"))
@@ -40,18 +40,22 @@ def generate():
     main = add("main", f'isa = PBXGroup; children = ({source_group}, {products}); sourceTree = "<group>";')
     source_phase = add("sources", f"isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(source_builds)}); runOnlyForDeploymentPostprocessing = 0;")
     resources = add("resources", f"isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(resource_builds)}); runOnlyForDeploymentPostprocessing = 0;")
-    frameworks = add("frameworks", "isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;")
+    package = add("offline-package", 'isa = XCLocalSwiftPackageReference; relativePath = "../native/OfflineKit";')
+    dependency = add("offline-product", f'isa = XCSwiftPackageProductDependency; package = {package}; productName = OfflineKit;')
+    link = add("offline-link", f'isa = PBXBuildFile; productRef = {dependency};')
+    frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({link}); runOnlyForDeploymentPostprocessing = 0;")
     project_configs, target_configs = [], []
     for mode in ["Debug", "Release"]:
         project_configs.append(add("project" + mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 18.4; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }};'))
         target_configs.append(add("target" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
-            PRODUCT_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.ios;
+            PRODUCT_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
+            CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; TARGETED_DEVICE_FAMILY = 1;
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
-            MARKETING_VERSION = 1.0.1; COMBINE_HIDPI_IMAGES = YES;
+            MARKETING_VERSION = 1.0.2; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = {"-Onone" if mode == "Debug" else "-O"};
             SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};
             SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; ARCHS = "$(ARCHS_STANDARD)";
@@ -61,13 +65,13 @@ def generate():
     target_list = add("target-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(target_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;")
     target = add("target", f'''isa = PBXNativeTarget; buildConfigurationList = {target_list};
         buildPhases = ({source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
-        name = Flux; productName = Flux; productReference = {product}; productType = "com.apple.product-type.application";''')
+        packageProductDependencies = ({dependency}); name = Flux; productName = Flux; productReference = {product}; productType = "com.apple.product-type.application";''')
     project = add("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700;
         TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 27.0; }}; }}; }};
         buildConfigurationList = {project_list}; compatibilityVersion = "Xcode 14.0";
         developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base);
         mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = "";
-        targets = ({target});''')
+        packageReferences = ({package}); targets = ({target});''')
     PROJECT.mkdir(exist_ok=True)
     (PROJECT / "project.pbxproj").write_text("// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n" + "\n".join(objects) + f"\n}}; rootObject = {project}; }}\n")
     scheme = PROJECT / "xcshareddata" / "xcschemes"

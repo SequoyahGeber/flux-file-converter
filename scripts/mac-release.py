@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and sign the native server client. Does not upload or release to testers."""
+"""Build and sign the on-device Mac app. Does not upload or release to testers."""
 import argparse
 import hashlib
 import json
@@ -68,7 +68,7 @@ def main():
     installed.write_bytes(pathlib.Path(chosen["profile"]).expanduser().read_bytes())
     installed.chmod(0o600)
     command(["python3", str(ROOT / "scripts/mac-project.py")])
-    version = json.loads((ROOT / "package.json").read_text())["version"]
+    version = (ROOT / "native/VERSION").read_text().strip()
     output = ROOT / "release/native"
     output.mkdir(parents=True, exist_ok=True)
     logs = ROOT / ".test-output"
@@ -82,8 +82,8 @@ def main():
         build_args = ["xcodebuild", "-project", str(ROOT / "mac/Flux.xcodeproj"), "-scheme", "Flux",
                       "-configuration", "Release", "-derivedDataPath", str(temporary / "build"),
                       "-archivePath", str(archive), "archive", "CURRENT_PROJECT_VERSION=" + args.build,
-                      "MARKETING_VERSION=" + version, "CODE_SIGN_IDENTITY=" + identity,
-                      "PROVISIONING_PROFILE_SPECIFIER=" + p["Name"], "DEVELOPMENT_TEAM=" + settings["team"],
+                      "MARKETING_VERSION=" + version, "FLUX_SIGNING_IDENTITY=" + identity,
+                      "FLUX_PROFILE=" + p["Name"], "DEVELOPMENT_TEAM=" + settings["team"],
                       "PRODUCT_BUNDLE_IDENTIFIER=" + settings["bundleId"],
                       "ENABLE_HARDENED_RUNTIME=YES"]
         if keychain:
@@ -92,17 +92,17 @@ def main():
             build_args.append("CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES")
         with (logs / ("mac-" + mode + "-archive.txt")).open("w") as log:
             subprocess.run(build_args, check=True, env=env, stdout=log, stderr=subprocess.STDOUT)
-        app = archive / "Products/Applications/Flux Connect.app"
+        app = archive / "Products/Applications/Flux Local.app"
         command(["codesign", "--verify", "--deep", "--strict", str(app)])
         entitlements = plistlib.loads(command(["codesign", "-d", "--entitlements", "-", "--xml", str(app)], stderr=subprocess.DEVNULL))
         if entitlements.get("com.apple.security.app-sandbox") is not True or (not args.development and entitlements.get("com.apple.security.get-task-allow", False)):
             raise SystemExit("The archived app's sandbox/signing entitlements are incorrect.")
         expected = {"com.apple.application-identifier", "com.apple.developer.team-identifier",
-                    "com.apple.security.app-sandbox", "com.apple.security.network.client",
-                    "com.apple.security.files.user-selected.read-write", "com.apple.security.get-task-allow"}
+                    "com.apple.security.app-sandbox",
+                    "com.apple.security.files.user-selected.read-write", "com.apple.security.network.client", "com.apple.security.get-task-allow"}
         if set(entitlements) - expected:
             raise SystemExit("Unexpected entitlements in the signed archive.")
-        binary = app / "Contents/MacOS/Flux Connect"
+        binary = app / "Contents/MacOS/Flux Local"
         architectures = command(["lipo", "-archs", str(binary)], text=True).strip()
         if set(architectures.split()) != {"arm64", "x86_64"}:
             raise SystemExit("The native release must include Apple Silicon and Intel.")
@@ -111,9 +111,9 @@ def main():
         if "--test-origin=" in strings:
             raise SystemExit("A test endpoint override was included in the release binary.")
         manifest = plistlib.loads((app / "Contents/Resources/PrivacyInfo.xcprivacy").read_bytes())
-        if manifest.get("NSPrivacyTracking") is not False:
+        if manifest.get("NSPrivacyTracking") is not False or manifest.get("NSPrivacyCollectedDataTypes") != []:
             raise SystemExit("The app's privacy manifest is missing or incorrect.")
-        name = f"Flux-Connect-{version}-{args.build}"
+        name = f"Flux-Local-{version}-{args.build}"
         if args.development:
             artifact = output / (name + "-development.zip")
             command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(artifact)])
