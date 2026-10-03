@@ -18,6 +18,7 @@ async function createApp(config, deps = {}) {
   const scanner = deps.scan || scan, worker = deps.rpc || ((...args) => rpc(...args));
   const sessions = new Map(), limits = new RateLimit(), queue = new Queue(); let stored = 0, reserved = 0, uploading = 0, capability;
   await require('./cleanup.cjs').cleanApi(config.storage||'/work');
+  const access=config.ownerEmail?await require('./access.cjs').createAccess({storage:config.storage||'/work',ownerEmail:config.ownerEmail,origin:config.origin}):null;
   const root = await fs.mkdtemp(path.join(config.storage || '/work', 'flux-api-'));
   async function capabilities() {
     if (!capability && deps.capabilities) capability = deps.capabilities;
@@ -45,8 +46,25 @@ async function createApp(config, deps = {}) {
       // Unauthenticated health carries no app, user, engine, or file details.
       if (req.url === '/health' && req.method === 'GET') { res.end('ok'); return; }
       const user = await authenticate(req); limits.check(user.id + ':requests', 600, 60000);
-      const url = new URL(req.url, 'http://localhost'); const s = session(user);
-      if (req.method === 'GET' && url.pathname === '/api/state') { send(res, { ...view(s), ...(await capabilities()), user: user.email }); return; }
+      const url = new URL(req.url, 'http://localhost');
+      if (req.method === 'GET' && ['/', '/app.js', '/styles.css', '/icon.svg'].includes(url.pathname)) {
+        const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1); const types = { 'index.html': 'text/html; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8', 'styles.css': 'text/css; charset=utf-8', 'icon.svg': 'image/svg+xml' };
+        res.setHeader('Content-Type', types[file]); await pipeline(fss.createReadStream(path.join(__dirname, 'web', file)), res); return;
+      }
+      if(access) {
+        if(req.method==='GET'&&url.pathname==='/api/state'&&!access.allowed(user)){send(res,{user:user.email,canUse:false,canManageAccess:false,files:[],jobs:[],history:[],formats:[]});return;}
+        if(req.method==='GET'&&url.pathname==='/api/access'){send(res,access.list(user));return;}
+        if(req.method==='POST'&&url.pathname==='/api/invites'){limits.check(user.id+':invites',10,60000);send(res,await access.invite(user),201);return;}
+        if(req.method==='POST'&&url.pathname==='/api/invites/claim'){limits.check(user.id+':claims',10,60000);const body=await json(req);send(res,await access.claim(user,body.token));return;}
+        if(req.method==='DELETE'&&/^\/api\/invites\/[a-f0-9-]{36}$/.test(url.pathname)){send(res,await access.revokeInvite(user,url.pathname.split('/').pop()));return;}
+        if(req.method==='DELETE'&&/^\/api\/members\/[a-f0-9]{64}$/.test(url.pathname)){
+          const id=url.pathname.split('/').pop();send(res,await access.revokeMember(user,id));
+          const previous=sessions.get(id);if(previous){previous.expiry=0;for(const job of previous.jobs.values())job.controller?.abort();}return;
+        }
+        if(!access.allowed(user))throw fail('An invitation is required to use this workspace.',403);
+      }
+      const s = session(user);
+      if (req.method === 'GET' && url.pathname === '/api/state') { send(res, { ...view(s), ...(await capabilities()), user: user.email,canUse:true,canManageAccess:access?.isOwner(user)||false,enrollmentUrl:config.issuer?config.issuer+'/AddMfaDevice':undefined }); return; }
       if (req.method === 'GET' && url.pathname === '/api/status') { send(res, view(s)); return; }
       if (req.method === 'POST' && url.pathname === '/api/uploads') {
         limits.check(user.id + ':uploads', 10, 60000); const body = await json(req); const name = filename(body.name), size = body.size;
@@ -117,10 +135,6 @@ async function createApp(config, deps = {}) {
         res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'"); s.active++;
         try { await pipeline(fss.createReadStream(result.path), res); } finally { s.active--; } return;
       }
-      if (req.method === 'GET' && ['/', '/app.js', '/styles.css', '/icon.svg'].includes(url.pathname)) {
-        const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1); const types = { 'index.html': 'text/html; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8', 'styles.css': 'text/css; charset=utf-8', 'icon.svg': 'image/svg+xml' };
-        res.setHeader('Content-Type', types[file]); await pipeline(fss.createReadStream(path.join(__dirname, 'web', file)), res); return;
-      }
       throw fail('Not found.', 404);
     } catch (e) { if (res.headersSent) res.destroy(); else send(res, { error: e.status ? e.message : 'The request could not be completed.' }, e.status || 500); }
   });
@@ -129,8 +143,9 @@ async function createApp(config, deps = {}) {
   return { server, close: async () => { clearInterval(sweep); for (const s of sessions.values()) for (const job of s.jobs.values()) job.controller?.abort(); await new Promise(resolve => server.close(resolve)); await fs.rm(root, { force: true, recursive: true }); } };
 }
 async function main() {
-  const config = { storage: process.env.FLUX_STORAGE, issuer: process.env.ACCESS_ISSUER, audience: process.env.ACCESS_AUD, origin: process.env.PUBLIC_ORIGIN, worker: process.env.WORKER_URL || 'http://flux-worker:8090', secret: process.env.WORKER_SECRET };
+  const config = { ownerEmail:process.env.FLUX_OWNER_EMAIL,storage: process.env.FLUX_STORAGE, issuer: process.env.ACCESS_ISSUER, audience: process.env.ACCESS_AUD, origin: process.env.PUBLIC_ORIGIN, worker: process.env.WORKER_URL || 'http://flux-worker:8090', secret: process.env.WORKER_SECRET };
   if (!config.secret || config.secret.length < 32) throw new Error('A strong worker secret is required.');
+  if(!config.ownerEmail)throw new Error('The invitation owner email is required.');
   const app = await createApp(config); app.server.listen(8080, process.env.FLUX_BIND || '0.0.0.0');
   const stop = async () => { await app.close(); process.exit(0); }; process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }

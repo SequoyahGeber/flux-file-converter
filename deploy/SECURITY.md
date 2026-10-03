@@ -4,9 +4,11 @@ Uploaded files are treated as hostile. This deployment reduces the impact of par
 
 ## Access
 
-Only `fileconverter.sequoyahgeber.com` is routed through an outbound Cloudflare Tunnel. No container publishes a server port. Cloudflare Access must allow individual invited email addresses and require MFA. The API independently verifies the Access token's RSA signature, issuer, application audience, expiry, identity and request host. An email header alone cannot authenticate. Writes also require the matching Origin and a custom request header.
+Only `fileconverter.sequoyahgeber.com` is routed through an outbound Cloudflare Tunnel. No container publishes a server port. Cloudflare Access requires verified login and MFA. In invitation mode its Flux policy admits authenticated identities to the landing page, and the API separately restricts conversion/upload/download endpoints to the configured owner and claimed members. Until invitation mode is activated, Access retains the owner-only email policy. The API independently verifies the Access token's RSA signature, issuer, application audience, expiry, identity and request host. An email header alone cannot authenticate. Writes also require the matching Origin and a custom request header.
 
 There is no unauthenticated production mode, server path selector, Docker socket, host network, privileged mode, GPU device or mount of Unraid shares. An anonymous health endpoint returns only `ok`; Cloudflare still protects the external hostname.
+
+Invitations are 256-bit random credentials, expire after 24 hours and can be claimed once by the first authenticated account. Only the configured owner can create/revoke links or revoke members. Atomic, serialized transactions prevent two accounts claiming one link. Only token hashes are persisted; URLs are removed from browser history after reading them. Membership metadata is stored in `access.json` on the private API volume and survives updates. Revocation blocks subsequent API requests and cancels queued/running jobs. The Cloudflare policy still requires MFA even for an invited account. New users enroll authenticators themselves through the App Launcher; enrollment does not grant conversion access. An unused bearer invite can be stolen or forwarded, so share it privately and revoke it if exposed.
 
 ## Isolation
 

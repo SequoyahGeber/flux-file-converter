@@ -66,6 +66,7 @@ static pid_t launch(uid_t uid, gid_t gid, const char *home, char *const argv[], 
   if (role == 1 || role == 2 || role == 6) variable("WORKER_SECRET", NULL);
   if (role == 1) {
     variable("ACCESS_ISSUER", NULL); variable("ACCESS_AUD", NULL);
+    variable("FLUX_OWNER_EMAIL", NULL);
     variable("PUBLIC_ORIGIN", "https://fileconverter.sequoyahgeber.com");
     literal("WORKER_URL=http://127.0.0.1:8090"); literal("CLAMAV_HOST=127.0.0.1");
     literal("FLUX_STORAGE=/work/api"); literal("NODE_OPTIONS=--max-old-space-size=256");
@@ -131,7 +132,9 @@ int main(int argc, char **argv) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
   }
   if (!getenv("TUNNEL_TOKEN") || !getenv("ACCESS_AUD") || !getenv("ACCESS_ISSUER")) die("login or tunnel configuration missing");
-  directory("/var/lib/clamav",10004,10003,0750);
+  // Definitions are public data. Startup only needs directory traversal to
+  // stat their readiness; only the updater may write this directory.
+  directory("/var/lib/clamav",10004,10003,0755);
   char *definitions[] = {"/usr/bin/freshclam","--daemon","--foreground=true","--config-file=/etc/clamav/freshclam.conf",NULL};
   launch(10004,10003,"/tmp/definitions",definitions,4); wait_database();
   char *scanner[] = {"/usr/sbin/clamd","--foreground=true","--config-file=/etc/clamav/clamd-unified.conf",NULL};

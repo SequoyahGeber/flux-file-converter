@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const definitions = [
-  { name:'flux', image:'ghcr.io/sequoyahgeber/flux-api:stable', network:'flux-outbound', cpu:2, mem:'5700m', pids:256, user:'0:0', args:'--runtime=runsc --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=SETPCAP --add-host=flux-api:127.0.0.1 --mount type=volume,source=flux-api-work,target=/work/api --mount type=volume,source=flux-worker-work,target=/work/worker --mount type=volume,source=flux-scanner-work,target=/work/scanner --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav', env:{ACCESS_ISSUER:'__ACCESS_ISSUER__',ACCESS_AUD:'__ACCESS_AUD__',WORKER_SECRET:'__WORKER_SECRET__',TUNNEL_TOKEN:'__TUNNEL_TOKEN__'} },
+  { name:'flux', image:'ghcr.io/sequoyahgeber/flux-api:stable', network:'flux-outbound', cpu:2, mem:'5700m', pids:256, user:'0:0', args:'--runtime=runsc --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=SETPCAP --add-host=flux-api:127.0.0.1 --mount type=volume,source=flux-api-work,target=/work/api --mount type=volume,source=flux-worker-work,target=/work/worker --mount type=volume,source=flux-scanner-work,target=/work/scanner --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav', env:{FLUX_OWNER_EMAIL:'__OWNER_EMAIL__',ACCESS_ISSUER:'__ACCESS_ISSUER__',ACCESS_AUD:'__ACCESS_AUD__',WORKER_SECRET:'__WORKER_SECRET__',TUNNEL_TOKEN:'__TUNNEL_TOKEN__'} },
 ];
 const xml = x => String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 async function main() {

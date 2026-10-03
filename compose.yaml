@@ -17,6 +17,7 @@ services:
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777]
     extra_hosts: [flux-api:127.0.0.1]
     environment:
+      FLUX_OWNER_EMAIL: ${FLUX_OWNER_EMAIL:?Set the invitation owner email}
       ACCESS_ISSUER: ${ACCESS_ISSUER:?Set the Cloudflare Access issuer}
       ACCESS_AUD: ${ACCESS_AUD:?Set the Access application audience}
       WORKER_SECRET: ${WORKER_SECRET:?Set a random 32-byte worker secret}

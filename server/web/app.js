@@ -52,13 +52,31 @@ function render() {
   if (!state.history.length) $('result-list').append(node('p', 'Your completed downloads will appear here.', 'intro'));
 }
 function setMode(next) {
-  mode = next; $('workspace').hidden = ['formats', 'history'].includes(mode); $('formats').hidden = mode !== 'formats'; $('history').hidden = mode !== 'history';
+  mode = next; const permitted=state.canUse!==false;
+  $('workspace').hidden = !permitted||['formats', 'history','access'].includes(mode); $('formats').hidden = !permitted||mode !== 'formats'; $('history').hidden = !permitted||mode !== 'history';
+  $('access').hidden=mode!=='access'||!state.canManageAccess;$('invitation-required').hidden=permitted;
+  $('access-nav').hidden=!state.canManageAccess;
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('selected', b.dataset.mode === mode));
-  $('breadcrumb').textContent = 'Workspace / ' + ({ convert: 'Convert files', compress: 'Compress files', pack: 'ZIP & Unzip', formats: 'All formats', history: 'Recent results' }[mode]);
+  $('breadcrumb').textContent = 'Workspace / ' + ({ convert: 'Convert files', compress: 'Compress files', pack: 'ZIP & Unzip', formats: 'All formats', history: 'Recent results',access:'Invite people' }[mode]);
   $('compression-label').hidden = mode !== 'compress'; $('archive-label').hidden = mode !== 'pack';
   $('title').replaceChildren(document.createTextNode(mode === 'compress' ? 'Big ideas.' : mode === 'pack' ? 'Pack it up.' : 'Good files.'), node('br'), document.createTextNode(mode === 'compress' ? 'Smaller files' : mode === 'pack' ? 'Or open it out' : 'New possibilities'), node('span', '.'));
   $('intro').textContent = mode === 'compress' ? 'Keep the details with lossless optimization, or trade some quality for a smaller file.' : mode === 'pack' ? 'Create a ZIP or extract validated archive contents for download.' : 'Images, videos, documents, and everything in between. Turn your files into what you need.';
-  render(); if (mode === 'formats') renderFormats();
+  render(); if (mode === 'formats') renderFormats();if(mode==='access'&&state.canManageAccess)refreshAccess().catch(showError);
+}
+async function refreshAccess() {
+  const access=await api('access');$('member-list').replaceChildren();$('invite-list').replaceChildren();
+  if(!access.members.length)$('member-list').append(node('p','Only you have access so far.','intro'));
+  for(const member of access.members) {
+    const row=node('div',undefined,'access-row'),text=node('div',member.email),button=node('button','Revoke access');text.append(node('small','Joined '+new Date(member.joinedAt).toLocaleDateString()));
+    button.onclick=async()=>{try{await api('members/'+member.id,{method:'DELETE'});await refreshAccess();}catch(e){showError(e);}};row.append(text,button);$('member-list').append(row);
+  }
+  if(!access.invites.length)$('invite-list').append(node('p','Create a link to invite someone.','intro'));
+  for(const invite of access.invites) {
+    const row=node('div',undefined,'access-row'),text=node('div',invite.status==='claimed'?'Claimed by '+invite.claimedBy:invite.status.charAt(0).toUpperCase()+invite.status.slice(1));
+    text.append(node('small','Expires '+new Date(invite.expiresAt).toLocaleString()));row.append(text);
+    if(invite.status==='pending'){const button=node('button','Revoke link');button.onclick=async()=>{try{await api('invites/'+invite.id,{method:'DELETE'});await refreshAccess();}catch(e){showError(e);}};row.append(button);}
+    $('invite-list').append(row);
+  }
 }
 function renderFormats() {
   const query = $('search').value.trim().toLowerCase(); const list = state.formats.filter(f => (f.input + ' ' + f.family + ' ' + f.targets.join(' ')).includes(query)); $('format-count').textContent = list.length + ' inputs and engine aliases'; $('format-list').replaceChildren();
@@ -99,4 +117,20 @@ async function clear() { try { await api('files', { method: 'DELETE' }); Object.
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode)); $('choose').onclick = e => { e.stopPropagation(); $('files').click(); }; $('add').onclick = () => $('files').click(); $('dropzone').onclick = () => $('files').click(); $('dropzone').onkeydown = e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); $('files').click(); } }; $('files').onchange = e => upload([...e.target.files]); $('clear').onclick = clear; $('delete-results').onclick = clear; $('run').onclick = start; $('compression').onchange = render; $('archive').onchange = render; $('search').oninput = renderFormats;
 $('cancel').onclick = async () => { cancelled=true; for (const job of state.jobs.filter(j => ['queued', 'running'].includes(j.status))) await api('cancel', { method: 'POST', body: { id: job.id } }); };
 document.body.ondragover = e => { e.preventDefault(); $('dropzone').classList.add('dragging'); }; document.body.ondragleave = () => $('dropzone').classList.remove('dragging'); document.body.ondrop = e => { e.preventDefault(); $('dropzone').classList.remove('dragging'); if (!loading) upload([...e.dataTransfer.files]); };
-api('state').then(s => { state = s; $('user').textContent = s.user; render(); renderFormats(); }).catch(showError);
+$('create-invite').onclick=async()=>{
+  $('create-invite').disabled=true;
+  try{const invite=await api('invites',{method:'POST',body:{}});$('invite-link').value=invite.url;$('new-invite').hidden=false;$('invite-expiry').textContent='One use · Expires '+new Date(invite.expiresAt).toLocaleString();await refreshAccess();}catch(e){showError(e);}finally{$('create-invite').disabled=false;}
+};
+$('copy-invite').onclick=async()=>{try{await navigator.clipboard.writeText($('invite-link').value);$('copy-invite').textContent='Copied';}catch{$('invite-link').select();$('invite-expiry').textContent='Select and copy this link to share it.';}};
+async function initialize() {
+  const url=new URL(location.href),token=url.searchParams.get('invite');
+  // Keep invitation credentials out of subsequent history/referrer URLs.
+  if(token){url.searchParams.delete('invite');history.replaceState(null,'',url.pathname+url.search+url.hash);}
+  let invitationError;
+  if(token)try{await api('invites/claim',{method:'POST',body:{token}});}catch(e){invitationError=e;}
+  state=await api('state');$('user').textContent=state.user;
+  if(state.enrollmentUrl)$('enrollment-link').href=state.enrollmentUrl;
+  setMode('convert');renderFormats();
+  if(invitationError)showError(invitationError);
+}
+initialize().catch(showError);
