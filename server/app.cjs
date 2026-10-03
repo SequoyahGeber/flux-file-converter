@@ -58,9 +58,9 @@ async function createApp(config, deps = {}) {
         const offset = Number(req.headers['x-flux-offset']), size = Number(req.headers['content-length']);
         if (upload.busy || offset !== upload.offset || !Number.isSafeInteger(size) || size < 1 || size > LIMITS.chunk || offset + size > upload.size || req.headers['content-type'] !== 'application/octet-stream') throw fail('Invalid upload chunk.', 409);
         if (uploading >= 2) throw fail('Too many simultaneous uploads.', 429);
-        upload.busy = true; uploading++; s.active++; const handle = await fs.open(upload.path, 'r+'); let received = 0;
-        try { for await (const chunk of req) { received += chunk.length; if (received > size) throw fail('Chunk too large.', 413); await handle.write(chunk, 0, chunk.length, offset + received - chunk.length); } if (received !== size) throw fail('Incomplete chunk.'); upload.offset += size; send(res, { offset: upload.offset }); }
-        finally { await handle.close(); upload.busy = false; uploading--; s.active--; } return;
+        upload.busy = true; uploading++; s.active++; let handle, received = 0;
+        try { handle = await fs.open(upload.path, 'r+'); for await (const chunk of req) { received += chunk.length; if (received > size) throw fail('Chunk too large.', 413); await handle.write(chunk, 0, chunk.length, offset + received - chunk.length); } if (received !== size) throw fail('Incomplete chunk.'); upload.offset += size; send(res, { offset: upload.offset }); }
+        finally { try { await handle?.close(); } finally { upload.busy = false; uploading--; s.active--; } } return;
       }
       if (req.method === 'POST' && /^\/api\/uploads\/[a-f0-9-]{36}\/complete$/.test(url.pathname)) {
         const id = url.pathname.split('/')[3], upload = s.uploads.get(id); if (!upload || upload.busy || upload.offset !== upload.size) throw fail('Upload is incomplete.', 409);
@@ -74,27 +74,7 @@ async function createApp(config, deps = {}) {
         }).catch(e => { job.status = controller.signal.aborted?'cancelled':'error'; job.error = e.status ? e.message : 'The file scan could not finish.'; }).finally(async () => { s.uploads.delete(id); reserved -= upload.size; s.active--; if (!committed) await fs.rm(upload.path, { force: true }); });
         send(res, { id: jobId }, 202); return;
       }
-      if (req.method === 'POST' && url.pathname === '/api/files') {
-        limits.check(user.id + ':uploads', 10, 60000);
-        const size = Number(req.headers['content-length']);
-        if (!Number.isSafeInteger(size) || size < 1 || size > LIMITS.scanFull) throw fail('Use chunked uploads for larger files.', 413);
-        if (req.headers['content-type'] !== 'application/octet-stream') throw fail('Invalid upload type.');
-        let name; try { name = filename(decodeURIComponent(req.headers['x-flux-filename'] || '')); } catch { throw fail('Invalid filename.'); }
-        if (s.files.size >= LIMITS.files) throw fail('Maximum 20 files per session.', 413);
-        if (uploading >= 2 || stored + reserved + size > LIMITS.storage) throw fail('The server upload space is full. Delete old files or try later.', 503);
-        const id = crypto.randomUUID(), target = path.join(s.dir, id); await fs.mkdir(s.dir, { recursive: true, mode: 0o700 });
-        reserved += size; uploading++; s.active++; let received = 0, committed = false;
-        try {
-          const handle = await fs.open(target, 'wx', 0o600);
-          try { for await (const chunk of req) { received += chunk.length; if (received > size) throw fail('Upload exceeds its declared size.', 413); await handle.write(chunk); } if (received !== size) throw fail('Upload was incomplete.'); }
-          finally { await handle.close(); }
-          await scanner(target); const file = { path: target, name, size };
-          const inspected = await queue.add(() => worker({ operation: 'inspect' }, [file], null, config));
-          const info = { ...safeMetadata(inspected), path: target, name, size, id };
-          s.files.set(id, info); stored += size; committed = true; send(res, { id, ...safeMetadata(info) }, 201);
-        } finally { reserved -= size; uploading--; s.active--; if (!committed) await fs.rm(target, { force: true }); }
-        return;
-      }
+      if (req.method === 'POST' && url.pathname === '/api/files') throw fail('Use the bounded chunked upload API.', 410);
       if (req.method === 'POST' && url.pathname === '/api/jobs') {
         limits.check(user.id + ':jobs-minute', 6, 60000); limits.check(user.id + ':jobs-hour', 30, 3600000);
         if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);

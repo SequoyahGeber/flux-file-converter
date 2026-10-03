@@ -41,6 +41,7 @@ test('uploads, jobs and downloads are owner-scoped; scan failure cannot publish 
   await new Promise(r => app.server.listen(0, '127.0.0.1', r)); const base = 'http://127.0.0.1:' + app.server.address().port;
   t.after(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
   const request = async (url, options = {}) => { const res = await fetch(base + url, options); return { res, body: await res.json() }; };
+  assert.equal((await request('/api/files', { method: 'POST', body: 'test' })).res.status, 410);
   let u = await request('/api/uploads', { method: 'POST', body: JSON.stringify({ name: 'safe.txt', size: 4 }) }); assert.equal(u.res.status, 201);
   const uploadId = u.body.id;
   const wrongOffset = await request('/api/uploads/' + uploadId, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '2' }, body: 'test' }); assert.equal(wrongOffset.res.status, 409);
@@ -56,6 +57,21 @@ test('uploads, jobs and downloads are owner-scoped; scan failure cannot publish 
   rejectScan = true; const infected = await request('/api/jobs',{method:'POST',body:JSON.stringify({id:uploadId,operation:'convert',target:'html'})}); const blocked = await wait(infected.body.id); assert.equal(blocked.job.status,'error'); assert.equal((await request('/api/download/'+infected.body.id)).res.status,404);
   const state = (await request('/api/status')).body; assert.equal(state.history.length,1); assert.equal(state.history[0].path,undefined);
   assert.equal((await request('/api/files',{method:'DELETE'})).res.status,200); assert.equal((await request('/api/download/'+job.body.id)).res.status,404);
+});
+test('a missing scratch file releases upload capacity after a failed chunk write', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-write-failure-'));
+  const app = await createApp({ storage: dir }, { auth: async () => ({ id: 'a', email: 'test@example.com' }) });
+  await new Promise(r => app.server.listen(0, '127.0.0.1', r)); const base = 'http://127.0.0.1:' + app.server.address().port;
+  t.after(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
+  const begin = async name => (await fetch(base + '/api/uploads', { method: 'POST', body: JSON.stringify({ name, size: 4 }) })).json();
+  const first = await begin('missing.txt');
+  const root = (await fs.readdir(dir))[0]; const target = path.join(dir, root, 'a', first.id);
+  await fs.rm(target);
+  const chunk = id => fetch(base + '/api/uploads/' + id, { method: 'PUT', headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '0' }, body: 'test' });
+  assert.equal((await chunk(first.id)).status, 500);
+  await fs.writeFile(target, '');
+  assert.equal((await chunk(first.id)).status, 200);
+  const second = await begin('next.txt'); assert.equal((await chunk(second.id)).status, 200);
 });
 test('deployment keeps hard aggregate CPU/RAM limits, gVisor and no published ports', async () => {
   const YAML = require('yaml'); const doc = YAML.parse(await fs.readFile(path.join(__dirname,'../compose.yaml'),'utf8'));
