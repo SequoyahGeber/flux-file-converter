@@ -12,8 +12,9 @@ struct LocalView: View {
     @State private var importing = false
     @State private var showingFormats = false
     @State private var showingPrivacy = false
-    @State private var exporting = false
-    @State private var exportURL: URL?
+    #if os(iOS)
+    @State private var exportFile: ExportFile?
+    #endif
     @State private var saving = false
     @Environment(\.scenePhase) private var scenePhase
 
@@ -95,7 +96,7 @@ struct LocalView: View {
                     HStack {
                         Button("Supported conversions") { showingFormats = true }
                         Spacer()
-                        if !model.inputs.isEmpty { Button("Clear", role: .destructive) { model.clear() }.disabled(model.busy || saving) }
+                        if !model.inputs.isEmpty { Button("Clear", role: .destructive) { model.clear() }.disabled(model.busy || saving).accessibilityIdentifier("clear-job") }
                     }.font(.callout)
                     HStack {
                         Button("Privacy & support") { showingPrivacy = true }.accessibilityIdentifier("privacy-support")
@@ -105,7 +106,7 @@ struct LocalView: View {
                         .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(24).frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
-            }.navigationTitle("Flux Local")
+            }.accessibilityIdentifier("converter-workspace").navigationTitle("Flux Local")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -118,10 +119,10 @@ struct LocalView: View {
             .onChange(of: model.options) { model.configurationChanged() }
             .onChange(of: scenePhase) { if scenePhase == .background && model.busy { model.cancel() } }
             #if os(iOS)
-            .sheet(isPresented: $exporting, onDismiss: { saving = false }) {
-                if let exportURL { ExportPicker(url: exportURL) { success in
-                    if success { model.message = "Saved to Files." }; saving = false; exporting = false
-                }.ignoresSafeArea() }
+            .sheet(item: $exportFile, onDismiss: { saving = false }) { file in
+                ExportPicker(url: file.url) { success in
+                    if success { model.message = "Saved to Files." }; saving = false; exportFile = nil
+                }.ignoresSafeArea()
             }
             #endif
         }
@@ -169,7 +170,7 @@ struct LocalView: View {
             }
         }
         #else
-        exportURL = result.url; saving = true; exporting = true
+        exportFile = ExportFile(url: result.url)
         #endif
     }
 }
@@ -195,6 +196,13 @@ private struct FormatView: View {
 }
 
 #if os(iOS)
+// The file and presentation are one state change, so the first sheet cannot
+// capture an unset URL and leave a blank, disabled save screen.
+private struct ExportFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 private struct ExportPicker: UIViewControllerRepresentable {
     let url: URL, completion: (Bool) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(completion) }

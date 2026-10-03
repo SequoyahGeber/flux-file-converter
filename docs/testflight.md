@@ -1,10 +1,10 @@
-# Flux Local TestFlight
+# Flux File Converter TestFlight
 
 Mac and iPhone are on-device apps using one App Store Connect record and bundle ID. The separate server website is not embedded in either app. Previous 1.0.1 server-client betas are obsolete.
 
 | Target              | Bundle ID               | Minimum OS | Artifact             |
 | ------------------- | ----------------------- | ---------- | -------------------- |
-| Mac, Flux Local.app | `com.sequoyah.flux.mac` | macOS 14   | Signed universal PKG |
+| Mac, Flux File Converter.app | `com.sequoyah.flux.mac` | macOS 14   | Signed universal PKG |
 | iPhone, Flux.app    | `com.sequoyah.flux.mac` | iOS 18.4   | Signed arm64 IPA     |
 
 Both platforms use [the Flux app record](https://appstoreconnect.apple.com/apps/6818735397/testflight), a private internal owner group, and no public tester link. The original separate iPhone record is retained only as history and is no longer the release target.

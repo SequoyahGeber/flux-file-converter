@@ -39,7 +39,7 @@ def generate():
     resource_builds.append(add("DesktopUIbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
     info = add("Info.plist", 'isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";')
     entitlements = add("Flux.entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flux.entitlements; sourceTree = "<group>";')
-    product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux Local.app"; sourceTree = BUILT_PRODUCTS_DIR;')
+    product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux File Converter.app"; sourceTree = BUILT_PRODUCTS_DIR;')
     source_group = add("source-group", f'isa = PBXGroup; children = ({", ".join(source_refs + resource_refs + [info, entitlements])}); path = Flux; sourceTree = "<group>";')
     products = add("products", f'isa = PBXGroup; children = ({product}); name = Products; sourceTree = "<group>";')
     main = add("main", f'isa = PBXGroup; children = ({source_group}, {products}); sourceTree = "<group>";')
@@ -53,7 +53,7 @@ def generate():
     for mode in ["Debug", "Release"]:
         project_configs.append(add("project" + mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }};'))
         target_configs.append(add("target" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
-            PRODUCT_NAME = "Flux Local"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
+            PRODUCT_NAME = "Flux File Converter"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
             CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
@@ -69,7 +69,7 @@ def generate():
     target_list = add("target-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(target_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;")
     target = add("target", f'''isa = PBXNativeTarget; buildConfigurationList = {target_list};
         buildPhases = ({source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
-        packageProductDependencies = ({dependency}); name = Flux; productName = "Flux Local"; productReference = {product}; productType = "com.apple.product-type.application";''')
+        packageProductDependencies = ({dependency}); name = Flux; productName = "Flux File Converter"; productReference = {product}; productType = "com.apple.product-type.application";''')
     project = add("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700;
         TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 27.0; }}; }}; }};
         buildConfigurationList = {project_list}; compatibilityVersion = "Xcode 14.0";
@@ -82,7 +82,7 @@ def generate():
     (MAC / "Flux" / "Flux.icns").write_bytes((ROOT / "resources" / "icon.icns").read_bytes())
     scheme = PROJECT / "xcshareddata" / "xcschemes"
     scheme.mkdir(parents=True, exist_ok=True)
-    ref = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Flux Local.app" BlueprintName="Flux" ReferencedContainer="container:Flux.xcodeproj"/>'
+    ref = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Flux File Converter.app" BlueprintName="Flux" ReferencedContainer="container:Flux.xcodeproj"/>'
     (scheme / "Flux.xcscheme").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3">
 <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref}</BuildActionEntry></BuildActionEntries></BuildAction>

@@ -1,6 +1,6 @@
 # Flux support
 
-Flux Local for Mac and iPhone works entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
+Flux File Converter's native Mac and iPhone apps work entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
 
 Choose one file, select an output format and set a name. Convert locally, then use Save to… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract ZIP to folder to unzip. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
@@ -15,5 +15,11 @@ Local limits: 5 GB per media file and in total, 512 MB other files, 16 MB text, 
 On iPhone, Clear, a new file selection or restarting removes the previous temporary result. On Mac, Clear history or restarting removes temporary results; Recent files is the app’s session conversion history. Saved files and originals are never included in cleanup. Device storage is needed for a working copy and output; lossless formats can be larger than the input.
 
 The separate website keeps its existing 5 GB eligible media / 1.9 GB other upload limits, 10-minute jobs, server queue and 30-minute inactivity expiry. Native conversion does not contact it.
+
+## Activity Monitor on Mac
+
+The app and its main executable are named Flux File Converter. Native conversions run inside that process, including the linked media library, so their CPU and memory usage belongs to Flux. The sidebar uses Apple's WebKit, which macOS runs with separate system helpers. Flux does not launch separate command-line conversion workers. macOS controls its framework helper names and isolation.
+
+In Activity Monitor, search for Flux to find the main process. The Energy tab shows energy information for apps and their processes; Energy Impact is a relative score. View → All Processes, Hierarchically shows parent/child relationships. See [Apple's energy guide](https://support.apple.com/guide/activity-monitor/view-energy-consumption-actmntr43697/mac) and [process guide](https://support.apple.com/guide/activity-monitor/view-information-about-processes-actmntr1001/mac).
 
 Support: sequoyahgeber@gmail.com. [Public bug reports](https://github.com/SequoyahGeber/flux-file-converter/issues) should include the app/build, OS, input/output formats and error. Use synthetic files; never post private documents or login details.

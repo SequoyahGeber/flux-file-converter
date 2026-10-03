@@ -61,7 +61,8 @@ def main():
         print(platform, args.build, attrs["processingState"], detail.get("externalBuildState"))
         if attrs["processingState"] != "VALID" or attrs.get("expired") or attrs.get("buildAudienceType") != "APP_STORE_ELIGIBLE" or attrs.get("usesNonExemptEncryption") is None:
             issues.append(platform + ": finish processing/export compliance for an unexpired externally eligible build.")
-        path = ROOT / f"release/native/{prefix}-{version}-{args.build}-distribution.json"
+        suffix = "-distribution" if platform == "MAC_OS" else ""
+        path = ROOT / f"release/native/{prefix}-{version}-{args.build}{suffix}.json"
         receipt = json.loads(path.read_text()) if path.is_file() else {}
         artifact = Path(receipt.get("artifact", "/nonexistent-flux-artifact"))
         if receipt.get("sourceCommit") != commit or not receipt.get("appleUploadAccepted") or not receipt.get("appleValidationVerified") or not artifact.is_file() or hashlib.sha256(artifact.read_bytes()).hexdigest() != receipt.get("sha256"):

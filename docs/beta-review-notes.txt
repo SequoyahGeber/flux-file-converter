@@ -3,7 +3,7 @@ Flux File Converter 1.0.3 for Mac and iPhone. Both platforms use this one app re
 Included samples contain only fictional data. Try a sample runs the same conversion and save code as files selected by the reviewer. Originals remain unchanged; completed results are private working copies until saved. Please use this flow, or choose your own files through the system picker.
 
 MAC WALKTHROUGH
-1. Launch Flux Local. The original sidebar has Convert files, Compress files, ZIP & Unzip, Recent files, All formats and Settings.
+1. Launch Flux File Converter. The original sidebar has Convert files, Compress files, ZIP & Unzip, Recent files, All formats and Settings.
 2. In the empty Convert files workspace, leave Sample image selected and click Try a sample. PNG to JPG is selected. Edit Output name, click Convert file, then Save as... on the completed result. Choose a name/folder in the native save dialog. Recent files lists completed conversions from this session.
 3. Clear the selected files, choose Sample document, and click Try a sample. Convert DOCX to PDF and save. It includes a colored bold heading, italic text, a basic table and an embedded image.
 4. Repeat with Sample video (MP4 to MKV) and Sample data (JSON to CSV). Compatible encoded media tracks are copied without re-encoding.

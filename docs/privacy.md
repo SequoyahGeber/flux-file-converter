@@ -2,7 +2,7 @@
 
 Updated October 3, 2026.
 
-Flux Local for Mac and iPhone converts files entirely on the device. It has no account, Cloudflare sign-in, file upload, analytics or advertising SDK. The separate Flux website at `fileconverter.sequoyahgeber.com` processes files on the owner’s Unraid server; its access rules do not apply to the local apps.
+Flux File Converter's native Mac and iPhone apps convert files entirely on the device. They have no account, Cloudflare sign-in, file upload, analytics or advertising SDK. The separate Flux website at `fileconverter.sequoyahgeber.com` processes files on the owner’s Unraid server; its access rules do not apply to the local apps.
 
 ## Native apps
 
