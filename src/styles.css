@@ -1386,6 +1386,46 @@ select {
   align-items: center;
   justify-content: center;
 }
+.sample-picker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.sample-picker select {
+  max-width: 300px;
+  padding: 9px;
+  color: #694584;
+  background: #fff;
+  border: 1px solid #ded0e8;
+  border-radius: 8px;
+}
+.sample-picker small {
+  width: 100%;
+  color: #867491;
+}
+.review-links {
+  margin-bottom: 24px;
+}
+.review-links .secondary-button,
+.policy-modal .secondary-button {
+  margin-right: 10px;
+}
+.policy-modal {
+  width: min(680px, 90vw);
+  max-height: 85vh;
+}
+.policy-text {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  font-size: 14px;
+  color: #493d53;
+  overflow-y: auto;
+  max-height: 55vh;
+  margin-bottom: 20px;
+}
 .format-modal {
   position: relative;
   width: 390px;

@@ -11,6 +11,7 @@ struct LocalView: View {
     @StateObject private var model = LocalModel()
     @State private var importing = false
     @State private var showingFormats = false
+    @State private var showingPrivacy = false
     @State private var exporting = false
     @State private var exportURL: URL?
     @State private var saving = false
@@ -36,6 +37,14 @@ struct LocalView: View {
                         if model.inputs.isEmpty {
                             Text("Convert an image, video, audio file or document. Select several files to make a ZIP.")
                                 .font(.callout).foregroundStyle(.secondary)
+                            Menu {
+                                ForEach(ReviewResources.samples, id: \.id) { sample in
+                                    Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier("sample-" + sample.id)
+                                }
+                            } label: { Label("Try a sample", systemImage: "sparkles") }
+                                .accessibilityIdentifier("try-sample").disabled(model.busy || saving)
+                            Text("Fictional files included with Flux. Uses the same conversion and save flow.")
+                                .font(.caption).foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(model.inputs.prefix(5).enumerated()), id: \.offset) { _, url in
                                 Label(url.lastPathComponent, systemImage: "doc").font(.callout).lineLimit(2)
@@ -88,6 +97,10 @@ struct LocalView: View {
                         Spacer()
                         if !model.inputs.isEmpty { Button("Clear", role: .destructive) { model.clear() }.disabled(model.busy || saving) }
                     }.font(.callout)
+                    HStack {
+                        Button("Privacy & support") { showingPrivacy = true }.accessibilityIdentifier("privacy-support")
+                        Spacer()
+                    }.font(.callout)
                     Text("5 GB media · 512 MB other files · One conversion at a time\nKeep Flux open while converting. Temporary working files are cleared when you clear the job or reopen Flux.")
                         .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(24).frame(maxWidth: 700)
@@ -100,6 +113,7 @@ struct LocalView: View {
                 switch result { case .success(let urls): model.select(urls); case .failure(let error): model.error = error.localizedDescription }
             }
             .sheet(isPresented: $showingFormats) { FormatView() }
+            .sheet(isPresented: $showingPrivacy) { PrivacySupportView() }
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }
             .onChange(of: scenePhase) { if scenePhase == .background && model.busy { model.cancel() } }

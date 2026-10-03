@@ -72,6 +72,12 @@ import OfflineKit
             let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
             let response = await present(panel)
             return response == .OK ? try register(panel.urls) : []
+        case "selectSample":
+            guard !busy, let id = args as? String,
+                  let sample = ReviewResources.samples.first(where: { $0.id == id }), let url = sample.url else { throw LocalError.invalid("Choose an available sample.") }
+            return try register([url])
+        case "openSupport": NSWorkspace.shared.open(ReviewResources.supportURL); return true
+        case "openPrivacy": NSWorkspace.shared.open(ReviewResources.privacyURL); return true
         case "selectOutput":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
             let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true; panel.prompt = "Choose save folder"
@@ -134,7 +140,10 @@ import OfflineKit
     }
     private func state() -> [String: Any] {
         ["nativeLocal": true, "engines": ["local": true], "enginePaths": ["local": "Built into Flux · no downloads or server"], "outputDir": outputLabel,
-         "history": history, "families": families, "running": busy, "files": [], "jobs": []]
+         "history": history, "families": families, "running": busy, "files": [], "jobs": [],
+         "samples": ReviewResources.samples.map { ["id": $0.id, "title": $0.title, "target": $0.target] },
+         "privacyText": ReviewResources.privacyText, "supportText": ReviewResources.supportText,
+         "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]
     }
     private func register(_ urls: [URL]) throws -> [[String: Any]] {
         guard urls.count <= 100, files.count + urls.count <= 100 else { throw LocalError.invalid("Choose up to 100 files at a time.") }

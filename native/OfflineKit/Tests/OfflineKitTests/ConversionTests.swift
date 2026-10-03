@@ -50,6 +50,42 @@ final class ConversionTests: XCTestCase {
         let pdf = try await convert(input, "pdf"); defer { pdf.remove() }
         XCTAssertTrue(PDFDocument(url: pdf.url)?.string?.contains("日本語") == true)
     }
+    func testBundledReviewerSamplesUseRealConversionsAndPreserveInputs() async throws {
+        for sample in ReviewResources.samples {
+            let url = try XCTUnwrap(sample.url, sample.filename)
+            let original = try Data(contentsOf: url)
+            let result = try await convert(url, sample.target, name: "Reviewer result")
+            if sample.target == "pdf" {
+                XCTAssertTrue(PDFDocument(url: result.url)?.string?.contains("Flux sample document") == true)
+            } else if sample.target == "unzip" {
+                XCTAssertEqual(try String(contentsOf: result.url.appendingPathComponent("Read me.txt"), encoding: .utf8), "Fictional review files. No personal data.\n")
+            } else { XCTAssertGreaterThan(try LocalPolicy.fileSize(result.url), 0) }
+            result.remove()
+            XCTAssertEqual(try Data(contentsOf: url), original, "Sample input must stay unchanged after conversion and cleanup")
+        }
+        XCTAssertTrue(ReviewResources.privacyText.contains("collect no personal information"))
+        XCTAssertTrue(ReviewResources.supportText.contains("No Unraid connection"))
+    }
+    func testPDFtoPNGKeepsOriginalThroughCancellationFailureAndCleanup() async throws {
+        let text = try file("Original.txt", "Original PDF remains intact.\nSecond line.")
+        let generated = try await convert(text, "pdf", name: "Original")
+        let pdf = root.appendingPathComponent("Original.pdf")
+        try FileManager.default.copyItem(at: generated.url, to: pdf); generated.remove()
+        let original = try Data(contentsOf: pdf)
+        let image = try await convert(pdf, "png", name: "Original")
+        XCTAssertEqual(image.url.lastPathComponent, "Original.png")
+        XCTAssertEqual(try Data(contentsOf: pdf), original)
+        let saved = root.appendingPathComponent("Original.png")
+        try FileManager.default.copyItem(at: image.url, to: saved); image.remove()
+        let cancelled = JobControl(); cancelled.cancel()
+        do { _ = try await OfflineEngine.convert(inputs: [pdf], target: "png", name: "Cancelled", options: ConversionOptions(), control: cancelled); XCTFail("Cancelled job succeeded") }
+        catch { XCTAssertTrue(error is LocalError) }
+        do { _ = try await convert(pdf, "png", name: "../../Original"); XCTFail("Unsafe name succeeded") }
+        catch { XCTAssertTrue(error is LocalError) }
+        OfflineEngine.clearTemporaryFiles()
+        XCTAssertEqual(try Data(contentsOf: pdf), original)
+        XCTAssertNotNil(CGImageSourceCreateWithURL(saved as CFURL, nil))
+    }
     func testCSVJSONYAMLRoundTrip() async throws {
         let csv = try file("data.csv", "name,note\r\nAlice,\"comma, and \"\"quote\"\"\"\r\nBob,\"multi\nline\"\r\n")
         let json = try await convert(csv, "json"); defer { json.remove() }

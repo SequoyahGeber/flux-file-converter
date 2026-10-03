@@ -59,7 +59,7 @@ def generate():
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
             ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
-            MARKETING_VERSION = 1.0.2; COMBINE_HIDPI_IMAGES = YES;
+            MARKETING_VERSION = {(ROOT / "native/VERSION").read_text().strip()}; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = {"-Onone" if mode == "Debug" else "-O"};
             SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};
             SUPPORTED_PLATFORMS = macosx; ARCHS = "$(ARCHS_STANDARD)";

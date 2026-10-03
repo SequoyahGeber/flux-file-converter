@@ -16,6 +16,7 @@ window.addEventListener('flux-native', event => {
 });
 window.flux = Object.freeze({
   getState: () => call('getState'), selectFiles: () => call('selectFiles'),
+  selectSample: id => call('selectSample', id), openSupport: () => call('openSupport'), openPrivacy: () => call('openPrivacy'),
   selectFolder: () => Promise.reject(new Error('Select regular files to ZIP in this local beta.')),
   addDroppedFiles: () => Promise.reject(new Error('Use Choose files to grant access to these files.')),
   releaseFiles: ids => call('releaseFiles', ids), selectOutput: () => call('selectOutput'),

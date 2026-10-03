@@ -1,10 +1,10 @@
-# Flux privacy policy
+Flux privacy policy
 
 Updated October 3, 2026.
 
-Flux Local for Mac and iPhone converts files entirely on the device. It has no account, Cloudflare sign-in, file upload, analytics or advertising SDK. The separate Flux website at `fileconverter.sequoyahgeber.com` processes files on the owner’s Unraid server; its access rules do not apply to the local apps.
+Flux Local for Mac and iPhone converts files entirely on the device. It has no account, Cloudflare sign-in, file upload, analytics or advertising SDK. The separate Flux website at fileconverter.sequoyahgeber.com processes files on the owner’s Unraid server; its access rules do not apply to the local apps.
 
-## Native apps
+Native apps
 
 Only files explicitly selected through the system picker or dropped into the Mac app are read. Flux makes a private working copy, converts locally using Apple frameworks and bundled open-source libraries, and lets you choose the output name and destination. It never automatically opens or executes results. Files selected from a cloud-backed Files provider may be downloaded by that provider; Flux does not upload them for conversion.
 
@@ -12,14 +12,14 @@ Working files are stored in Flux’s private disk cache, excluded from backups. 
 
 The native apps collect no personal information. File metadata is used to validate selected files and bound work; free disk capacity is checked before writing; elapsed time limits conversion jobs. None of this information is sent off-device by Flux. Included sample files contain only fictional data and use the same local conversion engine. Privacy and support pages open in your browser only when you choose their links; these visits do not upload conversion files.
 
-## Separate website
+Separate website
 
 The website uploads the files you select, including names, contents, sizes and conversion settings, through Cloudflare to the owner’s private Unraid server for scanning and conversion. Server uploads/results expire after 30 minutes of inactivity and can be removed sooner with Delete my files. Saved downloads remain wherever you put them. Files are not used for advertising, profiling or training an AI model.
 
-Cloudflare Access handles website login, MFA and connection security. The website stores the authenticated email and membership/invitation records used to enforce access. The owner can revoke access. Invitations expire after 24 hours and work once. Cloudflare processes security/connection information under its [privacy policy](https://www.cloudflare.com/privacypolicy/). Website access and files are not shared with other invited users by Flux.
+Cloudflare Access handles website login, MFA and connection security. The website stores the authenticated email and membership/invitation records used to enforce access. The owner can revoke access. Invitations expire after 24 hours and work once. Cloudflare processes security/connection information under its privacy policy (https://www.cloudflare.com/privacypolicy/). Website access and files are not shared with other invited users by Flux.
 
-## TestFlight and support
+TestFlight and support
 
-Apple separately collects TestFlight usage, crash reports and feedback under its [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/). Avoid including private file contents in feedback.
+Apple separately collects TestFlight usage, crash reports and feedback under its TestFlight terms (https://www.apple.com/legal/internet-services/itunes/testflight/). Avoid including private file contents in feedback.
 
-Contact sequoyahgeber@gmail.com for support or website membership deletion. [GitHub issues](https://github.com/SequoyahGeber/flux-file-converter/issues) are public; do not attach private files, credentials or invitation links.
+Contact sequoyahgeber@gmail.com for support or website membership deletion. GitHub issues (https://github.com/SequoyahGeber/flux-file-converter/issues) are public; do not attach private files, credentials or invitation links.

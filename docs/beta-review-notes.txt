@@ -1,0 +1,24 @@
+Flux File Converter 1.0.3 for Mac and iPhone. Both platforms use this one app record and bundle ID. All conversion is on-device. No app account, sign-in, MFA, invitation, Unraid server, paid subscription or extra installation is required. This is a native local converter, not a client for the separate Flux website.
+
+Included samples contain only fictional data. Try a sample runs the same conversion and save code as files selected by the reviewer. Originals remain unchanged; completed results are private working copies until saved. Please use this flow, or choose your own files through the system picker.
+
+MAC WALKTHROUGH
+1. Launch Flux Local. The original sidebar has Convert files, Compress files, ZIP & Unzip, Recent files, All formats and Settings.
+2. In the empty Convert files workspace, leave Sample image selected and click Try a sample. PNG to JPG is selected. Edit Output name, click Convert file, then Save as... on the completed result. Choose a name/folder in the native save dialog. Recent files lists completed conversions from this session.
+3. Clear the selected files, choose Sample document, and click Try a sample. Convert DOCX to PDF and save. It includes a colored bold heading, italic text, a basic table and an embedded image.
+4. Repeat with Sample video (MP4 to MKV) and Sample data (JSON to CSV). Compatible encoded media tracks are copied without re-encoding.
+5. Sample archive opens ZIP & Unzip in Extract archive mode. Extract it, then Save as... and choose a parent folder. To create ZIP, choose regular files, use ZIP & Unzip / Create ZIP, set Archive name and create/save it. Compress files offers lossless ZIP and supported smaller-file encodings.
+6. Settings / Privacy policy displays the bundled policy offline. Support opens the public support page. All formats and its conversion matrix describe supported local destinations. Clear history removes temporary results, not saved files or originals.
+
+IPHONE WALKTHROUGH
+1. Launch Flux Local. Tap Try a sample, then Sample image. Convert to JPG is selected. Edit Output file name, tap Convert locally, then Save to... and select a destination in the system Files export picker. Cancelling the picker leaves the result available to save again.
+2. Tap Clear, then repeat Try a sample with Sample document (DOCX to PDF), Sample video (MP4 to MKV), Sample data (JSON to CSV) and Sample archive (ZIP to folder). Each runs the real engine. Choose files imports your own files; several files can be packaged as ZIP.
+3. Supported conversions lists actual formats and content/codec limitations. Privacy & support displays the complete bundled policy and help without a network connection. Public policy/support links open only when tapped.
+4. Keep the app in the foreground during conversion. Backgrounding cancels active work. Clear removes temporary results only. In the Files picker, Recents is a view of files that may reside in Downloads or another folder; it is not a separate storage location.
+
+LIMITATIONS
+This local beta supports fewer formats than the separate website. It does not claim arbitrary type-to-type conversion or perfect Office layout fidelity. Complex unsupported DOCX structures and incompatible media codecs report errors. PDF to image converts the first page. Compressed PDF output rasterizes pages and loses editable text/forms. Text extraction is labeled separately. Media up to 5 GB; other files up to 512 MB; text 16 MB; images 24 megapixels; one conversion at a time; 10-minute cooperative deadline. ZIP extraction is bounded to 2,000 entries, 1 GB expanded and 200x expansion, rejecting unsafe paths and links.
+
+Privacy: https://sequoyahgeber.github.io/flux-file-converter/privacy/
+Support: https://sequoyahgeber.github.io/flux-file-converter/support/
+Native apps have no analytics, advertising or tracking SDKs. Apple separately handles TestFlight feedback/crash information. Files are never uploaded for conversion.

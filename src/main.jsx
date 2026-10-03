@@ -160,6 +160,9 @@ function App() {
     [families, setFamilies] = useState(fallbackFamilies),
     [nativeLocal, setNativeLocal] = useState(false),
     [mediaMode, setMediaMode] = useState('lossless');
+  const [reviewInfo, setReviewInfo] = useState({ samples: [] }),
+    [sampleID, setSampleID] = useState('image'),
+    [showPrivacy, setShowPrivacy] = useState(false);
   const [output, setOutput] = useState('Downloads / Flux'),
     [running, setRunning] = useState(false),
     [adding, setAdding] = useState(false),
@@ -186,15 +189,16 @@ function App() {
     setFamilies(s.families);
     setRunning(s.running);
     setNativeLocal(Boolean(s.nativeLocal));
+    if (s.nativeLocal) setReviewInfo(s);
   };
-  const add = (files) => {
+  const add = (files, target) => {
     setQueue((q) => [
       ...q,
       ...files
         .filter((f) => !q.some((x) => x.id === f.id))
         .map((f) => ({
           ...f,
-          target: f.targets.includes('pdf') ? 'pdf' : f.targets[0] || '',
+          target: target || (f.targets.includes('pdf') ? 'pdf' : f.targets[0] || ''),
           compression: f.compressionOptions?.[0]?.id || '',
           status: 'ready',
           progress: 0,
@@ -258,6 +262,7 @@ function App() {
       }
       if (e.key === 'Escape') {
         setSelectedFormat(null);
+        setShowPrivacy(false);
         setError('');
       }
     };
@@ -495,7 +500,7 @@ function App() {
           <div className="version">
             <Logo small />
             <span>Made for your Mac</span>
-            <span>v1.0</span>
+            <span>{nativeLocal ? `v${reviewInfo.appVersion || ''}` : 'v1.0'}</span>
           </div>
         </div>
       </aside>
@@ -743,6 +748,38 @@ function App() {
                     <LockKeyhole size={12} />
                     Never uploaded. Never shared.
                   </div>
+                  {nativeLocal && reviewInfo.samples.length > 0 && (
+                    <div className="sample-picker">
+                      <select
+                        aria-label="Sample file"
+                        value={sampleID}
+                        disabled={adding || running}
+                        onChange={(e) => setSampleID(e.target.value)}
+                      >
+                        {reviewInfo.samples.map((sample) => (
+                          <option key={sample.id} value={sample.id}>
+                            {sample.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="secondary-button"
+                        disabled={adding || running}
+                        onClick={() =>
+                          action(async () => {
+                            const sample = reviewInfo.samples.find((s) => s.id === sampleID);
+                            const records = await api.selectSample(sampleID);
+                            setRoute(sample.target === 'unzip' ? 'archive' : 'convert');
+                            if (sample.target === 'unzip') setArchiveMode('extract');
+                            add(records, sample.target === 'unzip' ? undefined : sample.target);
+                          })
+                        }
+                      >
+                        Try a sample
+                      </button>
+                      <small>Fictional files · Same local conversion and save flow</small>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <section className="queue-panel">
@@ -1385,6 +1422,24 @@ function App() {
                 <p>Everything you need. Right here on your Mac.</p>
               </div>
               <section className="settings-card">
+                {nativeLocal && (
+                  <div className="review-links">
+                    <h3>
+                      <ShieldCheck size={18} />
+                      Privacy & support
+                    </h3>
+                    <p>Read the policy offline, or open the public support page in your browser.</p>
+                    <button className="secondary-button" onClick={() => setShowPrivacy(true)}>
+                      Privacy policy
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => action(() => api.openSupport())}
+                    >
+                      Support
+                    </button>
+                  </div>
+                )}
                 <h3>
                   <FolderOpen size={18} />
                   Output folder
@@ -1524,6 +1579,34 @@ function App() {
           <button aria-label="Dismiss notification" onClick={() => setToast('')}>
             <X size={14} />
           </button>
+        </div>
+      )}
+      {showPrivacy && nativeLocal && (
+        <div className="modal-backdrop" onClick={() => setShowPrivacy(false)}>
+          <div
+            className="format-modal policy-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="policy-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              autoFocus
+              className="icon-button modal-close"
+              aria-label="Close privacy policy"
+              onClick={() => setShowPrivacy(false)}
+            >
+              <X size={18} />
+            </button>
+            <h2 id="policy-title">Privacy policy</h2>
+            <div className="policy-text">{reviewInfo.privacyText}</div>
+            <button className="secondary-button" onClick={() => action(() => api.openPrivacy())}>
+              Open public policy
+            </button>
+            <button className="secondary-button" onClick={() => action(() => api.openSupport())}>
+              Support
+            </button>
+          </div>
         </div>
       )}
       {selectedFormat && (

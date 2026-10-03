@@ -16,6 +16,10 @@ import OfflineKit
     var source: String { inputs.first?.pathExtension.lowercased() ?? "" }
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }
     init() { OfflineEngine.clearTemporaryFiles() }
+    func selectSample(_ sample: ReviewResources.Sample) {
+        guard !busy, let url = sample.url else { return }
+        select([url]); target = sample.target
+    }
     func select(_ urls: [URL]) {
         guard !busy else { return }
         result?.remove(); result = nil; message = ""; error = ""

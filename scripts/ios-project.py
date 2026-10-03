@@ -55,7 +55,7 @@ def generate():
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
-            MARKETING_VERSION = 1.0.2; COMBINE_HIDPI_IMAGES = YES;
+            MARKETING_VERSION = {(ROOT / "native/VERSION").read_text().strip()}; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = {"-Onone" if mode == "Debug" else "-O"};
             SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};
             SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; ARCHS = "$(ARCHS_STANDARD)";
@@ -66,20 +66,41 @@ def generate():
     target = add("target", f'''isa = PBXNativeTarget; buildConfigurationList = {target_list};
         buildPhases = ({source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
         packageProductDependencies = ({dependency}); name = Flux; productName = Flux; productReference = {product}; productType = "com.apple.product-type.application";''')
+    test_source = add("review-test-source", 'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../FluxUITests/ReviewerAccessTests.swift"; sourceTree = "<group>";')
+    test_build = add("review-test-build", f'isa = PBXBuildFile; fileRef = {test_source};')
+    test_product = add("review-test-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = FluxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
+    # Attach references to the existing groups so the project stays inspectable.
+    objects[:] = [value.replace(f'children = ({product});', f'children = ({product}, {test_product});').replace(f'children = ({", ".join(source_refs + resource_refs + [info, entitlements])});', f'children = ({", ".join(source_refs + resource_refs + [info, entitlements, test_source])});') for value in objects]
+    test_sources = add("review-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_build}); runOnlyForDeploymentPostprocessing = 0;')
+    test_frameworks = add("review-test-frameworks", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+    proxy = add("review-test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {identifier("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Flux;')
+    test_dependency = add("review-test-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
+    test_configs = [add("review-test-" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
+        PRODUCT_NAME = FluxUITests; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.reviewtests;
+        GENERATE_INFOPLIST_FILE = YES; TEST_TARGET_NAME = Flux; CODE_SIGN_STYLE = Automatic;
+        DEVELOPMENT_TEAM = 8MLN9FH4F9; TARGETED_DEVICE_FAMILY = 1; SWIFT_VERSION = 5.0;
+        IPHONEOS_DEPLOYMENT_TARGET = 18.4; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+    }};''') for mode in ["Debug", "Release"]]
+    test_configs_list = add("review-test-config-list", f'isa = XCConfigurationList; buildConfigurations = ({", ".join(test_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
+    test_target = add("review-test-target", f'''isa = PBXNativeTarget; buildConfigurationList = {test_configs_list};
+        buildPhases = ({test_sources}, {test_frameworks}); buildRules = (); dependencies = ({test_dependency});
+        name = FluxUITests; productName = FluxUITests; productReference = {test_product}; productType = "com.apple.product-type.bundle.ui-testing";''')
     project = add("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700;
         TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 27.0; }}; }}; }};
         buildConfigurationList = {project_list}; compatibilityVersion = "Xcode 14.0";
         developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base);
         mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = "";
-        packageReferences = ({package}); targets = ({target});''')
+        packageReferences = ({package}); targets = ({target}, {test_target});''')
     PROJECT.mkdir(exist_ok=True)
     (PROJECT / "project.pbxproj").write_text("// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n" + "\n".join(objects) + f"\n}}; rootObject = {project}; }}\n")
     scheme = PROJECT / "xcshareddata" / "xcschemes"
     scheme.mkdir(parents=True, exist_ok=True)
     ref = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Flux.app" BlueprintName="Flux" ReferencedContainer="container:Flux.xcodeproj"/>'
+    test_ref = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{test_target}" BuildableName="FluxUITests.xctest" BlueprintName="FluxUITests" ReferencedContainer="container:Flux.xcodeproj"/>'
     (scheme / "Flux.xcscheme").write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3">
 <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref}</BuildActionEntry></BuildActionEntries></BuildAction>
+<TestAction buildConfiguration="Release" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{test_ref}</TestableReference></Testables></TestAction>
 <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" allowLocationSimulation="NO"><BuildableProductRunnable runnableDebuggingMode="0">{ref}</BuildableProductRunnable></LaunchAction>
 <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref}</BuildableProductRunnable></ProfileAction>
 <AnalyzeAction buildConfiguration="Debug"/>
