@@ -9,7 +9,7 @@ The native Mac and iPhone clients use the existing private Unraid converter. The
 | Mac (Flux Connect) | `com.sequoyah.flux.mac` | macOS 14 | Apple-signed universal `.pkg` |
 | iPhone | `com.sequoyah.flux.ios` | iOS 18.4 | Apple-signed arm64 `.ipa` |
 
-Mac App Store Connect record: [Flux File Converter](https://appstoreconnect.apple.com/apps/6818735397/testflight). The iPhone record must be created separately with its registered bundle ID. The Apple API handles profiles, builds and TestFlight metadata; initial app-record creation needs App Store Connect's website.
+App Store Connect records: [Flux File Converter for Mac](https://appstoreconnect.apple.com/apps/6818735397/testflight) and [Flux File Converter iPhone](https://appstoreconnect.apple.com/apps/6818745721/testflight). Each target has a private internal owner group with public links disabled. The Apple API handles profiles, builds and TestFlight metadata; initial app-record creation needs App Store Connect's website.
 
 ## Build and verification
 
