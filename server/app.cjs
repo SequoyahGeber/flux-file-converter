@@ -19,6 +19,7 @@ async function createApp(config, deps = {}) {
   const sessions = new Map(), limits = new RateLimit(), queue = new Queue(); let stored = 0, reserved = 0, uploading = 0, capability;
   const root = await fs.mkdtemp(path.join(config.storage || '/work', 'flux-api-'));
   async function capabilities() {
+    if (!capability && deps.capabilities) capability = deps.capabilities;
     if (!capability) {
       const res = await fetch(new URL('/capabilities', config.worker), { headers: { authorization: 'Bearer ' + config.secret }, signal: AbortSignal.timeout(10000) });
       if (!res.ok) throw fail('Conversion worker unavailable.', 503);
@@ -62,14 +63,14 @@ async function createApp(config, deps = {}) {
       }
       if (req.method === 'POST' && /^\/api\/uploads\/[a-f0-9-]{36}\/complete$/.test(url.pathname)) {
         const id = url.pathname.split('/')[3], upload = s.uploads.get(id); if (!upload || upload.busy || upload.offset !== upload.size) throw fail('Upload is incomplete.', 409);
-        upload.busy = true; s.active++; let committed = false; const jobId = crypto.randomUUID(), job = { id: jobId, fileId: id, fileIds: [id], name: upload.name, operation: 'upload', status: 'queued', createdAt: Date.now() }; s.jobs.set(jobId, job);
+        upload.busy = true; s.active++; let committed = false; const jobId = crypto.randomUUID(), job = { id: jobId, fileId: id, fileIds: [id], name: upload.name, operation: 'upload', status: 'queued', createdAt: Date.now() }, controller = new AbortController(); Object.defineProperty(job,'controller',{value:controller}); s.jobs.set(jobId, job);
         queue.add(async () => {
-          job.status = 'running'; const scanMode = await scanner(upload.path); const inspected = await worker({ operation: 'inspect' }, [upload], null, config);
+          if(controller.signal.aborted)throw fail('Cancelled.');job.status = 'running'; const scanMode = await scanner(upload.path,{signal:controller.signal}); const inspected = await worker({ operation: 'inspect' }, [upload], null, config,controller.signal);
           if (upload.size > LIMITS.scanFull && (!['video', 'audio'].includes(inspected.family) || (!inspected.hasAudio && !inspected.hasVideo))) throw fail('Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.', 413);
           const info = { ...safeMetadata(inspected), path: upload.path, name: upload.name, size: upload.size, id, scanMode };
           if (scanMode === 'chunked') info.warning = 'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
           s.files.set(id, info); stored += upload.size; committed = true; job.status = 'done'; job.file = { id, ...safeMetadata(info), scanMode };
-        }).catch(e => { job.status = 'error'; job.error = e.status ? e.message : 'The file scan could not finish.'; }).finally(async () => { s.uploads.delete(id); reserved -= upload.size; s.active--; if (!committed) await fs.rm(upload.path, { force: true }); });
+        }).catch(e => { job.status = controller.signal.aborted?'cancelled':'error'; job.error = e.status ? e.message : 'The file scan could not finish.'; }).finally(async () => { s.uploads.delete(id); reserved -= upload.size; s.active--; if (!committed) await fs.rm(upload.path, { force: true }); });
         send(res, { id: jobId }, 202); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/files') {
@@ -113,7 +114,7 @@ async function createApp(config, deps = {}) {
         queue.add(async () => {
           if (controller.signal.aborted) throw fail('Cancelled.'); job.status = 'running';
           const info = await worker({ operation: op, target: spec.target, compression: spec.compression, options: options(spec.options) }, files, output, config, controller.signal);
-          const scanMode = await scanner(output); if (info.size > LIMITS.scanFull && !['mp4','mkv','mov','webm','avi','m4v','mpg','mpeg','flv','3gp','ts','mts','m2ts','vob','wmv','ogv','mp3','wav','flac','aac','m4a','ogg','opus','aiff','aif','wma','amr','ac3','caf'].includes(info.target)) throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
+          const scanMode = await scanner(output,{signal:controller.signal}); if (info.size > LIMITS.scanFull && !['mp4','mkv','mov','webm','avi','m4v','mpg','mpeg','flv','3gp','ts','mts','m2ts','vob','wmv','ogv','mp3','wav','flac','aac','m4a','ogg','opus','aiff','aif','wma','amr','ac3','caf'].includes(info.target)) throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
           if (controller.signal.aborted) throw fail('Cancelled.');
           filename(info.name); const stat = await fs.lstat(output); if (!stat.isFile() || stat.size > LIMITS.output) throw fail('Invalid output.', 502);
           const result = { id, ...info, size: stat.size, path: output, operation: op, scanMode }; stored += stat.size; s.results.set(id, result); job.status = 'done'; job.result = { ...result, path: undefined };
@@ -125,6 +126,7 @@ async function createApp(config, deps = {}) {
       if (req.method === 'GET' && /^\/api\/download\/[a-f0-9-]{36}$/.test(url.pathname)) {
         const result = s.results.get(url.pathname.split('/').pop()); if (!result) throw fail('That download is missing or expired.', 404);
         const saveName = url.searchParams.has('name') ? filename(url.searchParams.get('name')) : result.name;
+        if(path.extname(saveName).toLowerCase()!==path.extname(result.name).toLowerCase())throw fail('Keep the output file extension when changing its name.');
         res.setHeader('Content-Type', 'application/octet-stream'); res.setHeader('Content-Disposition', "attachment; filename=\"download\"; filename*=UTF-8''" + encodeURIComponent(saveName)); res.setHeader('Content-Length', result.size);
         // Output HTML, SVG, PDFs and archives never render inline at this origin.
         res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'"); s.active++;

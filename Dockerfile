@@ -25,6 +25,7 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY electron ./electron
 COPY server ./server
+COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
 COPY native/archive.py native/advanced.py native/models.py resources/office-formats.json resources/requirements.txt ./resources/
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r resources/requirements.txt \
     && gcc -O2 -Wall -Wextra server/sandbox.c -lseccomp -o /usr/local/bin/flux-sandbox \

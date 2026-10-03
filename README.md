@@ -1,4 +1,8 @@
-# Flux for Mac
+# Flux for Mac and Unraid
+
+The browser version supports conversion, lossy/lossless compression, ZIP/extraction, editable download names and browser save-location selection. It is designed for invite-only access at `fileconverter.sequoyahgeber.com`. See [server security and deployment boundaries](deploy/SECURITY.md). The entire Docker stack is limited to two CPU cores and under 6 GB RAM, with a ten-minute conversion timeout and 5 GB media uploads (1.9 GB for other files because of antivirus limits).
+
+[GitHub source and releases](https://github.com/SequoyahGeber/flux-file-converter). Unraid templates in `deploy/templates` pull GHCR `stable` tags for Docker-tab updates; `compose.yaml` has equivalent settings. Production requires gVisor, Cloudflare Access and bounded scratch volumes prepared by `deploy/prepare-unraid.sh`. Do not replace them with server shares or remove isolation/resource limits.
 
 Flux converts files locally, compresses supported content, creates ZIPs from files and folders, and extracts archives. The installed app is `/Applications/Flux.app`; a rebuildable copy lives in `release/Flux.app`. Results default to `~/Downloads/Flux`; choose another destination in the app.
 

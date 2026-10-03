@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let state = { files: [], jobs: [], history: [], formats: [] }, mode = 'convert', targets = new Map(), compression = new Map(), names = new Map(), loading = false;
+let state = { files: [], jobs: [], history: [], formats: [] }, mode = 'convert', targets = new Map(), compression = new Map(), names = new Map(), loading = false, cancelled = false;
 const bytes = n => n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 function showError(e) { $('error').textContent = e.message || String(e); $('error').hidden = false; }
 async function api(url, { method = 'GET', body, headers = {} } = {}) {
@@ -14,6 +14,7 @@ function download(result) {
   const button = node('button', 'Save as ↗', 'download'); button.onclick = async () => {
     try {
       const saveName = name.value.trim(); if (!saveName || /[\x00-\x1f\x7f/\\:]/.test(saveName) || saveName.startsWith('.') || saveName.startsWith('-') || new TextEncoder().encode(saveName).length > 180) throw new Error('Choose a filename without paths or control characters.');
+      if(saveName.split('.').pop().toLowerCase()!==result.name.split('.').pop().toLowerCase())throw new Error('Keep the .'+result.name.split('.').pop()+' extension when changing its name.');
       const url = '/api/download/' + encodeURIComponent(result.id) + '?name=' + encodeURIComponent(saveName);
       if (typeof window.showSaveFilePicker === 'function') {
         const handle = await window.showSaveFilePicker({ suggestedName: saveName }); const response = await fetch(url, { credentials: 'same-origin' });
@@ -29,14 +30,15 @@ function choice(f) {
   return values.find(c => c.id === compression.get(f.id) && c.id !== 'lossy') || values.find(c => c.id === 'lossless') || values.find(c => c.id === 'archive');
 }
 function render() {
-  $('queue').hidden = !state.files.length; $('dropzone').hidden = Boolean(state.files.length); $('count').textContent = state.files.length + ' files · ' + bytes(state.files.reduce((n, f) => n + f.size, 0));
+  $('queue').hidden = !state.files.length; $('dropzone').hidden = Boolean(state.files.length); $('count').textContent = state.files.length + (state.files.length===1?' file · ':' files · ') + bytes(state.files.reduce((n, f) => n + f.size, 0));
   const active = state.jobs.some(j => ['queued', 'running'].includes(j.status)); $('run').disabled = active || loading || !state.files.length; $('cancel').hidden = !active; $('status').textContent = loading ? 'Uploading and scanning…' : active ? 'Working on your server…' : 'Ready when you are.';
+  $('choose').disabled = loading || active; $('add').disabled = loading || active; $('clear').disabled = loading || active;
   $('run').textContent = mode === 'compress' ? 'Compress files →' : mode === 'pack' ? ($('archive').value === 'pack' ? 'Create ZIP →' : 'Extract archives →') : 'Convert files →';
   $('rows').replaceChildren();
   for (const f of state.files) {
     const row = node('div', undefined, 'row'); row.append(node('div', (f.ext || 'FILE').toUpperCase().slice(0, 8), 'glyph'));
     const info = node('div'); info.append(node('div', f.name, 'file-name'), node('div', bytes(f.size) + (f.details ? ' · ' + f.details : ''), 'file-size')); row.append(info);
-    const jobs = state.jobs.filter(j => j.fileIds?.includes(f.id)); const job = jobs[jobs.length - 1];
+    const jobs = state.jobs.filter(j => j.operation !== 'upload' && j.fileIds?.includes(f.id)); const job = jobs[jobs.length - 1];
     if (mode === 'convert' && f.targets?.length) {
       const select = node('select'); select.setAttribute('aria-label', 'Output for ' + f.name); for (const target of f.targets) { const option = node('option', target.toUpperCase()); option.value = target; select.append(option); } select.value = targets.get(f.id) || (f.targets.includes('pdf') ? 'pdf' : f.targets[0]); targets.set(f.id, select.value); select.disabled = active; select.onchange = () => targets.set(f.id, select.value); row.append(select);
     } else if (mode === 'compress' && choice(f)) {
@@ -74,18 +76,19 @@ async function upload(files) {
     const completion = await api('uploads/' + upload.id + '/complete', { method: 'POST', body: {} });
     while (true) {
       Object.assign(state, await api('status')); const job = state.jobs.find(j => j.id === completion.id); render();
-      if (job?.status === 'done') break; if (job?.status === 'error') throw new Error(job.error);
+      if (job?.status === 'done') break; if (['error','cancelled'].includes(job?.status)) throw new Error(job.error || 'Upload cancelled.');
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
   } }
   catch (e) { showError(e); } finally { loading = false; $('files').value = ''; render(); }
 }
 async function start() {
-  $('error').hidden = true; loading = true; render();
+  $('error').hidden = true; loading = true; cancelled = false; render();
   try {
     const specs = mode === 'pack' && $('archive').value === 'pack' ? [{ operation: 'pack', ids: state.files.map(f => f.id) }] : state.files.map(f => ({ operation: mode === 'pack' ? 'extract' : mode, id: f.id, target: targets.get(f.id), compression: choice(f)?.id, options: { quality: $('quality').value, width: Number($('width').value) } }));
     // Submit and finish sequentially: the server still enforces its own queue.
     for (const spec of specs) {
+      if(cancelled)break;
       const result = await api('jobs', { method: 'POST', body: spec });
       while (true) { Object.assign(state, await api('status')); render(); const job = state.jobs.find(j => j.id === result.id); if (job && !['queued', 'running'].includes(job.status)) break; await new Promise(resolve => setTimeout(resolve, 1500)); }
     }
@@ -93,6 +96,6 @@ async function start() {
 }
 async function clear() { try { await api('files', { method: 'DELETE' }); Object.assign(state, await api('status')); render(); } catch (e) { showError(e); } }
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode)); $('choose').onclick = e => { e.stopPropagation(); $('files').click(); }; $('add').onclick = () => $('files').click(); $('dropzone').onclick = () => $('files').click(); $('dropzone').onkeydown = e => { if (['Enter', ' '].includes(e.key)) { e.preventDefault(); $('files').click(); } }; $('files').onchange = e => upload([...e.target.files]); $('clear').onclick = clear; $('delete-results').onclick = clear; $('run').onclick = start; $('compression').onchange = render; $('archive').onchange = render; $('search').oninput = renderFormats;
-$('cancel').onclick = async () => { for (const job of state.jobs.filter(j => ['queued', 'running'].includes(j.status))) await api('cancel', { method: 'POST', body: { id: job.id } }); };
+$('cancel').onclick = async () => { cancelled=true; for (const job of state.jobs.filter(j => ['queued', 'running'].includes(j.status))) await api('cancel', { method: 'POST', body: { id: job.id } }); };
 document.body.ondragover = e => { e.preventDefault(); $('dropzone').classList.add('dragging'); }; document.body.ondragleave = () => $('dropzone').classList.remove('dragging'); document.body.ondrop = e => { e.preventDefault(); $('dropzone').classList.remove('dragging'); if (!loading) upload([...e.dataTransfer.files]); };
 api('state').then(s => { state = s; $('user').textContent = s.user; render(); renderFormats(); }).catch(showError);

@@ -4,6 +4,7 @@ services:
     image: ghcr.io/sequoyahgeber/flux-api:stable
     build: { context: ., target: api }
     container_name: flux-api
+    runtime: runsc
     user: "10001:10001"
     read_only: true
     cap_drop: [ALL]
@@ -34,8 +35,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     cpus: 1.5
-    mem_limit: 3g
-    memswap_limit: 3g
+    mem_limit: 2800m
+    memswap_limit: 2800m
     pids_limit: 192
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700]
     environment: { WORKER_SECRET: "${WORKER_SECRET:?Set a worker secret}" }
@@ -53,8 +54,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     cpus: 0.25
-    mem_limit: 2g
-    memswap_limit: 2g
+    mem_limit: 1900m
+    memswap_limit: 1900m
     pids_limit: 32
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700]
     volumes: [definitions:/var/lib/clamav:ro, scanner-work:/work]

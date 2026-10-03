@@ -1,0 +1,17 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const definitions = [
+  { name:'flux-api', image:'ghcr.io/sequoyahgeber/flux-api:stable', network:'flux-jobs', cpu:0.15, mem:'512m', pids:64, args:'--runtime=runsc --network=flux-edge --network=flux-outbound --mount type=volume,source=flux-api-work,target=/work', env:{PUBLIC_ORIGIN:'https://fileconverter.sequoyahgeber.com',ACCESS_ISSUER:'__ACCESS_ISSUER__',ACCESS_AUD:'__ACCESS_AUD__',WORKER_SECRET:'__WORKER_SECRET__',WORKER_URL:'http://flux-worker:8090',CLAMAV_HOST:'flux-scanner'} },
+  { name:'flux-worker', image:'ghcr.io/sequoyahgeber/flux-worker:stable',network:'flux-jobs',cpu:1.5,mem:'2800m',pids:192,args:'--runtime=runsc --mount type=volume,source=flux-worker-work,target=/work',env:{WORKER_SECRET:'__WORKER_SECRET__'} },
+  { name:'flux-scanner',image:'ghcr.io/sequoyahgeber/flux-antivirus:stable',network:'flux-jobs',cpu:0.25,mem:'1900m',pids:32,args:'--runtime=runsc --mount type=volume,source=flux-scanner-work,target=/work --mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav,readonly',env:{} },
+  { name:'flux-definitions',image:'ghcr.io/sequoyahgeber/flux-antivirus:stable',network:'flux-outbound',cpu:0.05,mem:'256m',pids:16,args:'--mount type=volume,source=flux-antivirus-definitions,target=/var/lib/clamav',env:{},post:'freshclam --daemon --foreground=true --config-file=/etc/clamav/freshclam.conf' },
+  { name:'flux-tunnel',image:'cloudflare/cloudflared:latest',network:'flux-edge',cpu:0.05,mem:'128m',pids:32,args:'--network=flux-outbound',env:{TUNNEL_TOKEN:'__TUNNEL_TOKEN__'},post:'tunnel --no-autoupdate run',user:'65532:65532' },
+];
+const xml = x => String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+async function main() {
+  const dir=path.join(__dirname,'../deploy/templates');await fs.mkdir(dir,{recursive:true});
+  for(const d of definitions){const args=`--user=${d.user||'10001:10001'} --read-only --cap-drop=ALL --security-opt=no-new-privileges --cpus=${d.cpu} --memory=${d.mem} --memory-swap=${d.mem} --pids-limit=${d.pids} --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,uid=${d.user?'65532':'10001'},gid=${d.user?'65532':'10001'},mode=0700 --log-opt max-size=5m --log-opt max-file=2 ${d.args}`;
+    await fs.writeFile(path.join(dir,'my-'+d.name+'.xml'),`<?xml version="1.0"?>\n<Container version="2"><Name>${d.name}</Name><Repository>${d.image}</Repository><Registry>https://github.com/SequoyahGeber/flux-file-converter/pkgs/container/${d.name}</Registry><Network>${d.network}</Network><Privileged>false</Privileged><Shell>sh</Shell><Project>https://github.com/SequoyahGeber/flux-file-converter</Project><Support>https://github.com/SequoyahGeber/flux-file-converter/issues</Support><WebUI>https://fileconverter.sequoyahgeber.com</WebUI><Icon>https://raw.githubusercontent.com/SequoyahGeber/flux-file-converter/main/resources/icon.png</Icon><ExtraParams>${xml(args)}</ExtraParams><PostArgs>${xml(d.post||'')}</PostArgs><Overview>Flux private file conversion. Resource limits and isolation must be preserved.</Overview>${Object.entries(d.env).map(([k,v])=>`<Config Name="${k}" Target="${k}" Default="" Mode="" Description="Flux configuration" Type="Variable" Display="always" Required="true" Mask="${/SECRET|TOKEN/.test(k)?'true':'false'}">${xml(v)}</Config>`).join('')}</Container>\n`);
+  }
+}
+main().catch(e=>{console.error(e);process.exit(1)});

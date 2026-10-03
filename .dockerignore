@@ -15,3 +15,5 @@
 !deploy/clamd.conf
 !deploy/freshclam.conf
 !Dockerfile
+!tests/
+!tests/container-smoke.cjs

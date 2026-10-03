@@ -2,8 +2,8 @@ const net = require('node:net');
 const fs = require('node:fs');
 const { once } = require('node:events');
 const { LIMITS, fail } = require('./security.cjs');
-async function scanStream(file, { host = process.env.CLAMAV_HOST || 'flux-scanner', port = 3310, timeout = 180000, start, end } = {}) {
-  const socket = net.createConnection({ host, port }); let response = '', expired;
+async function scanStream(file, { host = process.env.CLAMAV_HOST || 'flux-scanner', port = 3310, timeout = 180000, start, end, signal } = {}) {
+  const socket = net.createConnection({ host, port, signal }); let response = '', expired;
   const timer = setTimeout(() => { expired = true; socket.destroy(new Error('Malware scanner timed out.')); }, timeout); timer.unref();
   const result = new Promise((resolve, reject) => {
     socket.on('error', () => reject(fail(expired ? 'Malware scan timed out; the file was rejected.' : 'Malware scanner unavailable; the file was rejected.', 503)));
@@ -30,6 +30,7 @@ async function scan(file, config = {}) {
   // scan overlapping windows for signatures. This is NOT a full container scan.
   const window = 64 * 1024 ** 2, overlap = 1024 ** 2, deadline = Date.now() + LIMITS.job;
   for (let start = 0; start < size; start += window - overlap) {
+    if (config.signal?.aborted) throw fail('Scan cancelled.', 422);
     if (Date.now() >= deadline) throw fail('Malware scan exceeded ten minutes; the file was rejected.', 422);
     await scanStream(file, { ...config, start, end: Math.min(size - 1, start + window - 1), timeout: Math.min(180000, deadline - Date.now()) });
   } return 'chunked';
