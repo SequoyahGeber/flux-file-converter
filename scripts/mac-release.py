@@ -92,7 +92,7 @@ def main():
             build_args.append("CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES")
         with (logs / ("mac-" + mode + "-archive.txt")).open("w") as log:
             subprocess.run(build_args, check=True, env=env, stdout=log, stderr=subprocess.STDOUT)
-        app = archive / "Products/Applications/Flux.app"
+        app = archive / "Products/Applications/Flux Connect.app"
         command(["codesign", "--verify", "--deep", "--strict", str(app)])
         entitlements = plistlib.loads(command(["codesign", "-d", "--entitlements", "-", "--xml", str(app)], stderr=subprocess.DEVNULL))
         if entitlements.get("com.apple.security.app-sandbox") is not True or (not args.development and entitlements.get("com.apple.security.get-task-allow", False)):
@@ -102,7 +102,7 @@ def main():
                     "com.apple.security.files.user-selected.read-write", "com.apple.security.get-task-allow"}
         if set(entitlements) - expected:
             raise SystemExit("Unexpected entitlements in the signed archive.")
-        binary = app / "Contents/MacOS/Flux"
+        binary = app / "Contents/MacOS/Flux Connect"
         architectures = command(["lipo", "-archs", str(binary)], text=True).strip()
         if set(architectures.split()) != {"arm64", "x86_64"}:
             raise SystemExit("The native release must include Apple Silicon and Intel.")
@@ -113,7 +113,7 @@ def main():
         manifest = plistlib.loads((app / "Contents/Resources/PrivacyInfo.xcprivacy").read_bytes())
         if manifest.get("NSPrivacyTracking") is not False:
             raise SystemExit("The app's privacy manifest is missing or incorrect.")
-        name = f"Flux-{version}-{args.build}"
+        name = f"Flux-Connect-{version}-{args.build}"
         if args.development:
             artifact = output / (name + "-development.zip")
             command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(app), str(artifact)])

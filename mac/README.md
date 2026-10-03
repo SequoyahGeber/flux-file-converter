@@ -1,6 +1,6 @@
-# Flux native Mac client
+# Flux Connect native Mac client
 
-This target uses SwiftUI and WebKit to connect to the private Unraid converter. It adds native file selection, invitation entry, save dialogs, bounded download staging, download progress/cancellation, and Finder shortcuts. The separate Electron target continues to provide local conversion.
+This target uses SwiftUI and WebKit to connect to the private Unraid converter. It adds native file selection, invitation entry, save dialogs, bounded download staging, download progress/cancellation, and Finder shortcuts. The native product is installed as `Flux Connect.app`, which avoids replacing the offline `Flux.app`. The separate Electron target continues to provide local conversion.
 
 The client requires a network connection, an invitation and Cloudflare login/MFA. Selected files are uploaded to the server; the welcome screen, upload dialog, and in-app Privacy & Storage sheet disclose this. No conversion binaries, Node runtime, third-party native SDKs, JavaScript-to-native bridge, advertising SDKs or updater are packaged. Navigation and subresource requests are restricted to the workspace, the owner's Cloudflare Access host and Cloudflare's challenge frame. Downloads must be successful bounded responses from the workspace's result endpoint. Existing user files are replaced only after a complete download and successful staging on the destination volume.
 
