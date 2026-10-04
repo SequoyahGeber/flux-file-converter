@@ -1,0 +1,20 @@
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Mantle.framework/Versions/Current/.
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (Renderer).app
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (Renderer).app
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/ReactiveObjC.framework/Versions/Current/.
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/ReactiveObjC.framework/Versions/Current/.
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Mantle.framework/Versions/Current/.
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (GPU).app
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (GPU).app
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper.app
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper.app
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Squirrel.framework/Versions/Current/.
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (Plugin).app
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Helper (Plugin).app
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Squirrel.framework/Versions/Current/.
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/.
+--prepared:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/Helpers/chrome_crashpad_handler
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/Helpers/chrome_crashpad_handler
+--validated:/private/tmp/flux-comprehensive-audit-20261004/package/Flux.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/.
+/tmp/flux-comprehensive-audit-20261004/package/Flux.app: valid on disk
+/tmp/flux-comprehensive-audit-20261004/package/Flux.app: satisfies its Designated Requirement

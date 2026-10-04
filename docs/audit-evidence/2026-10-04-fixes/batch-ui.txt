@@ -1,0 +1,1 @@
+Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes and preserved focus passed (controlled clocks; stub codecs/scanner).

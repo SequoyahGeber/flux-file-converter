@@ -37,17 +37,10 @@ enum Documents {
         let ext = input.pathExtension.lowercased()
         if ["docx", "odt", "epub"].contains(ext) {
             let archive = try Archive(url: input, accessMode: .read)
-            let entries = try Archives.validate(archive, control: control)
+            _ = try Archives.validate(archive, control: control)
             if ext == "docx" { return try xmlText(Archives.read("word/document.xml", archive: archive, control: control), kind: ext, control: control) }
             if ext == "odt" { return try xmlText(Archives.read("content.xml", archive: archive, control: control), kind: ext, control: control) }
-            var text = ""
-            for entry in entries.filter({ ["xhtml", "html", "htm"].contains(URL(fileURLWithPath: $0.path).pathExtension.lowercased()) }).sorted(by: { $0.path < $1.path }) {
-                let data = try Archives.read(entry.path, archive: archive, control: control)
-                guard let html = String(data: data, encoding: .utf8) else { throw LocalError.invalid("EPUB chapter is not UTF-8.") }
-                text += try htmlText(html) + "\n\n"
-                if text.utf8.count > LocalPolicy.textLimit { throw LocalError.invalid("EPUB text exceeds 16 MB.") }
-            }
-            return text
+            return try EPUB.text(archive, control: control)
         }
         let text = try LocalPolicy.readText(input)
         if ext == "html" || ext == "htm" { return try htmlText(text) }
@@ -157,16 +150,9 @@ enum Documents {
         return text
     }
     static func subtitles(_ input: URL, output: URL, target: String) throws {
-        var text = try LocalPolicy.readText(input)
-        if input.pathExtension.lowercased() == "vtt" {
-            text = text.replacingOccurrences(of: "(?m)^WEBVTT[^\n]*\n", with: "", options: .regularExpression)
-            text = text.replacingOccurrences(of: "(\\d{2}:\\d{2}:\\d{2})\\.(\\d{3})", with: "$1,$2", options: .regularExpression)
-        }
-        if target == "vtt" {
-            text = "WEBVTT\n\n" + text.replacingOccurrences(of: "(\\d{2}:\\d{2}:\\d{2}),(\\d{3})", with: "$1.$2", options: .regularExpression)
-        } else if target == "txt" {
-            text = text.replacingOccurrences(of: "(?m)^.*-->.*\n|^\\d+\\s*$", with: "", options: .regularExpression)
-        }
+        let source = try LocalPolicy.readText(input)
+        if input.pathExtension.lowercased() == target { try source.write(to: output, atomically: false, encoding: .utf8); return }
+        let text = try Subtitles.convert(source, fromVTT: input.pathExtension.lowercased() == "vtt", target: target)
         try text.write(to: output, atomically: false, encoding: .utf8)
     }
 }

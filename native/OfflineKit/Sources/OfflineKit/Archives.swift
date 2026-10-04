@@ -121,6 +121,14 @@ enum Archives {
         }
     }
     static func zip(_ inputs: [URL], names: [String], output: URL, compress: Bool, control: JobControl) throws {
+        guard inputs.count == names.count, inputs.count <= 2000 else { throw LocalError.invalid("Archive exceeds 2,000 entries or has invalid names.") }
+        var total: Int64 = 0
+        for input in inputs {
+            try control.check()
+            let size = try LocalPolicy.fileSize(input)
+            guard size <= LocalPolicy.expandedLimit - total else { throw LocalError.invalid("ZIP contents exceed the 1 GB extraction limit.") }
+            total += size
+        }
         let archive = try Archive(url: output, accessMode: .create)
         var seen = Set<String>()
         for (index, input) in inputs.enumerated() {
@@ -129,13 +137,22 @@ enum Archives {
             guard seen.insert(name.precomposedStringWithCanonicalMapping.lowercased()).inserted else { throw LocalError.invalid("Selected files have duplicate names. Rename them before making a ZIP.") }
             let size = try LocalPolicy.fileSize(input), handle = try FileHandle(forReadingFrom: input)
             defer { try? handle.close() }
-            try archive.addEntry(with: name, type: .file, uncompressedSize: size, compressionMethod: compress ? .deflate : .none, bufferSize: 65536) { position, count in
-                try autoreleasepool {
-                try control.check(); try handle.seek(toOffset: UInt64(position))
-                return try handle.read(upToCount: count) ?? Data()
+            func add(_ method: CompressionMethod) throws {
+                try archive.addEntry(with: name, type: .file, uncompressedSize: size, compressionMethod: method, bufferSize: 65536) { position, count in
+                    try autoreleasepool {
+                        try control.check(); try handle.seek(toOffset: UInt64(position))
+                        return try handle.read(upToCount: count) ?? Data()
+                    }
                 }
             }
+            try add(compress ? .deflate : .none)
+            if compress, let entry = archive[name], entry.uncompressedSize / max(1, entry.compressedSize) > 200 {
+                try control.check()
+                try archive.remove(entry, bufferSize: 65536)
+                try add(.none)
+            }
         }
+        _ = try validate(archive, control: control)
     }
     static func read(_ name: String, archive: Archive, control: JobControl) throws -> Data {
         guard let entry = archive[name], entry.type == .file, entry.uncompressedSize <= LocalPolicy.textLimit else { throw LocalError.invalid("Document component is missing or exceeds 16 MB.") }

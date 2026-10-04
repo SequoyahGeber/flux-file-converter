@@ -1,0 +1,13 @@
+electron.launch: Failed to launch: Error: spawn /Users/sequoyahgeber/Documents/ChatGPT/File converter/release/Flux.app/Contents/MacOS/Flux ENOENT
+Call log:
+  - <launching> /Users/sequoyahgeber/Documents/ChatGPT/File converter/release/Flux.app/Contents/MacOS/Flux --inspect=0 --remote-debugging-port=0
+  - [pid=N/A] starting temporary directories cleanup
+  - [pid=N/A] finished temporary directories cleanup
+
+    at async /Users/sequoyahgeber/Documents/ChatGPT/File converter/tests/packaged.cjs:9:15 {
+  log: [
+    '  - <launching> /Users/sequoyahgeber/Documents/ChatGPT/File converter/release/Flux.app/Contents/MacOS/Flux --inspect=0 --remote-debugging-port=0',
+    '  - [pid=N/A] starting temporary directories cleanup',
+    '  - [pid=N/A] finished temporary directories cleanup'
+  ]
+}

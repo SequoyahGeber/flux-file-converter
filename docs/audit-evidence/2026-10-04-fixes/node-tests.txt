@@ -1,0 +1,68 @@
+
+> flux-file-converter@1.0.1 test
+> node --test tests/*.test.cjs
+
+✔ invites are owner-only, one-use, expire after 24 hours, and survive restart (31.14225ms)
+✔ signed-in uninvited users cannot upload, inspect, run jobs or download; revocation is enforced per request (62.837833ms)
+✔ numeric tokens preserve their decimal value or explicitly reject before publication (22.037417ms)
+✔ advanced adapters enforce headers, precision and bounds independently of JavaScript (4350.389417ms)
+✔ advanced JSON output retains decimals, integer/null columns, booleans and Unicode (2784.914041ms)
+✔ fragmented Japanese JSON stays intact and invalid request shapes are rejected (64.34475ms)
+✔ cancelling an inspection cannot commit a file even when a worker finishes late (8.339041ms)
+✔ concurrent streamed job requests recheck active capacity after reading their bodies (40.976041ms)
+✔ pending request bodies prevent cleanup and abandoned uploads release their slots (31.495458ms)
+✔ shutdown waits for cancelled background work before deleting scratch files (37.783583ms)
+✔ CSV rejects duplicate/empty headers and stale sizes cannot bypass bounded reads (4.932208ms)
+✔ output stems fit multibyte filesystems and bounded ZIP paths retain empty directories (164.160166ms)
+✔ worker transport preserves all empty files and rejects truncated input (5.106375ms)
+✔ a worker job cancelled before execution never starts a process (0.200291ms)
+✔ Image formats are real outputs; JPG flattens alpha; existing names are preserved (2442.789875ms)
+✔ Video converts into actual media containers, stills, GIF, and extracted audio (2061.187084ms)
+✔ Every advertised audio destination decodes successfully (2237.794333ms)
+✔ DOCX converts to PDF, text, HTML and EPUB; PDF text and all pages survive (3434.573917ms)
+✔ Spreadsheet and presentation conversions preserve meaningful content (3910.029375ms)
+✔ Data conversions validate tables, escape spreadsheet formulas, and reject dangerous XML (8.771042ms)
+✔ Lossless PNG and JPEG compression preserves decoded image bytes (164.906541ms)
+✔ Lossy compression produces valid image, PDF, video, and audio outputs (635.107791ms)
+✔ Lossless video preserves decoded frame hashes (233.354792ms)
+✔ ZIP files and folders round-trip; archive repacking preserves contents (359.396834ms)
+✔ Unsafe archive paths and symlinks are rejected without publishing partial outputs (116.708916ms)
+✔ Cancellation produces no result and cleans temporary conversion files (0.698792ms)
+✔ odd-width video scales to a valid even width when a maximum size is selected (224.022292ms)
+✔ Engine discovery expands the catalog; unknown extensions are identified from contents (642.621458ms)
+✔ Less common images and raster-embedded SVG are actual formats (407.313167ms)
+✔ Unencrypted ebooks convert to and from Kindle formats (1684.579916ms)
+✔ Font containers round-trip without changing glyph outlines (599.682334ms)
+✔ Parquet, Feather, NDJSON, and SQLite exports retain records (2133.925375ms)
+✔ Subtitle timing and text survive conversion (134.693041ms)
+✔ 3D meshes convert to GLB, STL, PLY, Blender, and OBJ with bundled assets (4462.313208ms)
+✔ 7Z round-trip uses safe streaming extraction (129.700959ms)
+✔ Scanned PDF pages can become text with local OCR (375.265208ms)
+✔ conversion tools receive a minimal environment without app credentials or code injection variables (1.122041ms)
+✔ tool output is bounded and UTF-8 survives fragmented chunks (112.665334ms)
+✔ media inspection rejects network input before contacting a remote endpoint (112.999375ms)
+✔ deadline and cancellation terminate a conversion process and its descendants (1012.198667ms)
+✔ desktop resources cannot read traversal paths, symlinks or non-assets (3.300167ms)
+✔ progress messages omit large inspection records and retain archive membership (0.3545ms)
+✔ streaming writes preserve all bytes after partial filesystem writes (0.191542ms)
+✔ security scopes are balanced when files are replaced, removed, and the app quits (0.127041ms)
+✔ reopening an archive batch retains distinct file identities (0.708166ms)
+✔ MAS builds cannot fall back to host tools or accept an escaping engine manifest (4.826916ms)
+✔ TestFlight signing rejects mismatched, expired, development or unprovisioned identities (0.262375ms)
+✔ Cloudflare login verifies signatures, issuer, audience, expiry and request origin (99.318542ms)
+✔ filenames reject traversal, injected options, devices and control characters (0.287334ms)
+✔ the complete engine catalog loads through the authenticated state endpoint (33.542791ms)
+✔ the global queue is bounded and executes one job at a time (0.254542ms)
+✔ rate limits stop floods and recover only after the window expires (0.118334ms)
+✔ uploads, jobs and downloads are owner-scoped; scan failure cannot publish a result (28.254ms)
+✔ a missing scratch file releases upload capacity after a failed chunk write (7.923167ms)
+✔ the overall job deadline aborts scanning and publishes no file (60.472708ms)
+✔ the single container retains hard limits, gVisor and no published ports (14.450167ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16064.0145

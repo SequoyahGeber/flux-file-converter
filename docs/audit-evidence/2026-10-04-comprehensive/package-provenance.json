@@ -1,0 +1,30 @@
+{
+  "archive": "release/Flux-1.0.1-local.zip",
+  "archiveSHA256": "f738c2a81fd653a1126d01c96ded6715950db0ff4c54c1f6e42d49ed506cdeb0",
+  "files": [
+    {
+      "file": "electron/engine.cjs",
+      "currentSHA256": "da0dda9b6f5f2701eb9e66a8f1160aa0a3b0464ea16bf3ffb16ec589db4ef694",
+      "packagedSHA256": "694ec6961f136d41f5623e87afe9d26ad885e387da24d333490700ea5dd99d86",
+      "matchesCurrent": false
+    },
+    {
+      "file": "electron/main.cjs",
+      "currentSHA256": "d7174316d5c5e10d95a242090fdf468c59daa6741b9fb1a3c20c1f230c6ec459",
+      "packagedSHA256": "34674243ebbd47bbf6ed8b86ffc5c089e87a84b5ec119a17a809fc010a1d4e74",
+      "matchesCurrent": false
+    },
+    {
+      "file": "electron/preload.cjs",
+      "currentSHA256": "25905b30926bee796a72d1f8bca06a874b16a93d01e8a9faee646a0ada303fc7",
+      "packagedSHA256": "25905b30926bee796a72d1f8bca06a874b16a93d01e8a9faee646a0ada303fc7",
+      "matchesCurrent": true
+    },
+    {
+      "file": "resources/advanced.py",
+      "currentSHA256": "15b397e5b6effc97f97c6776c2acdeb48349c4bd6fed982d000707268befaca2",
+      "packagedSHA256": null,
+      "matchesCurrent": false
+    }
+  ]
+}

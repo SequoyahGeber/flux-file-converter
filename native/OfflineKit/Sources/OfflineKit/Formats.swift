@@ -32,8 +32,12 @@ public enum LocalFormats {
         return outputs + ["zip"]
     }
     public static func note(source: String, target: String, lossless: Bool) -> String {
-        if target == "zip" { return "Lossless archive. ZIP can package any selected file type." }
+        if target == "zip" { return "Lossless archive, up to 1 GB of contents. Highly compressible files are stored without compression so Flux can safely extract them." }
         if target == "unzip" { return "Extracts safely into a folder. Entries are never opened or executed." }
+        if ["srt", "vtt"].contains(source) {
+            if source == target { return "Keeps the original subtitle contents." }
+            return target == "txt" ? "Extracts cue text only; removes timing, identifiers and positioning." : "Preserves cue text and timing. WebVTT positioning and comments are omitted; styled regions report an error."
+        }
         if images.contains(source), target == "pdf" { return "Creates a PDF from the first image frame." }
         if source == "pdf", imageOutputs.contains(target) { return "Renders the first PDF page at up to 2× resolution." }
         if source == "pdf", target == "pdf" { return "Lossy compression: renders pages at reduced resolution and removes editable text, forms and links." }
@@ -41,7 +45,7 @@ public enum LocalFormats {
             if source == target { return "Keeps the complete original document without changing its contents." }
             return "Preserves supported fonts and text styling. DOCX PDF/HTML also retains basic tables and embedded images. Layout may differ; unsupported structures report an error."
         }
-        if documents.contains(source), source != "txt", source != "md" { return "Extract text only: this output removes layout, images, tables and styling. Choose PDF/HTML for supported rich DOCX/RTF conversions." }
+        if documents.contains(source), source != "txt", source != "md" { return "Extract text only: this output removes layout, images, tables and styling; DOCX equations and other unsupported content may be omitted. Choose PDF/HTML for supported rich DOCX/RTF conversions." }
         if video.contains(source) || audio.contains(source) {
             if lossless { return "Copies encoded tracks without quality loss. The destination must support every track’s codec; incompatible conversions will report an error." }
             return "Uses Apple’s local media codecs. Re-encoding can reduce quality. Unsupported input codecs will report an error."

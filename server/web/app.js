@@ -2,12 +2,14 @@
 const $ = (id) => document.getElementById(id);
 let state = { files: [], jobs: [], history: [], formats: [] },
   mode = 'convert',
+  batchMode = 'convert',
   targets = new Map(),
   compression = new Map(),
   names = new Map(),
   loading = false,
   cancelled = false,
   uploadController,
+  waitController,
   loadingText = '';
 const bytes = (n) =>
   n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
@@ -38,8 +40,101 @@ async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
         : 'Reload this page to reconnect through Cloudflare Access.',
     );
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed.');
+  if (!response.ok)
+    throw Object.assign(new Error(result.error || 'Request failed.'), {
+      status: response.status,
+      retryAfter: Number(response.headers.get('Retry-After')) || 0,
+    });
   return result;
+}
+async function quotaRequest(url, options, label) {
+  while (!cancelled) {
+    try {
+      return await api(url, options);
+    } catch (error) {
+      if (error.status !== 429 || error.retryAfter <= 0 || error.retryAfter > 3600) throw error;
+      const until = Date.now() + error.retryAfter * 1000;
+      let refreshAt = Date.now() + 15000;
+      while (Date.now() < until) {
+        if (cancelled) throw new DOMException('Cancelled.', 'AbortError');
+        if (Date.now() >= refreshAt) {
+          // A long hourly-quota wait is active use, not 30-minute inactivity.
+          Object.assign(state, await api('status'));
+          refreshAt = Date.now() + 15000;
+        }
+        loadingText = `Waiting for server quota · ${Math.ceil((until - Date.now()) / 1000)}s · ${label}`;
+        $('status').textContent = loadingText;
+        await new Promise((resolve, reject) => {
+          const signal = waitController.signal;
+          const abort = () => {
+            clearTimeout(timer);
+            reject(new DOMException('Cancelled.', 'AbortError'));
+          };
+          const timer = setTimeout(
+            () => {
+              signal.removeEventListener('abort', abort);
+              resolve();
+            },
+            Math.min(1000, until - Date.now()),
+          );
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+        });
+      }
+    }
+  }
+  throw new DOMException('Cancelled.', 'AbortError');
+}
+function matchesJob(job, spec) {
+  return (
+    job.operation === spec.operation &&
+    JSON.stringify(job.fileIds) === JSON.stringify(spec.ids || [spec.id]) &&
+    (spec.operation !== 'convert' || job.target === spec.target) &&
+    (spec.operation !== 'compress' || job.compression === spec.compression) &&
+    (!['convert', 'compress'].includes(spec.operation) ||
+      (job.options?.quality === spec.options.quality && job.options?.width === spec.options.width))
+  );
+}
+function rememberChoices() {
+  try {
+    sessionStorage.setItem(
+      'flux-batch-choices',
+      JSON.stringify({
+        mode: batchMode,
+        files: state.files.map((file) => ({
+          id: file.id,
+          target: targets.get(file.id),
+          compression: compression.get(file.id),
+        })),
+        quality: $('quality').value,
+        width: $('width').value,
+        archive: $('archive').value,
+        compression: $('compression').value,
+      }),
+    );
+  } catch {
+    /* Storage may be disabled; conversion still works in this tab. */
+  }
+}
+function restoreChoices() {
+  try {
+    const text = sessionStorage.getItem('flux-batch-choices');
+    if (!text || text.length > 32000) return 'convert';
+    const saved = JSON.parse(text);
+    if (Array.isArray(saved.files))
+      for (const choice of saved.files.slice(0, 20)) {
+        const file = state.files.find((file) => file.id === choice?.id);
+        if (file?.targets?.includes(choice.target)) targets.set(file.id, choice.target);
+        if (file?.compressionOptions?.some((option) => option.id === choice.compression))
+          compression.set(file.id, choice.compression);
+      }
+    for (const id of ['quality', 'width', 'archive', 'compression']) {
+      if ([...$(id).options].some((option) => option.value === saved[id])) $(id).value = saved[id];
+    }
+    return ['convert', 'compress', 'pack'].includes(saved.mode) ? saved.mode : 'convert';
+  } catch {
+    return 'convert';
+  }
 }
 function node(tag, text, className) {
   const el = document.createElement(tag);
@@ -121,6 +216,8 @@ function render() {
   $('choose').disabled = loading || active;
   $('add').disabled = loading || active;
   $('clear').disabled = loading || active;
+  for (const id of ['quality', 'width', 'archive', 'compression'])
+    $(id).disabled = loading || active;
   $('run').textContent =
     mode === 'compress'
       ? 'Compress files →'
@@ -151,8 +248,20 @@ function render() {
       }
       select.value = targets.get(f.id) || (f.targets.includes('pdf') ? 'pdf' : f.targets[0]);
       targets.set(f.id, select.value);
-      select.disabled = active;
-      select.onchange = () => targets.set(f.id, select.value);
+      select.disabled = active || loading;
+      select.onchange = () => {
+        targets.set(f.id, select.value);
+        rememberChoices();
+        const warning = job?.error || f.warning || f.notes?.[select.value];
+        let note = row.querySelector('.note');
+        if (warning) {
+          if (!note) {
+            note = node('div', undefined, 'note');
+            row.append(note);
+          }
+          note.textContent = warning;
+        } else note?.remove();
+      };
       row.append(select);
     } else if (mode === 'compress' && choice(f)) {
       const select = node('select');
@@ -166,7 +275,7 @@ function render() {
         select.append(option);
       }
       select.value = choice(f).id;
-      select.disabled = active;
+      select.disabled = active || loading;
       select.onchange = () => {
         compression.set(f.id, select.value);
         render();
@@ -218,8 +327,10 @@ function render() {
   }
   if (!state.history.length)
     $('result-list').append(node('p', 'Your completed downloads will appear here.', 'intro'));
+  rememberChoices();
 }
 function setMode(next) {
+  if (['convert', 'compress', 'pack'].includes(next)) batchMode = next;
   mode = next;
   const permitted = state.canUse !== false;
   $('workspace').hidden = !permitted || ['formats', 'history', 'access'].includes(mode);
@@ -342,6 +453,7 @@ async function upload(files) {
   if (loading || state.jobs.some((j) => ['queued', 'running'].includes(j.status))) return;
   loading = true;
   cancelled = false;
+  waitController = new AbortController();
   loadingText = 'Uploading and scanning…';
   const controller = new AbortController();
   uploadController = controller;
@@ -352,7 +464,12 @@ async function upload(files) {
     for (const f of files) {
       if (cancelled) break;
       if (f.size > 5_000_000_000) throw new Error(f.name + ' exceeds the 5 GB limit.');
-      const upload = await api('uploads', { method: 'POST', body: { name: f.name, size: f.size } });
+      loadingText = 'Uploading and scanning…';
+      const upload = await quotaRequest(
+        'uploads',
+        { method: 'POST', body: { name: f.name, size: f.size } },
+        f.name,
+      );
       uploadID = upload.id;
       if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
       for (let offset = 0; offset < f.size; offset += upload.chunkSize) {
@@ -402,6 +519,7 @@ async function upload(files) {
       }
     }
     uploadController = undefined;
+    waitController = undefined;
     loading = false;
     $('files').value = '';
     render();
@@ -412,6 +530,7 @@ async function start() {
   $('error').hidden = true;
   loading = true;
   cancelled = false;
+  waitController = new AbortController();
   loadingText = 'Converting files…';
   render();
   try {
@@ -428,7 +547,17 @@ async function start() {
     // Submit and finish sequentially: the server still enforces its own queue.
     for (const spec of specs) {
       if (cancelled) break;
-      const result = await api('jobs', { method: 'POST', body: spec });
+      if (
+        state.jobs.some(
+          (job) =>
+            job.status === 'done' &&
+            matchesJob(job, spec) &&
+            state.history.some((result) => result.id === job.result?.id),
+        )
+      )
+        continue;
+      loadingText = 'Converting files…';
+      const result = await quotaRequest('jobs', { method: 'POST', body: spec }, 'unfinished files');
       while (true) {
         Object.assign(state, await api('status'));
         render();
@@ -436,13 +565,18 @@ async function start() {
         if (!job) throw new Error('This job expired. Convert the file again.');
         if (cancelled && ['queued', 'running'].includes(job.status))
           await api('cancel', { method: 'POST', body: { id: job.id } });
-        if (job && !['queued', 'running'].includes(job.status)) break;
+        if (job.status === 'done') break;
+        if (['error', 'cancelled'].includes(job.status)) {
+          if (cancelled) break;
+          throw new Error(job.error || 'Conversion cancelled. Retry to resume unfinished files.');
+        }
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
     }
   } catch (e) {
-    showError(e);
+    if (!cancelled) showError(e);
   } finally {
+    waitController = undefined;
     loading = false;
     render();
   }
@@ -480,10 +614,13 @@ $('delete-results').onclick = clear;
 $('run').onclick = start;
 $('compression').onchange = render;
 $('archive').onchange = render;
+$('quality').onchange = rememberChoices;
+$('width').onchange = rememberChoices;
 $('search').oninput = renderFormats;
 $('cancel').onclick = async () => {
   cancelled = true;
   uploadController?.abort();
+  waitController?.abort();
   try {
     for (const job of state.jobs.filter((j) => ['queued', 'running'].includes(j.status)))
       await api('cancel', { method: 'POST', body: { id: job.id } });
@@ -543,7 +680,7 @@ async function initialize() {
   state = await api('state');
   $('user').textContent = state.user;
   if (state.enrollmentUrl) $('enrollment-link').href = state.enrollmentUrl;
-  setMode('convert');
+  setMode(restoreChoices());
   renderFormats();
   if (invitationError) showError(invitationError);
 }

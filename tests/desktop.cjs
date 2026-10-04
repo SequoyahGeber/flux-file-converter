@@ -129,14 +129,81 @@ async function main() {
       .click();
     await page.getByPlaceholder('Search a format or category…').fill('png');
     assert.ok((await page.locator('.format-tags button').count()) >= 1);
-    await page.getByRole('button', { name: 'PNG', exact: true }).click();
-    await page.getByLabel('Close format details').click();
+    const formatTrigger = page.getByRole('button', { name: 'PNG', exact: true });
+    await formatTrigger.focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('dialog', { name: 'PNG files' }).waitFor();
+    assert.equal(
+      await page.getByLabel('Close format details').evaluate((el) => el === document.activeElement),
+      true,
+    );
+    for (const key of ['Shift+Tab', 'Tab', 'Tab', 'Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key);
+      assert.equal(
+        await page.evaluate(() => Boolean(document.activeElement.closest('[role="dialog"]'))),
+        true,
+      );
+    }
+    const contrasts = await page.evaluate(() => {
+      const luminance = (color) => {
+        const values = color
+          .match(/[\d.]+/g)
+          .slice(0, 3)
+          .map(Number)
+          .map((value) => {
+            value /= 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          });
+        return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+      };
+      return [
+        '.format-modal > p',
+        '.modal-details',
+        '.modal-formats > span',
+        '.modal-formats b',
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        let parent = element,
+          background;
+        while (parent) {
+          background = getComputedStyle(parent).backgroundColor;
+          if (background !== 'rgba(0, 0, 0, 0)') break;
+          parent = parent.parentElement;
+        }
+        const a = luminance(getComputedStyle(element).color),
+          b = luminance(background);
+        return { selector, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+      });
+    });
+    for (const result of contrasts) assert(result.ratio >= 4.5, JSON.stringify(result));
+    await page.keyboard.press('Escape');
+    assert.equal(await formatTrigger.evaluate((el) => el === document.activeElement), true);
     await page.getByRole('button', { name: /Settings/ }).click();
     await page.screenshot({ path: path.join(root, '06-settings.png') });
     assert.equal(await page.locator('.engine-status.unavailable').count(), 0);
     await page.getByRole('button', { name: /Recent files/ }).click();
     await page.screenshot({ path: path.join(root, '07-history.png') });
     assert.equal(await page.locator('.history-row').count(), 10);
+    const precise = path.join(root, 'Precise identifiers.json');
+    const originalJSON = '[{"id":9007199254740993,"amount":0.1234567890123456789}]';
+    await fs.writeFile(precise, originalJSON);
+    await page
+      .getByRole('button', { name: /Convert files/ })
+      .first()
+      .click();
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await electronApp.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    }, precise);
+    await page.getByRole('button', { name: /Choose files/ }).click();
+    await page.getByLabel('Output format for Precise identifiers.json').selectOption('csv');
+    await page.getByRole('button', { name: 'Convert file', exact: true }).click();
+    await page
+      .getByText(/cannot be converted without losing precision/)
+      .first()
+      .waitFor();
+    assert.equal((await page.evaluate(() => window.flux.getState())).history.length, 10);
+    assert.equal(await fs.readFile(precise, 'utf8'), originalJSON);
     const bridge = await page.evaluate(async () => ({
       arbitraryPaths: typeof window.flux.addPaths,
       pathExtraction: typeof window.flux.pathForFile,

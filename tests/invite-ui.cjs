@@ -45,7 +45,12 @@ async function main() {
     assert.equal(await visitor.locator('#access-nav').isVisible(), false);
     await admin.reload();
     await admin.getByRole('button', { name: '＋ Invite people' }).click();
+    const revoked = admin.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' && response.url().includes('/api/members/'),
+    );
     await admin.getByRole('button', { name: 'Revoke access', exact: true }).click();
+    assert.equal((await revoked).status(), 200);
     await visitor.reload();
     await visitor.locator('#invitation-required').waitFor();
     await visitor.goto(base + '/?invite=' + token);

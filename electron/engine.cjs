@@ -737,7 +737,7 @@ function validData(value, depth = 0, budget = { remaining: 1000000 }) {
   }
   return value;
 }
-async function structured(file, target, out) {
+async function readStructured(file) {
   if ((await fs.stat(file.path)).size > 50 * 1024 * 1024)
     throw new Error('Structured data conversion is limited to 50 MB per file.');
   const data = await readBounded(file.path, 50 * 1024 * 1024);
@@ -745,10 +745,10 @@ async function structured(file, target, out) {
   let value;
   switch (catalog.normalize(file.ext)) {
     case 'json':
-      value = JSON.parse(text);
+      value = require('./data-policy.cjs').parseJSON(text);
       break;
     case 'yaml':
-      value = YAML.parse(text, { maxAliasCount: 50 });
+      value = require('./data-policy.cjs').parseYAML(text, YAML);
       break;
     case 'xml':
       if (/<!DOCTYPE|<!ENTITY/i.test(text))
@@ -764,6 +764,8 @@ async function structured(file, target, out) {
     default:
       value = parse(text, {
         columns: (header) => {
+          if (header.some((name) => ['__proto__', 'constructor', 'prototype'].includes(name)))
+            throw new Error('Data contains an unsafe reserved key.');
           if (
             !header.length ||
             header.length > 1000 ||
@@ -779,6 +781,11 @@ async function structured(file, target, out) {
       });
   }
   validData(value);
+  if (['csv', 'tsv'].includes(file.ext)) require('./data-policy.cjs').tableShape(value);
+  return value;
+}
+async function structured(file, target, out) {
+  const value = await readStructured(file);
   let result;
   if (target === 'json') result = JSON.stringify(value, null, 2) + '\n';
   else if (target === 'yaml') result = YAML.stringify(value);
@@ -792,27 +799,7 @@ async function structured(file, target, out) {
     if (XMLValidator.validate(result) !== true)
       throw new Error('Some keys cannot be represented as valid XML element names.');
   } else {
-    if (
-      !Array.isArray(value) ||
-      value.some(
-        (row) =>
-          !row ||
-          typeof row !== 'object' ||
-          Array.isArray(row) ||
-          Object.values(row).some((v) => v !== null && typeof v === 'object'),
-      )
-    )
-      throw new Error(
-        'CSV and TSV require an array of flat records. Nested data cannot be converted to a table.',
-      );
-    const keys = new Set();
-    for (const row of value) {
-      for (const key of Object.keys(row)) keys.add(key);
-      if (keys.size > 1000) throw new Error('Tables are limited to 1,000 columns.');
-    }
-    const columns = [...keys];
-    if (value.length > 100000 || value.length * columns.length > 1000000)
-      throw new Error('Tables are limited to 100,000 rows and 1,000,000 cells.');
+    const columns = require('./data-policy.cjs').tableShape(value);
     result = stringify(value, {
       header: true,
       columns,
@@ -989,6 +976,7 @@ module.exports = {
   run,
   publish,
   structured,
+  readStructured,
   sanitizeOptions,
   catalog,
 };

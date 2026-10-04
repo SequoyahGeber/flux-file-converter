@@ -1,0 +1,23 @@
+Command line invocation:
+    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project ios/Flux.xcodeproj -scheme Flux -configuration Release -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath /tmp/flux-comprehensive-audit-20261004/ios-build CODE_SIGNING_ALLOWED=NO build
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+    SDKROOT = iphonesimulator27.0
+
+Resolve Package Graph
+
+Fetching from https://github.com/jpsim/Yams.git (cached)
+[Compiler command lines omitted from summary; full local log: /tmp/flux-comprehensive-audit-20261004/ios-build.txt]
+2026-10-04 12:08:09.057 appintentsmetadataprocessor[12402:947455] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:09.106 appintentsmetadataprocessor[12402:947455] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:11.763 appintentsmetadataprocessor[12417:947634] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:11.800 appintentsmetadataprocessor[12417:947634] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:19.393 appintentsmetadataprocessor[12646:948982] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:19.428 appintentsmetadataprocessor[12646:948982] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:24.716 appintentsmetadataprocessor[13018:950353] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:24.718 appintentsmetadataprocessor[13018:950353] warning: Metadata extraction skipped, no AppIntents.framework dependency found
+2026-10-04 12:08:24.745 appintentsnltrainingprocessor[13020:950355] Parsing options for appintentsnltrainingprocessor
+2026-10-04 12:08:24.746 appintentsnltrainingprocessor[13020:950355] Starting AppIntents SSU YAML Generation
+2026-10-04 12:08:24.747 appintentsnltrainingprocessor[13020:950355] No AppShortcuts found - Skipping.
+** BUILD SUCCEEDED **

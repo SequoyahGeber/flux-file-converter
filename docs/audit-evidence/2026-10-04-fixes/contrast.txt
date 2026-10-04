@@ -1,0 +1,3 @@
+{"selector":".format-modal > p","color":"rgb(118, 85, 139)","background":"rgb(255, 255, 255)","font":"12px","weight":"400","text":"Images. Add a file to see the compatible outputs available for its contents.","contrast":"6.10"}
+{"selector":".format-modal .modal-details","color":"rgb(111, 97, 123)","background":"rgb(255, 255, 255)","font":"10px","weight":"400","text":"Local conversion, compression, and ZIP packaging.","contrast":"5.72"}
+{"selector":".format-modal .modal-formats > span","color":"rgb(117, 98, 127)","background":"rgb(255, 255, 255)","font":"8px","weight":"400","text":"CAN CONVERT TO","contrast":"5.51"}

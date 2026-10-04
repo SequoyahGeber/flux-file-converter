@@ -1,0 +1,5 @@
+
+> flux-file-converter@1.0.1 test:mac
+> xcrun swiftc mac/Flux/SafeSave.swift tests/mac-policy.swift -o /tmp/flux-mac-policy && /tmp/flux-mac-policy
+
+Atomic safe-save checks passed

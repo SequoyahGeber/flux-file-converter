@@ -1,0 +1,20 @@
+Command line invocation:
+    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project mac/Flux.xcodeproj -scheme Flux -configuration Release -destination generic/platform=macOS -derivedDataPath /tmp/flux-comprehensive-audit-20261004/mac-build CODE_SIGNING_ALLOWED=NO build
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+
+Resolve Package Graph
+
+Fetching from https://github.com/jpsim/Yams.git (cached)
+
+[Compiler command lines omitted from summary; full local log: /tmp/flux-comprehensive-audit-20261004/mac-build.txt]
+2026-10-04 12:08:09.351 appintentsmetadataprocessor[12408:947494] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:09.384 appintentsmetadataprocessor[12408:947494] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:11.986 appintentsmetadataprocessor[12423:947826] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:12.027 appintentsmetadataprocessor[12423:947826] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:19.542 appintentsmetadataprocessor[12653:949024] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:19.580 appintentsmetadataprocessor[12653:949024] Extracted no relevant App Intents symbols, skipping writing output
+2026-10-04 12:08:25.758 appintentsmetadataprocessor[13028:950427] Starting appintentsmetadataprocessor export
+2026-10-04 12:08:25.759 appintentsmetadataprocessor[13028:950427] warning: Metadata extraction skipped, no AppIntents.framework dependency found
+** BUILD SUCCEEDED **

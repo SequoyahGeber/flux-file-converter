@@ -1448,7 +1448,7 @@ select {
 }
 .format-modal p {
   font-size: 12px;
-  color: #9a79b0;
+  color: #76558b;
   line-height: 1.8;
   margin-bottom: 20px;
 }
@@ -1457,7 +1457,7 @@ select {
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  color: #8b799b;
+  color: #6f617b;
   border-top: 1px solid #ece0f6;
   padding-top: 15px;
   margin-bottom: 24px;
@@ -1544,7 +1544,7 @@ select {
 .modal-formats > span {
   font-size: 8px;
   letter-spacing: 1px;
-  color: #a89bb2;
+  color: #75627f;
 }
 .modal-formats > div {
   display: flex;
@@ -1557,7 +1557,7 @@ select {
   font-size: 9px;
   padding: 5px 7px;
   background: #f4eef9;
-  color: #9574ae;
+  color: #715087;
   border: 1px solid #eadff2;
   border-radius: 4px;
 }

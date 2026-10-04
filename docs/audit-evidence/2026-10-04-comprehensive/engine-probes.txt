@@ -1,0 +1,16 @@
+precise.json -> csv: SUCCESS
+id,amount
+9007199254740992,0.12345678901234568
+
+precise.json -> yaml: SUCCESS
+- id: 9007199254740992
+  amount: 0.12345678901234568
+
+Duplicate CSV -> json: ERROR CSV needs unique, nonempty headers and at most 1,000 columns.
+Duplicate CSV -> parquet: SUCCESS
+[
+  {
+    "id":"first",
+    "id.1":"second"
+  }
+]

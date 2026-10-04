@@ -1,0 +1,5 @@
+Command line invocation:
+    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project ios/Flux.xcodeproj -scheme Flux -configuration Release -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath /tmp/flux-comprehensive-audit-20261004/ios-build CODE_SIGNING_ALLOWED=NO build
+
+[Full compiler log: /tmp/flux-audit-fixes-20261004/ios-build.txt]
+** BUILD SUCCEEDED **

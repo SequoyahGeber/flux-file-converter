@@ -1,0 +1,10 @@
+Eight-file upload succeeded.
+Warning after PNG selection: JPEG loses quality and transparency.
+Warning after rerender at PNG: PNG preserves pixels.
+Warning after lossy JPG selection: PNG preserves pixels.
+Eight-file conversion: 6 completed; 6 accepted; Too many requests. Please wait and try again.
+Status live semantics: {"role":null,"live":null}
+Mobile width {"client":390,"scroll":390}
+Format dialog opening focus: {"active":"PNG","inside":false,"dialogRole":null}
+Format dialog tab focus: [{"text":"PNG00","inside":false},{"text":"PNG24","inside":false},{"text":"PNG32","inside":false},{"text":"PNG48","inside":false},{"text":"PNG64","inside":false}]
+Close focus: {"active":"BUTTON","text":"PNG64"}

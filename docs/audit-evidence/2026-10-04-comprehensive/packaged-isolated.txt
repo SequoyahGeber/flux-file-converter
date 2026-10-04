@@ -1,0 +1,1 @@
+Packaged Mac app passed: relocated Office engine, relocated Python runtime, DOCX → PDF → DOCX through the desktop UI.

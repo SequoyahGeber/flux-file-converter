@@ -1,0 +1,27 @@
+CONVERT short.vtt -> srt: SUCCESS
+1
+00:00:01,000 --> 00:00:02,000
+Hello
+
+
+CONVERT hours.vtt -> srt: SUCCESS
+1
+00:00:01,000 --> 00:00:02,000
+Hello
+
+
+CONVERT ordered.epub -> txt: SUCCESS
+FIRST CHAPTER
+
+SECOND CHAPTER
+
+
+CONVERT equation.docx -> html: ERROR This DOCX contains oMath that the local layout engine does not support. The document was not flattened; you can explicitly extract TXT instead.
+CONVERT equation.docx -> pdf: ERROR This DOCX contains oMath that the local layout engine does not support. The document was not flattened; you can explicitly extract TXT instead.
+CONVERT precise.json -> csv: SUCCESS
+amount,id
+0.1234567890123456789,9007199254740993
+
+ZIP CREATION: SUCCESS size 1048694
+ZIP EXTRACTION: SUCCESS
+STORED ZIP EXTRACTION: SUCCESS

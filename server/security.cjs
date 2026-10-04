@@ -78,7 +78,11 @@ class RateLimit {
       w = { count: 0, until: now + milliseconds };
       this.windows.set(key, w);
     }
-    if (++w.count > count) throw fail('Too many requests. Please wait and try again.', 429);
+    if (w.count >= count)
+      throw Object.assign(fail('Too many requests. Please wait and try again.', 429), {
+        retryAfter: Math.max(1, Math.ceil((w.until - now) / 1000)),
+      });
+    w.count++;
     if (this.windows.size > 10000)
       for (const [k, v] of this.windows) if (now >= v.until) this.windows.delete(k);
   }

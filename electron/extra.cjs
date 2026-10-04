@@ -41,13 +41,19 @@ async function extraConvert(file, target, out, stage, engines, resources, signal
       [path.join(resources, 'advanced.py'), 'font', file.path, target, out],
       { signal },
     );
-  else if (file.family === 'table' || ['parquet', 'feather', 'ndjson'].includes(target))
+  else if (file.family === 'table' || ['parquet', 'feather', 'ndjson'].includes(target)) {
+    if ((await fs.stat(file.path)).size > 50 * 1024 * 1024)
+      throw new Error('Structured data conversion is limited to 50 MB per file.');
+    if (['csv', 'tsv', 'json'].includes(file.ext))
+      require('./data-policy.cjs').tableShape(await getEngine().readStructured(file));
     await run(
       engines.python,
       [path.join(resources, 'advanced.py'), 'table', file.path, target, out],
       { signal },
     );
-  else if (file.family === 'subtitle')
+    if ((await fs.stat(out)).size > 50 * 1024 * 1024)
+      throw new Error('Converted data exceeds 50 MB.');
+  } else if (file.family === 'subtitle')
     await run(
       engines.ffmpeg,
       ['-nostdin', '-y', '-v', 'error', '-i', file.path, '-map', '0:s:0', out],

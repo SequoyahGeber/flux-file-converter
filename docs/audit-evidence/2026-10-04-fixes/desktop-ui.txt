@@ -1,0 +1,18 @@
+
+> flux-file-converter@1.0.1 test:desktop
+> npm run build && node tests/desktop.cjs
+
+
+> flux-file-converter@1.0.1 build
+> vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 1902 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.63 kB │ gzip:  0.40 kB
+dist/assets/index-CVYi-QFo.css   22.21 kB │ gzip:  5.93 kB
+dist/assets/index-CS8bvNWH.js   270.54 kB │ gzip: 84.36 kB
+✓ built in 1.29s
+Desktop acceptance passed: batch conversion, lossless/lossy compression, ZIP creation, extraction, format search, settings, and history.

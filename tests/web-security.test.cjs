@@ -182,9 +182,17 @@ test('rate limits stop floods and recover only after the window expires', () => 
   const limiter = new RateLimit(() => time);
   limiter.check('user', 2, 100);
   limiter.check('user', 2, 100);
-  assert.throws(() => limiter.check('user', 2, 100));
+  assert.throws(
+    () => limiter.check('user', 2, 100),
+    (error) => error.status === 429 && error.retryAfter === 1,
+  );
   time = 111;
   limiter.check('user', 2, 100);
+  for (let i = 0; i < 30; i++) limiter.check('hour', 30, 3600000);
+  assert.throws(
+    () => limiter.check('hour', 30, 3600000),
+    (error) => error.status === 429 && error.retryAfter === 3600,
+  );
 });
 test('uploads, jobs and downloads are owner-scoped; scan failure cannot publish a result', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-web-test-'));

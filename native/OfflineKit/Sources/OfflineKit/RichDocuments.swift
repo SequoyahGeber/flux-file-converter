@@ -8,7 +8,7 @@ import AppKit
 import UIKit
 #endif
 
-private final class XMLNode {
+final class XMLNode {
     let name: String, attributes: [String: String]
     var children: [XMLNode] = [], text = ""
     init(_ name: String, _ attributes: [String: String]) { self.name = name; self.attributes = attributes }
@@ -17,7 +17,7 @@ private final class XMLNode {
     func descendants(_ name: String) -> [XMLNode] { children.flatMap { ($0.name == name ? [$0] : []) + $0.descendants(name) } }
     var value: String? { attributes["w:val"] }
 }
-private final class XMLTree: NSObject, XMLParserDelegate {
+final class XMLTree: NSObject, XMLParserDelegate {
     var root: XMLNode?, stack: [XMLNode] = [], count = 0, bytes = 0, failure: Error?
     let control: JobControl
     init(_ control: JobControl) { self.control = control }
@@ -92,7 +92,7 @@ enum RichDocuments {
         _ = try Archives.validate(archive, control: control)
         let document = try XMLTree.parse(Archives.read("word/document.xml", archive: archive, control: control), control: control)
         guard let body = document.first("w:body") else { throw LocalError.invalid("DOCX has no document body.") }
-        let unsupported = ["w:headerReference", "w:footerReference", "w:footnoteReference", "w:endnoteReference", "wp:anchor", "w:altChunk", "w:vMerge", "w:gridSpan", "w:object", "w:pict", "w:fldSimple"]
+        let unsupported = ["m:oMath", "m:oMathPara", "w:headerReference", "w:footerReference", "w:footnoteReference", "w:endnoteReference", "wp:anchor", "w:altChunk", "w:vMerge", "w:gridSpan", "w:object", "w:pict", "w:fldSimple"]
         for name in unsupported where !document.descendants(name).isEmpty {
             throw LocalError.invalid("This DOCX contains \(name.split(separator: ":").last!) that the local layout engine does not support. The document was not flattened; you can explicitly extract TXT instead.")
         }
@@ -134,6 +134,18 @@ enum RichDocuments {
             }
         }
         func paragraph(_ node: XMLNode) throws -> NSAttributedString {
+            // Validate content containers before collecting runs: unknown inline
+            // content (math, fields, tracked changes, etc.) must not disappear.
+            func validateContent(_ node: XMLNode) throws {
+                let allowed = node.name == "w:r"
+                    ? ["w:rPr", "w:t", "w:tab", "w:br", "w:cr", "w:drawing", "w:lastRenderedPageBreak", "w:noBreakHyphen", "w:softHyphen"]
+                    : ["w:pPr", "w:r", "w:hyperlink", "w:bookmarkStart", "w:bookmarkEnd", "w:proofErr"]
+                for child in node.children {
+                    guard allowed.contains(child.name) else { throw LocalError.invalid("This DOCX contains unsupported inline content (\(child.name)). No partial document was exported; TXT extraction is text-only and can omit unsupported content.") }
+                    if ["w:r", "w:hyperlink"].contains(child.name) { try validateContent(child) }
+                }
+            }
+            try validateContent(node)
             let properties = node.first("w:pPr")
             let style = inherited(properties?.first("w:pStyle")?.value)
             let text = NSMutableAttributedString(string: "")
@@ -156,6 +168,9 @@ enum RichDocuments {
                 for child in run.children {
                     if child.name == "w:t" { text.append(NSAttributedString(string: child.text, attributes: runStyle.attributes)) }
                     else if child.name == "w:tab" { text.append(NSAttributedString(string: "\t", attributes: runStyle.attributes)) }
+                    else if child.name == "w:cr" { text.append(NSAttributedString(string: "\n", attributes: runStyle.attributes)) }
+                    else if child.name == "w:noBreakHyphen" { text.append(NSAttributedString(string: "\u{2011}", attributes: runStyle.attributes)) }
+                    else if child.name == "w:softHyphen" { text.append(NSAttributedString(string: "\u{00AD}", attributes: runStyle.attributes)) }
                     else if child.name == "w:br" && child.attributes["w:type"] != "page" { text.append(NSAttributedString(string: "\n", attributes: runStyle.attributes)) }
                 }
             }

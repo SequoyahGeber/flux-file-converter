@@ -46,7 +46,7 @@ async function createApp(config, deps = {}) {
   const scanner = deps.scan || scan,
     worker = deps.rpc || ((...args) => rpc(...args));
   const sessions = new Map(),
-    limits = new RateLimit(),
+    limits = new RateLimit(deps.now),
     queue = new Queue(),
     work = new Set();
   function track(promise) {
@@ -462,6 +462,9 @@ async function createApp(config, deps = {}) {
             fileIds: ids,
             name: files[0].name,
             operation: op,
+            target: op === 'convert' ? spec.target : undefined,
+            compression: op === 'compress' ? spec.compression : undefined,
+            options: options(spec.options),
             status: 'queued',
             createdAt: Date.now(),
           };
@@ -606,12 +609,14 @@ async function createApp(config, deps = {}) {
       throw fail('Not found.', 404);
     } catch (e) {
       if (res.headersSent) res.destroy();
-      else
+      else {
+        if (e.retryAfter) res.setHeader('Retry-After', String(e.retryAfter));
         send(
           res,
           { error: e.status ? e.message : 'The request could not be completed.' },
           e.status || 500,
         );
+      }
     } finally {
       if (requestSession) requestSession.requests--;
     }

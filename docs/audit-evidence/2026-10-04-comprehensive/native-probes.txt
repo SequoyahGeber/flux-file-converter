@@ -1,0 +1,31 @@
+CONVERT short.vtt -> srt: SUCCESS
+
+00:01.000 --> 00:02.000
+Hello
+
+CONVERT hours.vtt -> srt: SUCCESS
+
+00:00:01,000 --> 00:00:02,000
+Hello
+
+CONVERT ordered.epub -> txt: SUCCESS
+SECOND CHAPTER
+
+CONTENTS NAVIGATION
+First
+Second
+
+FIRST CHAPTER
+
+
+CONVERT equation.docx -> html: SUCCESS
+<!doctype html><html><head><meta charset="utf-8"><title>Converted document</title></head><body><p style="white-space:pre-wrap;"><span style="font-family:'Helvetica';font-size:11.0pt;color:rgb(0,0,0);">Total: </span></p></body></html>
+CONVERT equation.docx -> pdf: SUCCESS
+CONVERT precise.json -> csv: SUCCESS
+amount,id
+0.1234567890123456789,9007199254740993
+
+ZIP CREATION: SUCCESS size 1152
+ZIP EXTRACTION: ERROR Archive expansion ratio exceeds the safety limit.
+STORED ZIP EXTRACTION: SUCCESS
+INDEPENDENT PDF EXTRACT: 'Total: \n'

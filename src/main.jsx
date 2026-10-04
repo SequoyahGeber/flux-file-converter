@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import { mergeJob } from './queue.mjs';
+import { Modal } from './Modal.jsx';
 
 const icons = {
   image: FileImage,
@@ -506,7 +507,7 @@ function App() {
           </div>
         </div>
       </aside>
-      <main className="main">
+      <main className="main" tabIndex={-1}>
         <header className="topbar">
           <div className="breadcrumb">
             Workspace
@@ -1606,77 +1607,70 @@ function App() {
         </div>
       )}
       {showPrivacy && nativeLocal && (
-        <div className="modal-backdrop" onClick={() => setShowPrivacy(false)}>
-          <div
-            className="format-modal policy-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="policy-title"
-            onClick={(e) => e.stopPropagation()}
+        <Modal
+          className="policy-modal"
+          labelId="policy-title"
+          onClose={() => setShowPrivacy(false)}
+        >
+          <button
+            className="icon-button modal-close"
+            aria-label="Close privacy policy"
+            onClick={() => setShowPrivacy(false)}
           >
-            <button
-              autoFocus
-              className="icon-button modal-close"
-              aria-label="Close privacy policy"
-              onClick={() => setShowPrivacy(false)}
-            >
-              <X size={18} />
-            </button>
-            <h2 id="policy-title">Privacy policy</h2>
-            <div className="policy-text">{reviewInfo.privacyText}</div>
-            <button className="secondary-button" onClick={() => action(() => api.openPrivacy())}>
-              Open public policy
-            </button>
-            <button className="secondary-button" onClick={() => action(() => api.openSupport())}>
-              Support
-            </button>
-          </div>
-        </div>
+            <X size={18} />
+          </button>
+          <h2 id="policy-title">Privacy policy</h2>
+          <div className="policy-text">{reviewInfo.privacyText}</div>
+          <button className="secondary-button" onClick={() => action(() => api.openPrivacy())}>
+            Open public policy
+          </button>
+          <button className="secondary-button" onClick={() => action(() => api.openSupport())}>
+            Support
+          </button>
+        </Modal>
       )}
       {selectedFormat && (
-        <div className="modal-backdrop" onClick={() => setSelectedFormat(null)}>
-          <div className="format-modal" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="modal-close icon-button"
-              aria-label="Close format details"
-              onClick={() => setSelectedFormat(null)}
-            >
-              <X size={19} />
-            </button>
-            <FileGlyph family={detailFamily?.id} ext={selectedFormat} large />
-            <h2>{selectedFormat.toUpperCase()} files</h2>
-            <p>
-              {detailFamily?.name}. Add a file to see the compatible outputs available for its
-              contents.
-            </p>
-            {formatTargets.length > 0 && (
-              <div className="modal-formats">
-                <span>CAN CONVERT TO</span>
-                <div>
-                  {formatTargets.map((t) => (
-                    <b key={t}>{formatLabel(t)}</b>
-                  ))}
-                </div>
+        <Modal labelId="format-title" onClose={() => setSelectedFormat(null)}>
+          <button
+            className="modal-close icon-button"
+            aria-label="Close format details"
+            onClick={() => setSelectedFormat(null)}
+          >
+            <X size={19} />
+          </button>
+          <FileGlyph family={detailFamily?.id} ext={selectedFormat} large />
+          <h2 id="format-title">{selectedFormat.toUpperCase()} files</h2>
+          <p>
+            {detailFamily?.name}. Add a file to see the compatible outputs available for its
+            contents.
+          </p>
+          {formatTargets.length > 0 && (
+            <div className="modal-formats">
+              <span>CAN CONVERT TO</span>
+              <div>
+                {formatTargets.map((t) => (
+                  <b key={t}>{formatLabel(t)}</b>
+                ))}
               </div>
-            )}
-            <div className="modal-details">
-              <ShieldCheck size={17} />
-              Local conversion, compression, and ZIP packaging.
             </div>
-            <button
-              className="primary-button"
-              onClick={() => {
-                setSelectedFormat(null);
-                setRoute('convert');
-                selectFiles();
-              }}
-            >
-              <Plus size={16} />
-              Add a file
-              <ArrowRight size={16} />
-            </button>
+          )}
+          <div className="modal-details">
+            <ShieldCheck size={17} />
+            Local conversion, compression, and ZIP packaging.
           </div>
-        </div>
+          <button
+            className="primary-button"
+            onClick={() => {
+              setSelectedFormat(null);
+              setRoute('convert');
+              selectFiles();
+            }}
+          >
+            <Plus size={16} />
+            Add a file
+            <ArrowRight size={16} />
+          </button>
+        </Modal>
       )}
     </div>
   );

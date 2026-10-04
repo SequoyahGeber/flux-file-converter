@@ -1,0 +1,8 @@
+
+> flux-file-converter@1.0.1 test:web
+> node tests/web-ui.cjs && node tests/invite-ui.cjs && node tests/login-ui.cjs && node tests/batch-ui.cjs
+
+Browser upload, conversion, custom save filename, download, format search, mobile layout, deletion and delayed upload cancellation passed.
+Owner invite creation, first-guest claim, hidden owner controls, URL removal and revocation passed.
+Three cross-site login redirects loaded the authenticated workspace without refresh; real JWT verification and browser fetch metadata passed.
+Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes and preserved focus passed (controlled clocks; stub codecs/scanner).

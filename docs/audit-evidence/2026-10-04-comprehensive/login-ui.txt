@@ -1,0 +1,1 @@
+Three cross-site login redirects loaded the authenticated workspace without refresh; real JWT verification and browser fetch metadata passed.

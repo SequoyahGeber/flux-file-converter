@@ -19,6 +19,11 @@ jobs:
         with: { node-version: '24', cache: npm }
       - run: npm ci --ignore-scripts
       - run: node --test tests/web-security.test.cjs tests/access.test.cjs tests/runtime.test.cjs tests/audit.test.cjs
+      - name: Reject lossy numeric exports
+        run: node --test --test-name-pattern='numeric tokens' tests/audit-fixes.test.cjs
+      - run: npx playwright install --with-deps chromium
+      - name: Verify browser conversion, access and resumable batches
+        run: npm run test:web
       - run: npm run format:check
       - run: npm run build
       - run: npm audit --omit=dev --audit-level=high
