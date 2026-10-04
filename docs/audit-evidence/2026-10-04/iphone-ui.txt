@@ -1,0 +1,25 @@
+iPhone simulator Release acceptance; action/compiler output omitted.
+Command line invocation:
+    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project ios/Flux.xcodeproj -scheme Flux -configuration Release -destination "platform=iOS Simulator,id=86973B02-A61E-4980-B881-3B74C117B66E" -derivedDataPath /tmp/flux-audit-ios-build -resultBundlePath /tmp/flux-audit-complete-ios-ui.xcresult CODE_SIGNING_ALLOWED=NO test
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+
+
+Test Case '-[FluxUITests.ReviewerAccessTests testReviewerCanReadPolicyConvertSamplesAndReachSystemSaveWithoutLogin]' passed (87.234 seconds).
+Test Suite 'ReviewerAccessTests' passed at 2026-10-04 00:45:37.659.
+	 Executed 1 test, with 0 failures (0 unexpected) in 87.234 (87.237) seconds
+Test Suite 'FluxUITests.xctest' passed at 2026-10-04 00:45:37.659.
+	 Executed 1 test, with 0 failures (0 unexpected) in 87.234 (87.238) seconds
+Test Suite 'All tests' passed at 2026-10-04 00:45:37.660.
+	 Executed 1 test, with 0 failures (0 unexpected) in 87.234 (87.239) seconds
+2026-10-04 00:45:37.987 xcodebuild[87056:490385] [MT] IDETestOperationsObserverDebug: 100.176 elapsed -- Testing started completed.
+2026-10-04 00:45:37.987 xcodebuild[87056:490385] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-04 00:45:37.987 xcodebuild[87056:490385] [MT] IDETestOperationsObserverDebug: 100.176 sec, +100.176 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/flux-audit-complete-ios-ui.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

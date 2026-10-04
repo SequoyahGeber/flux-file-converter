@@ -26,6 +26,19 @@ struct MacPolicyTests {
     let created = try String(contentsOf: newFile, encoding: .utf8)
     assert(created == "converted content")
     assert(fm.fileExists(atPath: source.path))
+    let folder = root.appendingPathComponent("source-folder")
+    try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+    try Data("nested".utf8).write(to: folder.appendingPathComponent("data"))
+    let exported = root.appendingPathComponent("saved-folder")
+    try SafeSave.commit(folder, to: exported, replaceExisting: false)
+    do {
+      try SafeSave.commit(folder, to: exported, replaceExisting: false)
+      fatalError("An existing folder must never be replaced")
+    } catch {
+      let preserved = try String(contentsOf: exported.appendingPathComponent("data"), encoding: .utf8)
+      assert(preserved == "nested")
+    }
+    assert(fm.fileExists(atPath: folder.path))
     print("Atomic safe-save checks passed")
   }
 }

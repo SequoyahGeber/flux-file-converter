@@ -1,0 +1,29 @@
+Test Suite 'Selected tests' started at 2026-10-04 00:42:10.068.
+Test Suite 'OfflineKitPackageTests.xctest' started at 2026-10-04 00:42:10.068.
+Test Suite 'ConversionTests' started at 2026-10-04 00:42:10.068.
+Test Case '-[OfflineKitTests.ConversionTests testLargeStoredZIPRoundTrip]' started.
+Test Case '-[OfflineKitTests.ConversionTests testLargeStoredZIPRoundTrip]' passed (0.256 seconds).
+Test Suite 'ConversionTests' passed at 2026-10-04 00:42:10.324.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.256 (0.256) seconds
+Test Suite 'OfflineKitPackageTests.xctest' passed at 2026-10-04 00:42:10.324.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.256 (0.256) seconds
+Test Suite 'Selected tests' passed at 2026-10-04 00:42:10.324.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.256 (0.257) seconds
+        0.32 real         0.07 user         0.21 sys
+            31752192  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                3098  page reclaims
+                 181  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  17  voluntary context switches
+                 225  involuntary context switches
+          3373082916  instructions retired
+          1180621320  cycles elapsed
+             8569552  peak memory footprint

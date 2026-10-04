@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { run, publish } = require('./engine.cjs');
+const { outputStem } = require('./io.cjs');
 async function archiveFiles(
   files,
   action,
@@ -19,8 +20,7 @@ async function archiveFiles(
     if (action === 'pack') {
       const manifest = path.join(stage, 'inputs.json');
       await fs.writeFile(manifest, JSON.stringify(files.map((f) => f.path)));
-      const name =
-        files.length === 1 ? files[0].name.replace(/[\/:]/g, '_').slice(0, 160) : 'Archive';
+      const name = files.length === 1 ? outputStem(files[0].name, 'Archive') : 'Archive';
       const output = path.join(stage, name + '.zip');
       await run(
         engines.archive,
@@ -62,11 +62,7 @@ async function archiveFiles(
       { signal },
     );
     if (signal?.aborted) throw Object.assign(new Error('Cancelled.'), { code: 'CANCELLED' });
-    const stem =
-      path
-        .basename(file.name, '.' + file.ext)
-        .replace(/[\/:]/g, '_')
-        .slice(0, 160) + '-extracted';
+    const stem = outputStem(path.basename(file.name, '.' + file.ext), 'Archive') + '-extracted';
     for (let i = 0; i < 10000; i++) {
       const dest = path.join(outputDir, stem + (i ? ` (${i})` : ''));
       try {

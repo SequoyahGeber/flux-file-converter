@@ -6,16 +6,19 @@ let state = { files: [], jobs: [], history: [], formats: [] },
   compression = new Map(),
   names = new Map(),
   loading = false,
-  cancelled = false;
+  cancelled = false,
+  uploadController,
+  loadingText = '';
 const bytes = (n) =>
   n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 function showError(e) {
   $('error').textContent = e.message || String(e);
   $('error').hidden = false;
 }
-async function api(url, { method = 'GET', body, headers = {} } = {}) {
+async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
   const response = await fetch('/api/' + url, {
     method,
+    signal,
     credentials: 'same-origin',
     headers: {
       ...(method !== 'GET' ? { 'X-Flux-Request': '1' } : {}),
@@ -99,17 +102,19 @@ function choice(f) {
   );
 }
 function render() {
-  $('queue').hidden = !state.files.length;
-  $('dropzone').hidden = Boolean(state.files.length);
+  // The status/cancel controls live in the queue, including the first upload
+  // before inspection has added any file rows.
+  $('queue').hidden = !state.files.length && !loading;
+  $('dropzone').hidden = Boolean(state.files.length) || loading;
   $('count').textContent =
     state.files.length +
     (state.files.length === 1 ? ' file · ' : ' files · ') +
     bytes(state.files.reduce((n, f) => n + f.size, 0));
   const active = state.jobs.some((j) => ['queued', 'running'].includes(j.status));
   $('run').disabled = active || loading || !state.files.length;
-  $('cancel').hidden = !active;
+  $('cancel').hidden = !active && !loading;
   $('status').textContent = loading
-    ? 'Uploading and scanning…'
+    ? loadingText || 'Working on your server…'
     : active
       ? 'Working on your server…'
       : 'Ready when you are.';
@@ -334,22 +339,34 @@ function renderFormats() {
   }
 }
 async function upload(files) {
+  if (loading || state.jobs.some((j) => ['queued', 'running'].includes(j.status))) return;
   loading = true;
+  cancelled = false;
+  loadingText = 'Uploading and scanning…';
+  const controller = new AbortController();
+  uploadController = controller;
+  let uploadID;
   $('error').hidden = true;
   render();
   try {
     for (const f of files) {
+      if (cancelled) break;
       if (f.size > 5_000_000_000) throw new Error(f.name + ' exceeds the 5 GB limit.');
       const upload = await api('uploads', { method: 'POST', body: { name: f.name, size: f.size } });
+      uploadID = upload.id;
+      if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
       for (let offset = 0; offset < f.size; offset += upload.chunkSize) {
+        if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
         $('status').textContent =
           'Uploading ' + f.name + ' · ' + Math.floor((offset / f.size) * 100) + '%';
         await api('uploads/' + upload.id, {
           method: 'PUT',
           body: f.slice(offset, offset + upload.chunkSize),
           headers: { 'Content-Type': 'application/octet-stream', 'X-Flux-Offset': String(offset) },
+          signal: controller.signal,
         });
       }
+      if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
       $('status').textContent = 'Scanning ' + f.name + '…';
       const completion = await api('uploads/' + upload.id + '/complete', {
         method: 'POST',
@@ -358,25 +375,44 @@ async function upload(files) {
       while (true) {
         Object.assign(state, await api('status'));
         const job = state.jobs.find((j) => j.id === completion.id);
+        if (!job) throw new Error('This upload expired. Add the file again.');
+        if (cancelled && ['queued', 'running'].includes(job.status))
+          await api('cancel', { method: 'POST', body: { id: job.id } });
         render();
         if (job?.status === 'done') break;
         if (['error', 'cancelled'].includes(job?.status))
           throw new Error(job.error || 'Upload cancelled.');
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
+      uploadID = undefined;
     }
   } catch (e) {
-    showError(e);
+    if (!cancelled) showError(e);
   } finally {
+    if (uploadID) {
+      // An interrupted chunk may still be closing on the server. Retry only
+      // this upload's cleanup, retaining all previously completed files.
+      for (let attempt = 0; attempt < 10; attempt++) {
+        try {
+          await api('uploads/' + uploadID, { method: 'DELETE' });
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+    }
+    uploadController = undefined;
     loading = false;
     $('files').value = '';
     render();
   }
 }
 async function start() {
+  if (loading || state.jobs.some((j) => ['queued', 'running'].includes(j.status))) return;
   $('error').hidden = true;
   loading = true;
   cancelled = false;
+  loadingText = 'Converting files…';
   render();
   try {
     const specs =
@@ -397,6 +433,9 @@ async function start() {
         Object.assign(state, await api('status'));
         render();
         const job = state.jobs.find((j) => j.id === result.id);
+        if (!job) throw new Error('This job expired. Convert the file again.');
+        if (cancelled && ['queued', 'running'].includes(job.status))
+          await api('cancel', { method: 'POST', body: { id: job.id } });
         if (job && !['queued', 'running'].includes(job.status)) break;
         await new Promise((resolve) => setTimeout(resolve, 1500));
       }
@@ -411,6 +450,9 @@ async function start() {
 async function clear() {
   try {
     await api('files', { method: 'DELETE' });
+    targets.clear();
+    compression.clear();
+    names.clear();
     Object.assign(state, await api('status'));
     render();
   } catch (e) {
@@ -441,8 +483,13 @@ $('archive').onchange = render;
 $('search').oninput = renderFormats;
 $('cancel').onclick = async () => {
   cancelled = true;
-  for (const job of state.jobs.filter((j) => ['queued', 'running'].includes(j.status)))
-    await api('cancel', { method: 'POST', body: { id: job.id } });
+  uploadController?.abort();
+  try {
+    for (const job of state.jobs.filter((j) => ['queued', 'running'].includes(j.status)))
+      await api('cancel', { method: 'POST', body: { id: job.id } });
+  } catch (e) {
+    showError(e);
+  }
 };
 document.body.ondragover = (e) => {
   e.preventDefault();

@@ -114,9 +114,49 @@ async function main() {
     await page.locator('#result-list button.download').waitFor();
     await page.locator('#delete-results').click();
     await page.getByText('Your completed downloads will appear here.').waitFor();
+    // Cancellation while the reservation response is delayed must stop the
+    // upload before any file bytes or inspection request are sent.
+    await page.getByRole('button', { name: '⇄ Convert files' }).click();
+    let releaseReservation, reservationCreated;
+    const held = new Promise((resolve) => {
+      releaseReservation = resolve;
+    });
+    const created = new Promise((resolve) => {
+      reservationCreated = resolve;
+    });
+    let inspections = 0;
+    page.on('request', (request) => {
+      if (request.url().endsWith('/complete')) inspections++;
+    });
+    await page.route('**/api/uploads', async (route) => {
+      const response = await route.fetch();
+      reservationCreated(response.status());
+      await held;
+      await route.fulfill({ response }).catch((error) => errors.push(error.message));
+    });
+    try {
+      await page.locator('#files').setInputFiles({
+        name: 'cancel-before-upload.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from('synthetic test input'),
+      });
+      assert.equal(await created, 201);
+      await page.locator('#cancel').click();
+      const cleanup = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'DELETE' && response.url().includes('/api/uploads/'),
+      );
+      releaseReservation();
+      assert.equal((await cleanup).status(), 200);
+      await page.waitForFunction(() => document.querySelector('#cancel').hidden);
+      assert.equal(inspections, 0, 'Cancelled files must never enter scanning.');
+    } finally {
+      releaseReservation();
+      await page.unroute('**/api/uploads');
+    }
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log(
-      'Browser upload, conversion, custom save filename, download, format search, mobile layout and deletion passed.',
+      'Browser upload, conversion, custom save filename, download, format search, mobile layout, deletion and delayed upload cancellation passed.',
     );
   } finally {
     await browser.close();

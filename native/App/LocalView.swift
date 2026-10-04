@@ -149,7 +149,7 @@ struct LocalView: View {
                     do {
                         try await Task.detached {
                             guard !FileManager.default.fileExists(atPath: destination.path) else { throw LocalError.invalid("A folder with this name already exists. Choose another location.") }
-                            try FileManager.default.copyItem(at: result.url, to: destination)
+                            try SafeSave.commit(result.url, to: destination, replaceExisting: false)
                         }.value
                         model.message = "Saved to \(parent.lastPathComponent)."
                     } catch { model.error = error.localizedDescription }

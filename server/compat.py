@@ -6,9 +6,10 @@ args = sys.argv[1:]
 if name == 'ditto':
     source, out = map(pathlib.Path, args[-2:])
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for entry in sorted(source.rglob('*')) if source.is_dir() else [source]:
+        for entry in source.rglob('*') if source.is_dir() else [source]:
             if entry.is_symlink(): raise ValueError('Links cannot be archived.')
-            if entry.is_file(): archive.write(entry, entry.relative_to(source) if source.is_dir() else entry.name)
+            if not entry.is_file() and not entry.is_dir(): raise ValueError('Special files cannot be archived.')
+            archive.write(entry, entry.relative_to(source) if source.is_dir() else entry.name)
 elif name == 'sips':
     if args[:3] != ['-s', 'format', 'png'] or args[-2] != '--out': raise ValueError('Invalid image operation')
     subprocess.run(['/usr/local/bin/magick', args[3] + '[0]', args[-1]], check=True)

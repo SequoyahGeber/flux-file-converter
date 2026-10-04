@@ -31,24 +31,36 @@ enum StructuredData {
             try result.write(to: output, atomically: false, encoding: .utf8)
         } else {
             guard let records = object as? [[String: Any]] else { throw LocalError.invalid("CSV/TSV output requires an array of objects.") }
-            let headers = Set(records.flatMap { $0.keys }).sorted()
-            guard headers.count <= 1000, records.count <= 100_000 else { throw LocalError.invalid("Table exceeds 1,000 columns or 100,000 rows.") }
+            guard records.count <= 100_000 else { throw LocalError.invalid("Table exceeds 100,000 rows.") }
+            var keys = Set<String>()
+            for record in records {
+                try control.check()
+                keys.formUnion(record.keys)
+                guard keys.count <= 1000 else { throw LocalError.invalid("Table exceeds 1,000 columns.") }
+            }
+            let headers = keys.sorted()
+            guard records.count <= 1_000_000 / max(1, headers.count) else { throw LocalError.invalid("Table exceeds 1,000,000 cells.") }
             let delimiter = target == "tsv" ? "\t" : ","
-            var result = headers.map { quote($0, separator: delimiter) }.joined(separator: delimiter) + "\r\n"
+            var result = Data()
+            func appendRow(_ cells: [String]) throws {
+                let data = Data((cells.joined(separator: delimiter) + "\r\n").utf8)
+                guard result.count + data.count <= LocalPolicy.textLimit else { throw LocalError.invalid("Converted table exceeds 16 MB.") }
+                result.append(data)
+            }
+            try appendRow(headers.map { quote(safeCell($0), separator: delimiter) })
             for record in records {
                 try control.check()
                 let row = try headers.map { key -> String in
                     guard let value = record[key], !(value is NSNull) else { return "" }
                     let cell: String
-                    if let string = value as? String { cell = string }
-                    else if let number = value as? NSNumber { cell = number.stringValue }
+                    if let string = value as? String { cell = safeCell(string) }
+                    else if let number = value as? NSNumber { cell = CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : number.stringValue }
                     else { cell = String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]), as: UTF8.self) }
                     return quote(cell, separator: delimiter)
                 }
-                result += row.joined(separator: delimiter) + "\r\n"
-                if result.utf8.count > LocalPolicy.textLimit { throw LocalError.invalid("Converted table exceeds 16 MB.") }
+                try appendRow(row)
             }
-            try result.write(to: output, atomically: false, encoding: .utf8)
+            try result.write(to: output)
         }
     }
     static func validate(_ node: Node, depth: Int, budget: inout Int, control: JobControl) throws {
@@ -103,9 +115,22 @@ enum StructuredData {
         }
         return string
     }
+    static func safeCell(_ value: String) -> String {
+        guard let first = value.first, ["=", "+", "-", "@", "\t", "\r"].contains(first) else { return value }
+        return "'" + value
+    }
     static func parseCSV(_ text: String, separator: Character, control: JobControl) throws -> [[String]] {
         var rows: [[String]] = [], row: [String] = [], field = "", quoted = false, afterQuote = false, skipLF = false
-        var iterator = text.makeIterator(), current = iterator.next(), count = 0
+        var iterator = text.makeIterator(), current = iterator.next(), count = 0, cells = 0
+        func appendField() throws {
+            cells += 1
+            guard row.count < 1000, cells <= 1_000_000 else { throw LocalError.invalid("Table exceeds its column or cell limit.") }
+            row.append(field); field = ""; afterQuote = false
+        }
+        func appendRow() throws {
+            guard rows.count < 100_000 else { throw LocalError.invalid("Table exceeds its row limit.") }
+            rows.append(row); row = []
+        }
         while let character = current {
             count += 1; if count % 4096 == 0 { try control.check() }
             let next = iterator.next()
@@ -117,9 +142,9 @@ enum StructuredData {
                     quoted = false; afterQuote = true
                 } else { field.append(character) }
             } else if character == separator {
-                row.append(field); field = ""; afterQuote = false
+                try appendField()
             } else if character == "\r" || character == "\n" || character == "\r\n" {
-                row.append(field); rows.append(row); row = []; field = ""; afterQuote = false; skipLF = character == "\r"
+                try appendField(); try appendRow(); skipLF = character == "\r"
             } else if character == "\"" && field.isEmpty && !afterQuote { quoted = true }
             else {
                 guard !afterQuote, character != "\"" else { throw LocalError.invalid("CSV contains malformed quotes.") }
@@ -129,7 +154,7 @@ enum StructuredData {
             current = next
         }
         guard !quoted else { throw LocalError.invalid("CSV has an unclosed quote.") }
-        if !field.isEmpty || !row.isEmpty || afterQuote { row.append(field); rows.append(row) }
+        if !field.isEmpty || !row.isEmpty || afterQuote { try appendField(); try appendRow() }
         return rows
     }
 }

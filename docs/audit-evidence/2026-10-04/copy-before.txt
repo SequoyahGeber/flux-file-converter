@@ -1,0 +1,19 @@
+512 MiB streaming copy: 0.11077933333308465 seconds
+        0.41 real         0.00 user         0.13 sys
+           546177024  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               33556  page reclaims
+                   1  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   3  voluntary context switches
+                 110  involuntary context switches
+           940173472  instructions retired
+           553721107  cycles elapsed
+           541819720  peak memory footprint

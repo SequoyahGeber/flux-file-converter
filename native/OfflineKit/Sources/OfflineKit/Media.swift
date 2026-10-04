@@ -24,7 +24,8 @@ enum Media {
         let probe = try AVAudioFile(forReading: input)
         let description = probe.fileFormat.streamDescription.pointee
         let integerPCM = description.mFormatID == kAudioFormatLinearPCM && description.mFormatFlags & kAudioFormatFlagIsFloat == 0
-        let common: AVAudioCommonFormat = integerPCM ? .pcmFormatInt32 : probe.fileFormat.commonFormat == .pcmFormatFloat64 ? .pcmFormatFloat64 : .pcmFormatFloat32
+        let integerAudio = integerPCM || description.mFormatID == kAudioFormatAppleLossless || description.mFormatID == kAudioFormatFLAC
+        let common: AVAudioCommonFormat = integerAudio ? .pcmFormatInt32 : probe.fileFormat.commonFormat == .pcmFormatFloat64 ? .pcmFormatFloat64 : .pcmFormatFloat32
         let source = try AVAudioFile(forReading: input, commonFormat: common, interleaved: true)
         let format = source.processingFormat
         guard format.sampleRate.isFinite, format.sampleRate >= 8000, format.sampleRate <= 192000, format.channelCount > 0, format.channelCount <= 8 else { throw LocalError.invalid("Audio sample rate or channel count exceeds its safety limit.") }
@@ -37,7 +38,7 @@ enum Media {
         } else {
             settings[AVFormatIDKey] = kAudioFormatLinearPCM
             settings[AVLinearPCMBitDepthKey] = common == .pcmFormatFloat64 ? 64 : 32
-            settings[AVLinearPCMIsFloatKey] = !integerPCM
+            settings[AVLinearPCMIsFloatKey] = !integerAudio
             settings[AVLinearPCMIsBigEndianKey] = target == "aiff"
             settings[AVLinearPCMIsNonInterleaved] = false
         }
@@ -61,10 +62,20 @@ enum Media {
         guard export.supportedFileTypes.contains(type) else { throw LocalError.unsupported }
         export.outputURL = output; export.outputFileType = type; export.shouldOptimizeForNetworkUse = false
         export.exportAsynchronously(completionHandler: {})
-        while export.status == .waiting || export.status == .exporting || export.status == .unknown {
-            if control.isCancelled { export.cancelExport(); throw LocalError.cancelled }
-            try await Task.sleep(nanoseconds: 100_000_000)
+        do {
+            while export.status == .waiting || export.status == .exporting || export.status == .unknown {
+                if control.isCancelled { export.cancelExport() }
+                // Wait for the exporter to stop before removing its working folder.
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+        } catch {
+            export.cancelExport()
+            while export.status == .waiting || export.status == .exporting || export.status == .unknown {
+                await Task.detached { try? await Task.sleep(nanoseconds: 100_000_000) }.value
+            }
+            throw error
         }
+        try control.check()
         guard export.status == .completed else { throw export.error ?? LocalError.unsupported }
     }
     static func convert(_ input: URL, output: URL, target: String, options: ConversionOptions, control: JobControl) async throws {

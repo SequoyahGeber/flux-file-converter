@@ -8,6 +8,8 @@ Only `fileconverter.sequoyahgeber.com` is routed through an outbound Cloudflare 
 
 There is no unauthenticated production mode, server path selector, Docker socket, host network, privileged mode, GPU device or mount of Unraid shares. An anonymous health endpoint returns only `ok`; Cloudflare still protects the external hostname.
 
+An authenticated top-level GET navigation to the landing page is allowed after a cross-site login redirect, including an invitation query. It still requires the valid Access token and application host. Cross-site API reads/writes, embedded documents and subresources remain blocked; write requests also retain the exact Origin and custom-header checks.
+
 Invitations are 256-bit random credentials, expire after 24 hours and can be claimed once by the first authenticated account. Only the configured owner can create/revoke links or revoke members. Atomic, serialized transactions prevent two accounts claiming one link. Only token hashes are persisted; URLs are removed from browser history after reading them. Membership metadata is stored in `access.json` on the private API volume and survives updates. Revocation blocks subsequent API requests and cancels queued/running jobs. The Cloudflare policy still requires MFA even for an invited account. New users enroll authenticators themselves through the App Launcher; enrollment does not grant conversion access. An unused bearer invite can be stolen or forwarded, so share it privately and revoke it if exposed.
 
 ## Isolation

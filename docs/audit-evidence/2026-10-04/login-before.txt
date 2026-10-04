@@ -1,0 +1,12 @@
+{"errors":[],"metadata":[{"site":"cross-site","mode":"navigate","dest":"document"}]}
+{"error":"Cross-site requests are blocked."}
+locator.waitFor: Timeout 10000ms exceeded.
+Call log:
+[2m  - waiting for getByText('login-test@example.com', { exact: true }) to be visible[22m
+
+    at main (/Users/sequoyahgeber/Documents/ChatGPT/File converter/tests/login-ui.cjs:74:10) {
+  log: [
+    "  - waiting for getByText('login-test@example.com', { exact: true }) to be visible"
+  ],
+  name: 'TimeoutError'
+}

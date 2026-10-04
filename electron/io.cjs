@@ -17,4 +17,27 @@ async function writeAll(handle, buffer, position) {
     offset += bytesWritten;
   }
 }
-module.exports = { writeAll };
+async function readBounded(file, limit) {
+  const fs = require('node:fs');
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of fs.createReadStream(file)) {
+    size += chunk.length;
+    if (size > limit) throw new Error('Text or structured data exceeds its size limit.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, size);
+}
+
+function outputStem(value, fallback = 'converted') {
+  value = value.replace(/[^\p{L}\p{N} ._()-]/gu, '_').replace(/^[.\s-]+/, '');
+  let result = '',
+    size = 0;
+  for (const character of value) {
+    size += Buffer.byteLength(character);
+    if (size > 160) break;
+    result += character;
+  }
+  return result.trimEnd() || fallback;
+}
+module.exports = { writeAll, readBounded, outputStem };

@@ -22,8 +22,8 @@ import OfflineKit
     }
     func select(_ urls: [URL]) {
         guard !busy else { return }
-        result?.remove(); result = nil; message = ""; error = ""
         guard urls.count <= 100 else { error = "Choose up to 100 files at a time."; return }
+        result?.remove(); result = nil; message = ""; error = ""
         inputs = Array(urls.prefix(100))
         filename = inputs.count == 1 ? inputs[0].deletingPathExtension().lastPathComponent + "-converted" : "Archive"
         target = formats.first ?? "zip"
@@ -40,6 +40,7 @@ import OfflineKit
                 let converted = try await Task.detached(priority: .userInitiated) {
                     try await OfflineEngine.convert(inputs: urls, target: target, name: filename, options: options, control: job)
                 }.value
+                if job.isCancelled { converted.remove(); throw LocalError.cancelled }
                 result = converted; message = "Ready to save."
             } catch { self.error = error.localizedDescription; message = "" }
             busy = false; control = nil

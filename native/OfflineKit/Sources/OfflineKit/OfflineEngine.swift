@@ -14,13 +14,17 @@ public enum OfflineEngine {
         }
         let ext = inputs[0].pathExtension.lowercased()
         guard LocalFormats.outputs(for: ext).contains(target) else { throw LocalError.unsupported }
+        guard options.quality.isFinite, (0...1).contains(options.quality) else { throw LocalError.invalid("Quality must be between 0 and 100 percent.") }
+        let filename = target == "unzip" ? try LocalPolicy.safeName(name, extension: "folder").dropLast(7).description : try LocalPolicy.safeName(name, extension: target)
         let fm = FileManager.default, directory = jobsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let inputDirectory = directory.appendingPathComponent("inputs", isDirectory: true)
-        try fm.createDirectory(at: inputDirectory, withIntermediateDirectories: false)
-        var values = URLResourceValues(); values.isExcludedFromBackup = true
-        var mutable = directory; try mutable.setResourceValues(values)
         do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            // User output names cannot start with a dot, so they cannot collide
+            // with the staging folder (including an extraction named "inputs").
+            let inputDirectory = directory.appendingPathComponent(".inputs", isDirectory: true)
+            try fm.createDirectory(at: inputDirectory, withIntermediateDirectories: false)
+            var values = URLResourceValues(); values.isExcludedFromBackup = true
+            var mutable = directory; try mutable.setResourceValues(values)
             var staged: [URL] = [], names: [String] = [], total: Int64 = 0
             for (index, source) in inputs.enumerated() {
                 try control.check()
@@ -40,7 +44,6 @@ public enum OfflineEngine {
                 guard try LocalPolicy.fileSize(copy) == size else { throw LocalError.invalid("The selected file changed while it was being copied.") }
                 staged.append(copy); names.append(source.lastPathComponent)
             }
-            let filename = target == "unzip" ? try LocalPolicy.safeName(name, extension: "folder").dropLast(7).description : try LocalPolicy.safeName(name, extension: target)
             let output = directory.appendingPathComponent(filename)
             if target == "zip" { try Archives.zip(staged, names: names, output: output, compress: options.compressArchive, control: control) }
             else if target == "unzip" { try Archives.extract(staged[0], to: output, control: control) }

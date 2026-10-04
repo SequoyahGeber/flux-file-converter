@@ -62,12 +62,14 @@ enum ImagesPDF {
                     try control.check(); text += (document.page(at: index)?.string ?? "") + "\n\n"
                     if text.utf8.count > LocalPolicy.textLimit { throw LocalError.invalid("Extracted text exceeds 16 MB.") }
                 }
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw LocalError.invalid("This PDF has no selectable text. Local OCR is not available.") }
                 try text.write(to: output, atomically: false, encoding: .utf8)
             } else if target == "pdf" {
                 guard let context = CGContext(output as CFURL, mediaBox: nil, nil) else { throw LocalError.unsupported }
                 for index in 0..<document.pageCount {
+                    try autoreleasepool {
                     try control.check()
-                    guard let page = document.page(at: index) else { continue }
+                    guard let page = document.page(at: index) else { throw LocalError.invalid("A PDF page could not be read.") }
                     let rendered = try render(page, scale: 1)
                     let jpeg = NSMutableData()
                     guard let destination = CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil) else { throw LocalError.unsupported }
@@ -75,6 +77,7 @@ enum ImagesPDF {
                     guard CGImageDestinationFinalize(destination), let provider = CGDataProvider(data: jpeg),
                           let compressed = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { throw LocalError.unsupported }
                     drawPDFPage(compressed, box: page.bounds(for: .mediaBox), context: context)
+                    }
                 }
                 context.closePDF()
             } else {

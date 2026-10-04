@@ -2,6 +2,66 @@ import Foundation
 import ZIPFoundation
 
 enum Archives {
+    // ZIPFoundation's Sequence stops at an unreadable/encrypted entry. Check
+    // the complete directory first so a partial extraction cannot look successful.
+    static func declaredEntries(_ url: URL, control: JobControl) throws -> Int {
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let size = try file.seekToEnd()
+        func read(_ offset: UInt64, _ count: Int) throws -> Data {
+            guard offset <= size, UInt64(count) <= size - offset else { throw LocalError.invalid("Truncated ZIP directory.") }
+            try file.seek(toOffset: offset)
+            guard let data = try file.read(upToCount: count), data.count == count else { throw LocalError.invalid("Truncated ZIP directory.") }
+            return data
+        }
+        func number(_ data: Data, _ offset: Int, _ count: Int) -> UInt64 {
+            var value: UInt64 = 0
+            for i in 0..<count { value |= UInt64(data[offset + i]) << (i * 8) }
+            return value
+        }
+        guard size >= 22 else { throw LocalError.invalid("Invalid ZIP directory.") }
+        let tailOffset = size - min(size, 65557), tail = try read(tailOffset, Int(size - tailOffset))
+        var end: Int?
+        for offset in stride(from: tail.count - 22, through: 0, by: -1) {
+            if number(tail, offset, 4) == 0x06054b50, offset + 22 + Int(number(tail, offset + 20, 2)) == tail.count {
+                end = offset; break
+            }
+        }
+        guard let end, number(tail, end + 4, 2) == 0, number(tail, end + 6, 2) == 0,
+              number(tail, end + 8, 2) == number(tail, end + 10, 2) else { throw LocalError.invalid("Invalid or multi-volume ZIP directory.") }
+        var count = number(tail, end + 10, 2), directorySize = number(tail, end + 12, 4), start = number(tail, end + 16, 4)
+        let endOffset = tailOffset + UInt64(end)
+        if count == 0xffff || directorySize == 0xffffffff || start == 0xffffffff {
+            guard endOffset >= 20 else { throw LocalError.invalid("Missing ZIP64 directory.") }
+            let locator = try read(endOffset - 20, 20)
+            guard number(locator, 0, 4) == 0x07064b50, number(locator, 4, 4) == 0, number(locator, 16, 4) == 1 else { throw LocalError.invalid("Invalid ZIP64 directory.") }
+            let record = try read(number(locator, 8, 8), 56)
+            guard number(record, 0, 4) == 0x06064b50, number(record, 4, 8) >= 44,
+                  number(record, 16, 4) == 0, number(record, 20, 4) == 0,
+                  number(record, 24, 8) == number(record, 32, 8) else { throw LocalError.invalid("Invalid ZIP64 directory.") }
+            count = number(record, 32, 8); directorySize = number(record, 40, 8); start = number(record, 48, 8)
+        }
+        guard count <= 2000, start <= endOffset, directorySize <= endOffset - start else { throw LocalError.invalid("Invalid ZIP directory or archive exceeds 2,000 entries.") }
+        let limit = start + directorySize
+        var cursor = start
+        for _ in 0..<Int(count) {
+            try control.check()
+            guard cursor <= limit, limit - cursor >= 46 else { throw LocalError.invalid("Truncated ZIP directory.") }
+            let header = try read(cursor, 46)
+            guard number(header, 0, 4) == 0x02014b50 else { throw LocalError.invalid("Invalid ZIP entry.") }
+            guard number(header, 8, 2) & 0x41 == 0 else { throw LocalError.invalid("Encrypted ZIP files are not supported. Unlock the archive first.") }
+            guard [0, 8].contains(number(header, 10, 2)) else { throw LocalError.invalid("This ZIP compression method is not supported.") }
+            let system = number(header, 5, 1), mode = (number(header, 38, 4) >> 16) & 0xf000
+            if system == 3 || system == 19 {
+                guard [0, 0x8000, 0x4000].contains(mode) else { throw LocalError.invalid("Links and special files in ZIP archives are not supported.") }
+            }
+            let length = 46 + number(header, 28, 2) + number(header, 30, 2) + number(header, 32, 2)
+            guard length <= limit - cursor else { throw LocalError.invalid("Truncated ZIP directory.") }
+            cursor += length
+        }
+        guard cursor == limit else { throw LocalError.invalid("ZIP directory contains unsupported or inconsistent metadata.") }
+        return Int(count)
+    }
     static func path(_ path: String) throws -> String {
         let value = path.hasSuffix("/") ? String(path.dropLast()) : path
         let pieces = value.split(separator: "/", omittingEmptySubsequences: false)
@@ -14,6 +74,7 @@ enum Archives {
         return value
     }
     static func validate(_ archive: Archive, control: JobControl) throws -> [Entry] {
+        let expected = try declaredEntries(archive.url, control: control)
         var entries: [Entry] = [], names = Set<String>(), size: Int64 = 0
         for entry in archive {
             try control.check()
@@ -29,6 +90,7 @@ enum Archives {
             if size > LocalPolicy.expandedLimit { throw LocalError.invalid("Extracted archive exceeds 1 GB.") }
             entries.append(entry)
         }
+        guard entries.count == expected else { throw LocalError.invalid("ZIP contains an unreadable entry. No partial result was extracted.") }
         return entries
     }
     static func extract(_ input: URL, to directory: URL, control: JobControl) throws {
@@ -49,9 +111,11 @@ enum Archives {
             defer { try? file.close() }
             var count: Int64 = 0
             let checksum = try archive.extract(entry, bufferSize: 65536) { chunk in
+                try autoreleasepool {
                 try control.check(); count += Int64(chunk.count); total += Int64(chunk.count)
                 guard count <= entry.uncompressedSize, total <= LocalPolicy.expandedLimit else { throw LocalError.invalid("Archive expansion exceeds its declared size.") }
                 try file.write(contentsOf: chunk)
+                }
             }
             guard checksum == entry.checksum, count == entry.uncompressedSize else { throw LocalError.invalid("Archive checksum or size is incorrect.") }
         }
@@ -66,8 +130,10 @@ enum Archives {
             let size = try LocalPolicy.fileSize(input), handle = try FileHandle(forReadingFrom: input)
             defer { try? handle.close() }
             try archive.addEntry(with: name, type: .file, uncompressedSize: size, compressionMethod: compress ? .deflate : .none, bufferSize: 65536) { position, count in
+                try autoreleasepool {
                 try control.check(); try handle.seek(toOffset: UInt64(position))
                 return try handle.read(upToCount: count) ?? Data()
+                }
             }
         }
     }

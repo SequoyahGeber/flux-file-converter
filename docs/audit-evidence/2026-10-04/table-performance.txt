@@ -1,0 +1,30 @@
+Test Suite 'Selected tests' started at 2026-10-04 00:40:24.557.
+Test Suite 'OfflineKitPackageTests.xctest' started at 2026-10-04 00:40:24.558.
+Test Suite 'ConversionTests' started at 2026-10-04 00:40:24.558.
+Test Case '-[OfflineKitTests.ConversionTests testFiftyThousandRecordTableConversion]' started.
+Test Case '-[OfflineKitTests.ConversionTests testFiftyThousandRecordTableConversion]' passed (0.324 seconds).
+Test Suite 'ConversionTests' passed at 2026-10-04 00:40:24.883.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.324 (0.325) seconds
+Test Suite 'OfflineKitPackageTests.xctest' passed at 2026-10-04 00:40:24.883.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.324 (0.325) seconds
+Test Suite 'Selected tests' passed at 2026-10-04 00:40:24.883.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.324 (0.327) seconds
+Flux audit 50,000 record CSV/JSON round trip: 0.3129305000002205 seconds
+        0.41 real         0.30 user         0.07 sys
+            98418688  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                7244  page reclaims
+                 390  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                  91  voluntary context switches
+                1209  involuntary context switches
+          7619497145  instructions retired
+          1592806770  cycles elapsed
+            56804096  peak memory footprint

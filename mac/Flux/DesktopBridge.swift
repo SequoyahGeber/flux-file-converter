@@ -36,7 +36,16 @@ import OfflineKit
         // Its UI has a separate fail-closed blocker for all network resources.
         let rules = #"[{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^wss?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^ftp://"},"action":{"type":"block"}}]"#
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "FluxOfflineUI", encodedContentRuleList: rules) { [weak self] list, error in
-            guard let self, let list, error == nil else { return }
+            guard let self else { return }
+            guard let list, error == nil else {
+                let alert = NSAlert()
+                alert.messageText = "Flux could not start"
+                alert.informativeText = "The local interface protection could not be loaded. Close Flux and open it again."
+                alert.addButton(withTitle: "Quit Flux")
+                alert.runModal()
+                NSApplication.shared.terminate(nil)
+                return
+            }
             self.webView.configuration.userContentController.add(list)
             self.webView.load(URLRequest(url: URL(string: "flux-app://app/index.html")!))
         }
@@ -69,6 +78,7 @@ import OfflineKit
             return targets(ext)
         case "selectFiles":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
+            busy = true; defer { busy = false }
             let panel = NSOpenPanel(); panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
             let response = await present(panel)
             return response == .OK ? try register(panel.urls) : []
@@ -80,6 +90,7 @@ import OfflineKit
         case "openPrivacy": NSWorkspace.shared.open(ReviewResources.privacyURL); return true
         case "selectOutput":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
+            busy = true; defer { busy = false }
             let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true; panel.prompt = "Choose save folder"
             guard await present(panel) == .OK, let url = panel.url else { return outputLabel }
             if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
@@ -199,12 +210,20 @@ import OfflineKit
             do {
                 let inputs = ids.compactMap { files[$0] }
                 let result = try await Task.detached(priority: .userInitiated) { try await OfflineEngine.convert(inputs: inputs, target: target, name: name, options: options, control: token) }.value
+                if token.isCancelled { result.remove(); throw LocalError.cancelled }
                 let resultID = UUID().uuidString; results[resultID] = result
                 let size = result.isDirectory ? Int64(0) : try LocalPolicy.fileSize(result.url)
                 let record: [String: Any] = ["id": resultID, "name": result.url.lastPathComponent, "target": result.isDirectory ? "folder" : target, "size": size,
                     "operation": operation, "sourceName": source.lastPathComponent, "sourceFamily": families.first { ($0["formats"] as! [String]).contains(ext) }?["id"] ?? "unsupported",
                     "completedAt": Date().timeIntervalSince1970 * 1000, "saved": false, "savedBytes": ((try? LocalPolicy.fileSize(source)) ?? 0) - size]
                 history.insert(record, at: 0); update["result"] = record; update["status"] = "done"; update["progress"] = 100
+                while history.count > 100 {
+                    let discarded = history.removeLast()
+                    if let discardedID = discarded["id"] as? String {
+                        results.removeValue(forKey: discardedID)?.remove()
+                        saved.removeValue(forKey: discardedID)
+                    }
+                }
             } catch { update["status"] = cancelled ? "cancelled" : "error"; update["error"] = error.localizedDescription; update["progress"] = 0 }
             control = nil; emit("update", update)
         }
@@ -221,7 +240,7 @@ import OfflineKit
             let scoped = parent.startAccessingSecurityScopedResource(); defer { if scoped { parent.stopAccessingSecurityScopedResource() } }
             try await Task.detached {
                 guard !FileManager.default.fileExists(atPath: destination.path) else { throw LocalError.invalid("A folder with this name already exists. Choose another location.") }
-                try FileManager.default.copyItem(at: result.url, to: destination)
+                try SafeSave.commit(result.url, to: destination, replaceExisting: false)
             }.value
         } else {
             let panel = NSSavePanel(); panel.nameFieldStringValue = result.url.lastPathComponent; panel.canCreateDirectories = true; panel.directoryURL = outputFolder

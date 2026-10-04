@@ -318,6 +318,7 @@ function App() {
     }
   }
   async function selectFiles() {
+    if (adding || running) return;
     if (!api) {
       setError('Open the Flux Mac app to add and convert local files.');
       return;
@@ -351,6 +352,7 @@ function App() {
     }
   }
   async function start() {
+    if (adding || running || !api) return;
     const options = { quality, width: Number(width), lossless: mediaMode === 'lossless' };
     let requests;
     if (mode === 'archive' && archiveMode === 'pack')
@@ -822,7 +824,11 @@ function App() {
                           ))}
                         </select>
                       )}
-                      <button className="text-button" disabled={running} onClick={selectFiles}>
+                      <button
+                        className="text-button"
+                        disabled={running || adding}
+                        onClick={selectFiles}
+                      >
                         <Plus size={16} />
                         Add files
                       </button>
@@ -1041,7 +1047,11 @@ function App() {
                         Cancel batch
                       </button>
                     ) : (
-                      <button className="primary-button" disabled={!pending.length} onClick={start}>
+                      <button
+                        className="primary-button"
+                        disabled={!pending.length || adding}
+                        onClick={start}
+                      >
                         {mode === 'convert' ? (
                           <ArrowRightLeft size={16} />
                         ) : mode === 'compress' ? (
@@ -1225,7 +1235,21 @@ function App() {
                   onClick={() =>
                     action(async () => {
                       setHistory(await api.clearHistory());
-                      setToast('History cleared. Your output files are still saved.');
+                      if (nativeLocal)
+                        setQueue((q) =>
+                          q.map((f) => ({
+                            ...f,
+                            status: 'ready',
+                            result: undefined,
+                            error: undefined,
+                            progress: 0,
+                          })),
+                        );
+                      setToast(
+                        nativeLocal
+                          ? 'History and temporary results cleared. Saved files are kept.'
+                          : 'History cleared. Your output files are still saved.',
+                      );
                     })
                   }
                 >

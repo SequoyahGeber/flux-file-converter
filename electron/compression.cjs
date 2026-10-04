@@ -3,6 +3,7 @@ const path = require('node:path');
 const sharp = require('sharp');
 const { run, publish, sanitizeOptions } = require('./engine.cjs');
 const { normalize } = require('./catalog.cjs');
+const { outputStem } = require('./io.cjs');
 
 function compressionOptions(file, engines) {
   const ext = normalize(file.ext),
@@ -98,19 +99,29 @@ async function compress(
     throw Object.assign(new Error('Compression cancelled.'), { code: 'CANCELLED' });
   await fs.mkdir(outputDir, { recursive: true });
   const stage = await fs.mkdtemp(path.join(outputDir, '.flux-'));
-  const stem =
-    path
-      .basename(file.name, '.' + file.ext)
-      .replace(/[^\p{L}\p{N} ._()-]/gu, '_')
-      .slice(0, 160) || 'file';
+  const stem = outputStem(path.basename(file.name, '.' + file.ext), 'file');
   const out = path.join(stage, `${stem}-compressed.${choice.target}`);
   const opts = sanitizeOptions(options);
   let keptOriginal = false;
   try {
     onProgress(5);
-    if (mode === 'archive')
-      await run('/usr/bin/ditto', ['-c', '-k', '--norsrc', file.path, out], { signal });
-    else if (file.family === 'image') {
+    if (mode === 'archive') {
+      if (!engines.archive) throw new Error('The archive engine is unavailable.');
+      const manifest = path.join(stage, 'inputs.json');
+      await fs.writeFile(manifest, JSON.stringify([file.path]));
+      await run(
+        engines.archive,
+        [
+          path.join(resources, 'archive.py'),
+          manifest,
+          'zip',
+          out,
+          path.join(stage, 'contents'),
+          'pack',
+        ],
+        { signal },
+      );
+    } else if (file.family === 'image') {
       if (mode === 'lossless' && choice.target === 'jpg')
         await run(engines.jpegtran, ['-copy', 'all', '-optimize', '-outfile', out, file.path], {
           signal,

@@ -375,3 +375,31 @@ test('Cancellation produces no result and cleans temporary conversion files', as
     false,
   );
 });
+test('odd-width video scales to a valid even width when a maximum size is selected', async () => {
+  const input = path.join(root, 'odd-width.mp4');
+  await run(engines.ffmpeg, [
+    '-nostdin',
+    '-y',
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc=size=161x121:rate=5',
+    '-t',
+    '0.2',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv444p',
+    input,
+  ]);
+  const result = await convertTo(input, 'mov', { width: 720 });
+  const probe = JSON.parse(
+    (await run(engines.ffprobe, ['-v', 'error', '-show_streams', '-of', 'json', result.path]))
+      .stdout,
+  );
+  assert.equal(probe.streams[0].width, 160);
+  assert.equal(probe.streams[0].width % 2, 0);
+  assert.equal(probe.streams[0].height % 2, 0);
+});

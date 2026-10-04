@@ -3,6 +3,7 @@ const fss = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { run } = require('./process.cjs');
+const { readBounded, outputStem } = require('./io.cjs');
 const { bundledEngines } = require('./bundled-engines.cjs');
 const { pathToFileURL } = require('node:url');
 const sharp = require('sharp');
@@ -469,7 +470,7 @@ async function media(file, target, out, options, engines, signal, progress) {
       '-map',
       '0:a:0?',
       '-vf',
-      `scale=${options.width ? `min(${options.width}\\,iw)` : 'trunc(iw/2)*2'}:-2`,
+      `scale=${options.width ? `trunc(min(${options.width}\\,iw)/2)*2` : 'trunc(iw/2)*2'}:-2`,
     );
     if (target === 'webm')
       args.push(
@@ -724,21 +725,23 @@ async function pdf(file, target, out, stage, options, engines, signal, progress)
   await run(engines.pandoc, [htmlPath, '-f', 'html', '-t', target, '-s', '-o', out], { signal });
   return out;
 }
-function validData(value, depth = 0) {
+function validData(value, depth = 0, budget = { remaining: 1000000 }) {
+  if (--budget.remaining < 0) throw new Error('Data contains too many values.');
   if (depth > 100) throw new Error('Data is nested too deeply.');
   if (value && typeof value === 'object') {
     for (const [key, child] of Object.entries(value)) {
       if (['__proto__', 'constructor', 'prototype'].includes(key))
         throw new Error('Data contains an unsafe reserved key.');
-      validData(child, depth + 1);
+      validData(child, depth + 1, budget);
     }
   }
   return value;
 }
 async function structured(file, target, out) {
-  if (file.size > 50 * 1024 * 1024)
+  if ((await fs.stat(file.path)).size > 50 * 1024 * 1024)
     throw new Error('Structured data conversion is limited to 50 MB per file.');
-  const text = await fs.readFile(file.path, 'utf8');
+  const data = await readBounded(file.path, 50 * 1024 * 1024);
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(data);
   let value;
   switch (catalog.normalize(file.ext)) {
     case 'json':
@@ -760,7 +763,16 @@ async function structured(file, target, out) {
       break;
     default:
       value = parse(text, {
-        columns: true,
+        columns: (header) => {
+          if (
+            !header.length ||
+            header.length > 1000 ||
+            header.some((name) => !name) ||
+            new Set(header).size !== header.length
+          )
+            throw new Error('CSV needs unique, nonempty headers and at most 1,000 columns.');
+          return header;
+        },
         delimiter: file.ext === 'tsv' ? '\t' : ',',
         skip_empty_lines: true,
         bom: true,
@@ -793,7 +805,14 @@ async function structured(file, target, out) {
       throw new Error(
         'CSV and TSV require an array of flat records. Nested data cannot be converted to a table.',
       );
-    const columns = [...new Set(value.flatMap(Object.keys))];
+    const keys = new Set();
+    for (const row of value) {
+      for (const key of Object.keys(row)) keys.add(key);
+      if (keys.size > 1000) throw new Error('Tables are limited to 1,000 columns.');
+    }
+    const columns = [...keys];
+    if (value.length > 100000 || value.length * columns.length > 1000000)
+      throw new Error('Tables are limited to 100,000 rows and 1,000,000 cells.');
     result = stringify(value, {
       header: true,
       columns,
@@ -801,6 +820,8 @@ async function structured(file, target, out) {
       escape_formulas: true,
     });
   }
+  if (Buffer.byteLength(result) > 50 * 1024 * 1024)
+    throw new Error('Converted data exceeds 50 MB.');
   await fs.writeFile(out, result);
 }
 async function publish(stagePath, outputDir) {
@@ -817,6 +838,7 @@ async function publish(stagePath, outputDir) {
   throw new Error('Could not find an unused output name.');
 }
 function sanitizeOptions(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) options = {};
   const width = Number(options.width) || 0;
   return {
     quality: ['high', 'balanced', 'small'].includes(options.quality) ? options.quality : 'balanced',
@@ -837,11 +859,7 @@ async function convert(
   if (signal?.aborted) throw cancelled();
   await fs.mkdir(outputDir, { recursive: true });
   const stage = await fs.mkdtemp(path.join(outputDir, '.flux-'));
-  const stem =
-    path
-      .basename(file.name, '.' + file.ext)
-      .replace(/[^\p{L}\p{N} ._()-]/gu, '_')
-      .slice(0, 160) || 'converted';
+  const stem = outputStem(path.basename(file.name, '.' + file.ext));
   const out = path.join(stage, `${stem}.${target}`);
   let product = out;
   const opts = sanitizeOptions(options);

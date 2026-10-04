@@ -1,0 +1,62 @@
+Native release tests; compilation output omitted.
+Test Suite 'All tests' started at 2026-10-04 00:41:26.095.
+Test Suite 'OfflineKitPackageTests.xctest' started at 2026-10-04 00:41:26.096.
+Test Suite 'ConversionTests' started at 2026-10-04 00:41:26.096.
+Test Case '-[OfflineKitTests.ConversionTests testAliasAndXMLAttackRejection]' started.
+Test Case '-[OfflineKitTests.ConversionTests testAliasAndXMLAttackRejection]' passed (0.037 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testBundledReviewerSamplesUseRealConversionsAndPreserveInputs]' started.
+Test Case '-[OfflineKitTests.ConversionTests testBundledReviewerSamplesUseRealConversionsAndPreserveInputs]' passed (0.110 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testCancellationAndInvalidFilesLeaveNoWorkingFiles]' started.
+Test Case '-[OfflineKitTests.ConversionTests testCancellationAndInvalidFilesLeaveNoWorkingFiles]' passed (0.012 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testCopyRejectsLinksAndPreservesExistingDestinations]' started.
+Test Case '-[OfflineKitTests.ConversionTests testCopyRejectsLinksAndPreservesExistingDestinations]' passed (0.001 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testCSVJSONYAMLRoundTrip]' started.
+Test Case '-[OfflineKitTests.ConversionTests testCSVJSONYAMLRoundTrip]' passed (0.045 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testCSVLimitsApplyToFinalRowWithoutNewline]' started.
+Test Case '-[OfflineKitTests.ConversionTests testCSVLimitsApplyToFinalRowWithoutNewline]' passed (0.014 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testCSVPreservesBooleansAndProtectsFormulaCells]' started.
+Test Case '-[OfflineKitTests.ConversionTests testCSVPreservesBooleansAndProtectsFormulaCells]' passed (0.009 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testDocumentRoundTripsAndUnicodePDF]' started.
+Test Case '-[OfflineKitTests.ConversionTests testDocumentRoundTripsAndUnicodePDF]' passed (0.102 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testEncryptedSpecialAndUnreadableZIPEntriesRejectTheWholeArchive]' started.
+Test Case '-[OfflineKitTests.ConversionTests testEncryptedSpecialAndUnreadableZIPEntriesRejectTheWholeArchive]' passed (0.025 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testExtractionNameCannotCollideWithStagedInputs]' started.
+Test Case '-[OfflineKitTests.ConversionTests testExtractionNameCannotCollideWithStagedInputs]' passed (0.017 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testFiftyThousandRecordTableConversion]' started.
+Test Case '-[OfflineKitTests.ConversionTests testFiftyThousandRecordTableConversion]' passed (0.247 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testHostileZIPPathsAndExpansionAreRejected]' started.
+Test Case '-[OfflineKitTests.ConversionTests testHostileZIPPathsAndExpansionAreRejected]' passed (0.012 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testInvalidQualityDoesNotCreateWorkingFiles]' started.
+Test Case '-[OfflineKitTests.ConversionTests testInvalidQualityDoesNotCreateWorkingFiles]' passed (0.001 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testLargeStoredZIPRoundTrip]' started.
+Test Case '-[OfflineKitTests.ConversionTests testLargeStoredZIPRoundTrip]' passed (0.305 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testLocalMP4MKVRemux]' started.
+Test Case '-[OfflineKitTests.ConversionTests testLocalMP4MKVRemux]' passed (0.019 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testPCMtoLosslessALACAndBack]' started.
+Test Case '-[OfflineKitTests.ConversionTests testPCMtoLosslessALACAndBack]' passed (0.027 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testPDFtoPNGKeepsOriginalThroughCancellationFailureAndCleanup]' started.
+Test Case '-[OfflineKitTests.ConversionTests testPDFtoPNGKeepsOriginalThroughCancellationFailureAndCleanup]' passed (0.048 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testPNGtoJPEGandPDF]' started.
+Test Case '-[OfflineKitTests.ConversionTests testPNGtoJPEGandPDF]' passed (0.028 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testRepeatedConversionsReleaseTheirWorkingFolders]' started.
+Test warning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.
+Case '-[OfflineKitTests.ConversionTests testRepeatedConversionsReleaseTheirWorkingFolders]' passed (0.816 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testRepeatedDOCXImagesCannotExhaustDecodedMemory]' started.
+Test Case '-[OfflineKitTests.ConversionTests testRepeatedDOCXImagesCannotExhaustDecodedMemory]' passed (0.030 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testScannedPDFTextExtractionReportsMissingText]' started.
+Test Case '-[OfflineKitTests.ConversionTests testScannedPDFTextExtractionReportsMissingText]' passed (0.018 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testStyledDOCXPreservesPDFTablesImagesAndHTMLFonts]' started.
+Test Case '-[OfflineKitTests.ConversionTests testStyledDOCXPreservesPDFTablesImagesAndHTMLFonts]' passed (0.039 seconds).
+Test Case '-[OfflineKitTests.ConversionTests testZIPRoundTripAndNames]' started.
+Test Case '-[OfflineKitTests.ConversionTests testZIPRoundTripAndNames]' passed (0.017 seconds).
+Test Suite 'ConversionTests' passed at 2026-10-04 00:41:28.076.
+	 Executed 23 tests, with 0 failures (0 unexpected) in 1.978 (1.979) seconds
+Test Suite 'OfflineKitPackageTests.xctest' passed at 2026-10-04 00:41:28.076.
+	 Executed 23 tests, with 0 failures (0 unexpected) in 1.978 (1.980) seconds
+Test Suite 'All tests' passed at 2026-10-04 00:41:28.076.
+	 Executed 23 tests, with 0 failures (0 unexpected) in 1.978 (1.980) seconds
+Flux audit 50,000 record CSV/JSON round trip: 0.2404691666661165 seconds
+◇ Test run started.
+↳ Testing Library Version: 2077
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

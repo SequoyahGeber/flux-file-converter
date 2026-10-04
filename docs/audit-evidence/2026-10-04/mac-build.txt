@@ -1,0 +1,11 @@
+Universal Mac Release build summary; verbose compiler output omitted.
+Command line invocation:
+    /Applications/Xcode-beta.app/Contents/Developer/usr/bin/xcodebuild -project mac/Flux.xcodeproj -scheme Flux -configuration Release -destination generic/platform=macOS -derivedDataPath /tmp/flux-audit-mac-build CODE_SIGNING_ALLOWED=NO PRODUCT_BUNDLE_IDENTIFIER=com.sequoyah.flux.audit build
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+    PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.audit
+
+
+Architectures: x86_64 arm64 (verified with lipo -archs).
+** BUILD SUCCEEDED **

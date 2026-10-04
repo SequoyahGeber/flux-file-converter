@@ -48,7 +48,7 @@ public enum LocalFormats {
         }
         if target == "jpg" { return "Lossy JPEG compression. Transparency is filled with white; only the first frame is converted." }
         if images.contains(source) { return "Converts the first image frame. Palette formats and color-space changes can alter colors." }
-        if data.contains(source) { return "CSV/TSV require an array of records. Complex nested values use JSON strings in cells." }
+        if data.contains(source) { return "CSV/TSV require an array of records. Complex nested values use JSON strings in cells. Formula-like text is prefixed with an apostrophe for spreadsheet safety." }
         return "Conversion stays on this device."
     }
 }

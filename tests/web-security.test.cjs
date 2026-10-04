@@ -28,6 +28,7 @@ test('Cloudflare login verifies signatures, issuer, audience, expiry and request
       .sign(keys.privateKey);
   const req = {
     method: 'GET',
+    url: '/',
     headers: { host: 'flux.example.com', 'cf-access-jwt-assertion': await token() },
   };
   assert.equal((await auth(req)).email, 'a@example.com');
@@ -60,6 +61,51 @@ test('Cloudflare login verifies signatures, issuer, audience, expiry and request
       method: 'POST',
       headers: { ...req.headers, origin: config.origin, 'x-flux-request': '1' },
     }),
+  );
+  // The browser retains cross-site metadata after the identity-provider
+  // redirect. Only a top-level GET of the static landing page may pass.
+  const redirected = {
+    ...req,
+    headers: {
+      ...req.headers,
+      'sec-fetch-site': 'cross-site',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-dest': 'document',
+    },
+  };
+  for (const url of ['/', '/?invite=synthetic-invitation'])
+    assert.equal((await auth({ ...redirected, url })).email, 'a@example.com');
+  for (const url of ['/api/state', '/api/status', '/api/download/test', '/app.js'])
+    await assert.rejects(auth({ ...redirected, url }), /Cross-site requests are blocked/);
+  for (const headers of [
+    { 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' },
+    { 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' },
+    { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' },
+    { 'sec-fetch-mode': undefined, 'sec-fetch-dest': 'document' },
+    { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': undefined },
+  ])
+    await assert.rejects(
+      auth({ ...redirected, headers: { ...redirected.headers, ...headers } }),
+      /Cross-site requests are blocked/,
+    );
+  await assert.rejects(
+    auth({
+      ...redirected,
+      method: 'POST',
+      headers: { ...redirected.headers, origin: config.origin, 'x-flux-request': '1' },
+    }),
+    /Cross-site requests are blocked/,
+  );
+  await assert.rejects(
+    auth({
+      ...redirected,
+      headers: { ...redirected.headers, 'cf-access-jwt-assertion': undefined },
+    }),
+    /Sign in through Cloudflare Access/,
+  );
+  await assert.rejects(
+    auth({ ...redirected, headers: { ...redirected.headers, host: 'attacker.example' } }),
+    /Invalid application host/,
   );
 });
 test('filenames reject traversal, injected options, devices and control characters', () => {

@@ -1,0 +1,17 @@
+✔ Cloudflare login verifies signatures, issuer, audience, expiry and request origin (32.684458ms)
+✔ filenames reject traversal, injected options, devices and control characters (0.167834ms)
+✔ the complete engine catalog loads through the authenticated state endpoint (26.411ms)
+✔ the global queue is bounded and executes one job at a time (0.173458ms)
+✔ rate limits stop floods and recover only after the window expires (0.05525ms)
+✔ uploads, jobs and downloads are owner-scoped; scan failure cannot publish a result (15.23875ms)
+✔ a missing scratch file releases upload capacity after a failed chunk write (4.599166ms)
+✔ the overall job deadline aborts scanning and publishes no file (55.234459ms)
+✔ the single container retains hard limits, gVisor and no published ports (11.695833ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 231.18125

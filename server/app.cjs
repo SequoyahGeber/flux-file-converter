@@ -19,13 +19,19 @@ const {
   options,
 } = require('./security.cjs');
 async function json(req) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const c of req) {
-    body += c;
-    if (Buffer.byteLength(body) > 32000) throw fail('Request is too large.', 413);
+    size += c.length;
+    if (size > 32000) throw fail('Request is too large.', 413);
+    chunks.push(c);
   }
   try {
-    return JSON.parse(body);
+    const value = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)),
+    );
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    return value;
   } catch {
     throw fail('Invalid JSON.');
   }
@@ -41,7 +47,15 @@ async function createApp(config, deps = {}) {
     worker = deps.rpc || ((...args) => rpc(...args));
   const sessions = new Map(),
     limits = new RateLimit(),
-    queue = new Queue();
+    queue = new Queue(),
+    work = new Set();
+  function track(promise) {
+    work.add(promise);
+    promise.then(
+      () => work.delete(promise),
+      () => work.delete(promise),
+    );
+  }
   let stored = 0,
     reserved = 0,
     uploading = 0,
@@ -80,6 +94,8 @@ async function createApp(config, deps = {}) {
         results: new Map(),
         jobs: new Map(),
         active: 0,
+        requests: 0,
+        removing: false,
         expiry: Date.now() + LIMITS.ttl,
         email: user.email,
       };
@@ -89,19 +105,28 @@ async function createApp(config, deps = {}) {
     return s;
   }
   async function remove(s) {
-    for (const item of [...s.files.values(), ...s.results.values()]) stored -= item.size;
-    for (const upload of s.uploads.values()) reserved -= upload.size;
-    s.files.clear();
-    s.uploads.clear();
-    s.results.clear();
-    s.jobs.clear();
-    await fs.rm(s.dir, { force: true, recursive: true });
+    s.removing = true;
+    try {
+      await fs.rm(s.dir, { force: true, recursive: true });
+      for (const item of [...s.files.values(), ...s.results.values()]) stored -= item.size;
+      for (const upload of s.uploads.values()) reserved -= upload.size;
+      s.files.clear();
+      s.uploads.clear();
+      s.results.clear();
+      s.jobs.clear();
+    } finally {
+      s.removing = false;
+    }
   }
   const sweep = setInterval(async () => {
     for (const [id, s] of sessions)
-      if (!s.active && Date.now() > s.expiry) {
-        sessions.delete(id);
-        await remove(s);
+      if (!s.active && !s.requests && !s.removing && Date.now() > s.expiry) {
+        try {
+          await remove(s);
+          sessions.delete(id);
+        } catch {
+          console.error('Temporary file cleanup failed; it will be retried.');
+        }
       }
   }, 30000);
   sweep.unref();
@@ -127,6 +152,7 @@ async function createApp(config, deps = {}) {
   }
   const server = http.createServer(async (req, res) => {
     headers(res);
+    let requestSession;
     try {
       // Unauthenticated health carries no app, user, engine, or file details.
       if (req.url === '/health' && req.method === 'GET') {
@@ -197,6 +223,9 @@ async function createApp(config, deps = {}) {
           throw fail('An invitation is required to use this workspace.', 403);
       }
       const s = session(user);
+      if (s.removing) throw fail('Temporary files are being cleared. Try again shortly.', 409);
+      requestSession = s;
+      s.requests++;
       if (req.method === 'GET' && url.pathname === '/api/state') {
         send(res, {
           ...view(s),
@@ -289,6 +318,8 @@ async function createApp(config, deps = {}) {
           upload = s.uploads.get(id);
         if (!upload || upload.busy || upload.offset !== upload.size)
           throw fail('Upload is incomplete.', 409);
+        if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);
+        if (s.jobs.size >= 100) throw fail('Clear recent jobs before submitting more.', 429);
         upload.busy = true;
         s.active++;
         let committed = false;
@@ -305,70 +336,99 @@ async function createApp(config, deps = {}) {
           controller = new AbortController();
         Object.defineProperty(job, 'controller', { value: controller });
         s.jobs.set(jobId, job);
-        queue
-          .add(() =>
-            bounded(job, controller, async () => {
-              if (controller.signal.aborted) throw fail('Cancelled.');
-              job.status = 'running';
-              const scanMode = await scanner(upload.path, { signal: controller.signal });
-              const inspected = await worker(
-                { operation: 'inspect' },
-                [upload],
-                null,
-                config,
-                controller.signal,
-              );
-              if (
-                upload.size > LIMITS.scanFull &&
-                (!['video', 'audio'].includes(inspected.family) ||
-                  (!inspected.hasAudio && !inspected.hasVideo))
-              )
-                throw fail(
-                  'Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.',
-                  413,
+        track(
+          queue
+            .add(() =>
+              bounded(job, controller, async () => {
+                if (controller.signal.aborted) throw fail('Cancelled.');
+                job.status = 'running';
+                const scanMode = await scanner(upload.path, { signal: controller.signal });
+                const inspected = await worker(
+                  { operation: 'inspect' },
+                  [upload],
+                  null,
+                  config,
+                  controller.signal,
                 );
-              const info = {
-                ...safeMetadata(inspected),
-                path: upload.path,
-                name: upload.name,
-                size: upload.size,
-                id,
-                scanMode,
-              };
-              if (scanMode === 'chunked')
-                info.warning =
-                  'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
-              s.files.set(id, info);
-              stored += upload.size;
-              committed = true;
-              job.status = 'done';
-              job.file = { id, ...safeMetadata(info), scanMode };
+                if (controller.signal.aborted) throw fail('Cancelled.');
+                if (
+                  upload.size > LIMITS.scanFull &&
+                  (!['video', 'audio'].includes(inspected.family) ||
+                    (!inspected.hasAudio && !inspected.hasVideo))
+                )
+                  throw fail(
+                    'Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.',
+                    413,
+                  );
+                const info = {
+                  ...safeMetadata(inspected),
+                  path: upload.path,
+                  name: upload.name,
+                  size: upload.size,
+                  id,
+                  scanMode,
+                };
+                if (scanMode === 'chunked')
+                  info.warning =
+                    'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
+                s.files.set(id, info);
+                stored += upload.size;
+                committed = true;
+                job.status = 'done';
+                job.file = { id, ...safeMetadata(info), scanMode };
+              }),
+            )
+            .catch((e) => {
+              job.status = job.timedOut
+                ? 'error'
+                : controller.signal.aborted
+                  ? 'cancelled'
+                  : 'error';
+              job.error = job.timedOut
+                ? 'Job exceeded the ten-minute limit.'
+                : e.status
+                  ? e.message
+                  : 'The file scan could not finish.';
+            })
+            .finally(async () => {
+              try {
+                if (!committed) await fs.rm(upload.path, { force: true });
+              } finally {
+                s.uploads.delete(id);
+                reserved -= upload.size;
+                s.active--;
+              }
             }),
-          )
-          .catch((e) => {
-            job.status = job.timedOut ? 'error' : controller.signal.aborted ? 'cancelled' : 'error';
-            job.error = job.timedOut
-              ? 'Job exceeded the ten-minute limit.'
-              : e.status
-                ? e.message
-                : 'The file scan could not finish.';
-          })
-          .finally(async () => {
-            s.uploads.delete(id);
-            reserved -= upload.size;
-            s.active--;
-            if (!committed) await fs.rm(upload.path, { force: true });
-          });
+        );
         send(res, { id: jobId }, 202);
         return;
       }
       if (req.method === 'POST' && url.pathname === '/api/files')
         throw fail('Use the bounded chunked upload API.', 410);
+      if (req.method === 'DELETE' && /^\/api\/uploads\/[a-f0-9-]{36}$/.test(url.pathname)) {
+        const id = url.pathname.split('/').pop(),
+          upload = s.uploads.get(id);
+        if (upload) {
+          if (upload.busy) throw fail('The upload is still stopping. Try again shortly.', 409);
+          upload.busy = true;
+          s.active++;
+          try {
+            await fs.rm(upload.path, { force: true });
+            s.uploads.delete(id);
+            reserved -= upload.size;
+          } finally {
+            upload.busy = false;
+            s.active--;
+          }
+        }
+        send(res, { ok: true });
+        return;
+      }
       if (req.method === 'POST' && url.pathname === '/api/jobs') {
         limits.check(user.id + ':jobs-minute', 6, 60000);
         limits.check(user.id + ':jobs-hour', 30, 3600000);
-        if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);
         const spec = await json(req);
+        if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);
         const op = spec.operation;
         if (!['convert', 'compress', 'pack', 'extract'].includes(op))
           throw fail('Unknown operation.');
@@ -412,90 +472,96 @@ async function createApp(config, deps = {}) {
         s.jobs.set(id, job);
         const controller = new AbortController();
         Object.defineProperty(job, 'controller', { value: controller });
-        queue
-          .add(() =>
-            bounded(job, controller, async () => {
-              if (controller.signal.aborted) throw fail('Cancelled.');
-              job.status = 'running';
-              const info = await worker(
-                {
+        track(
+          queue
+            .add(() =>
+              bounded(job, controller, async () => {
+                if (controller.signal.aborted) throw fail('Cancelled.');
+                job.status = 'running';
+                const info = await worker(
+                  {
+                    operation: op,
+                    target: spec.target,
+                    compression: spec.compression,
+                    options: options(spec.options),
+                  },
+                  files,
+                  output,
+                  config,
+                  controller.signal,
+                );
+                const scanMode = await scanner(output, { signal: controller.signal });
+                if (
+                  info.size > LIMITS.scanFull &&
+                  ![
+                    'mp4',
+                    'mkv',
+                    'mov',
+                    'webm',
+                    'avi',
+                    'm4v',
+                    'mpg',
+                    'mpeg',
+                    'flv',
+                    '3gp',
+                    'ts',
+                    'mts',
+                    'm2ts',
+                    'vob',
+                    'wmv',
+                    'ogv',
+                    'mp3',
+                    'wav',
+                    'flac',
+                    'aac',
+                    'm4a',
+                    'ogg',
+                    'opus',
+                    'aiff',
+                    'aif',
+                    'wma',
+                    'amr',
+                    'ac3',
+                    'caf',
+                  ].includes(info.target)
+                )
+                  throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
+                if (controller.signal.aborted) throw fail('Cancelled.');
+                filename(info.name);
+                const stat = await fs.lstat(output);
+                if (!stat.isFile() || stat.size > LIMITS.output) throw fail('Invalid output.', 502);
+                const result = {
+                  id,
+                  ...info,
+                  size: stat.size,
+                  path: output,
                   operation: op,
-                  target: spec.target,
-                  compression: spec.compression,
-                  options: options(spec.options),
-                },
-                files,
-                output,
-                config,
-                controller.signal,
-              );
-              const scanMode = await scanner(output, { signal: controller.signal });
-              if (
-                info.size > LIMITS.scanFull &&
-                ![
-                  'mp4',
-                  'mkv',
-                  'mov',
-                  'webm',
-                  'avi',
-                  'm4v',
-                  'mpg',
-                  'mpeg',
-                  'flv',
-                  '3gp',
-                  'ts',
-                  'mts',
-                  'm2ts',
-                  'vob',
-                  'wmv',
-                  'ogv',
-                  'mp3',
-                  'wav',
-                  'flac',
-                  'aac',
-                  'm4a',
-                  'ogg',
-                  'opus',
-                  'aiff',
-                  'aif',
-                  'wma',
-                  'amr',
-                  'ac3',
-                  'caf',
-                ].includes(info.target)
-              )
-                throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
-              if (controller.signal.aborted) throw fail('Cancelled.');
-              filename(info.name);
-              const stat = await fs.lstat(output);
-              if (!stat.isFile() || stat.size > LIMITS.output) throw fail('Invalid output.', 502);
-              const result = {
-                id,
-                ...info,
-                size: stat.size,
-                path: output,
-                operation: op,
-                scanMode,
-              };
-              stored += stat.size;
-              s.results.set(id, result);
-              job.status = 'done';
-              job.result = { ...result, path: undefined };
+                  scanMode,
+                };
+                stored += stat.size;
+                s.results.set(id, result);
+                job.status = 'done';
+                job.result = { ...result, path: undefined };
+              }),
+            )
+            .catch(async (e) => {
+              job.status = job.timedOut
+                ? 'error'
+                : controller.signal.aborted
+                  ? 'cancelled'
+                  : 'error';
+              job.error = job.timedOut
+                ? 'Job exceeded the ten-minute limit.'
+                : e.status
+                  ? e.message
+                  : 'The conversion could not finish. Try a smaller file or another format.';
+              await fs.rm(output, { force: true });
+            })
+            .finally(() => {
+              reserved -= LIMITS.output;
+              s.active--;
             }),
-          )
-          .catch(async (e) => {
-            job.status = job.timedOut ? 'error' : controller.signal.aborted ? 'cancelled' : 'error';
-            job.error = job.timedOut
-              ? 'Job exceeded the ten-minute limit.'
-              : e.status
-                ? e.message
-                : 'The conversion could not finish. Try a smaller file or another format.';
-            await fs.rm(output, { force: true });
-          })
-          .finally(() => {
-            reserved -= LIMITS.output;
-            s.active--;
-          });
+        );
         send(res, { id }, 202);
         return;
       }
@@ -507,7 +573,8 @@ async function createApp(config, deps = {}) {
         return;
       }
       if (req.method === 'DELETE' && url.pathname === '/api/files') {
-        if (s.active) throw fail('Cancel or finish your active jobs before deleting files.', 409);
+        if (s.active || s.requests > 1)
+          throw fail('Cancel or finish your active jobs before deleting files.', 409);
         await remove(s);
         send(res, { ok: true });
         return;
@@ -545,6 +612,8 @@ async function createApp(config, deps = {}) {
           { error: e.status ? e.message : 'The request could not be completed.' },
           e.status || 500,
         );
+    } finally {
+      if (requestSession) requestSession.requests--;
     }
   });
   server.requestTimeout = 630000;
@@ -560,6 +629,7 @@ async function createApp(config, deps = {}) {
       clearInterval(sweep);
       for (const s of sessions.values()) for (const job of s.jobs.values()) job.controller?.abort();
       await new Promise((resolve) => server.close(resolve));
+      await Promise.allSettled([...work]);
       await fs.rm(root, { force: true, recursive: true });
     },
   };

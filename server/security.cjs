@@ -112,6 +112,7 @@ class Queue {
   }
 }
 function options(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) value = {};
   return {
     quality: ['high', 'balanced', 'small'].includes(value.quality) ? value.quality : 'balanced',
     width: [0, 720, 1280, 1920].includes(value.width) ? value.width : 0,

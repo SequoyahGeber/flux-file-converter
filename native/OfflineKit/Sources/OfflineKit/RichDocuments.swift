@@ -172,7 +172,7 @@ enum RichDocuments {
                 }
             }
         }
-        var blocks: [RichBlock] = [], imageBytes = 0
+        var blocks: [RichBlock] = [], imageBytes = 0, decodedImageBytes: Int64 = 0
         for node in body.children {
             try control.check()
             if node.name == "w:p" {
@@ -187,8 +187,10 @@ enum RichDocuments {
                     guard imageBytes <= 64 * 1024 * 1024, let source = CGImageSourceCreateWithData(data as CFData, nil),
                           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
                           let w = properties[kCGImagePropertyPixelWidth] as? Int, let h = properties[kCGImagePropertyPixelHeight] as? Int,
-                          w > 0, h > 0, Int64(w) * Int64(h) <= 24_000_000,
-                          let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) else { throw LocalError.invalid("DOCX image exceeds its safety limit or uses an unsupported codec.") }
+                          w > 0, h > 0, w <= 30000, h <= 30000, Int64(w) * Int64(h) <= 24_000_000 else { throw LocalError.invalid("DOCX image exceeds its safety limit or uses an unsupported codec.") }
+                    decodedImageBytes += Int64(w) * Int64(h) * 8
+                    guard decodedImageBytes <= 128 * 1024 * 1024 else { throw LocalError.invalid("DOCX decoded images exceed the 128 MB memory limit. Extract text or use a smaller document.") }
+                    guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) else { throw LocalError.invalid("DOCX image uses an unsupported codec.") }
                     let extent = drawing.descendants("wp:extent").first
                     let width = extent?.attributes["cx"].flatMap(Double.init).map { $0 / 12700 } ?? Double(w)
                     let height = extent?.attributes["cy"].flatMap(Double.init).map { $0 / 12700 } ?? Double(h)

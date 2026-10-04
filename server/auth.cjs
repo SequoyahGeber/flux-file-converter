@@ -48,7 +48,15 @@ async function createAuth(config, keySet) {
       (req.headers.origin !== config.origin || req.headers['x-flux-request'] !== '1')
     )
       throw fail('This request must come from the converter page.', 403);
-    if (req.headers['sec-fetch-site'] === 'cross-site')
+    // Login redirects can retain cross-site metadata for the final navigation.
+    // Permit only the static landing document after token and host validation;
+    // API reads, writes and embedded/subresource requests remain isolated.
+    const landingNavigation =
+      req.method === 'GET' &&
+      (req.url === '/' || req.url?.startsWith('/?')) &&
+      req.headers['sec-fetch-mode'] === 'navigate' &&
+      req.headers['sec-fetch-dest'] === 'document';
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !landingNavigation)
       throw fail('Cross-site requests are blocked.', 403);
     return {
       id: crypto

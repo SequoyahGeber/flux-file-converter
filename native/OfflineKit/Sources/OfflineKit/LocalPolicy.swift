@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public enum LocalError: LocalizedError {
     case invalid(String), cancelled, unsupported
@@ -54,14 +55,31 @@ public enum LocalPolicy {
         throw LocalError.invalid("This file is not UTF-8 or UTF-16 text.")
     }
     public static func copy(_ source: URL, to destination: URL, control: JobControl) throws {
-        FileManager.default.createFile(atPath: destination.path, contents: nil, attributes: [.posixPermissions: 0o600])
-        let input = try FileHandle(forReadingFrom: source), output = try FileHandle(forWritingTo: destination)
-        defer { try? input.close(); try? output.close() }
-        while true {
-            try control.check()
-            guard let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty else { break }
-            try output.write(contentsOf: chunk)
+        let descriptor = open(source.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? input.close() }
+        var attributes = stat()
+        guard fstat(descriptor, &attributes) == 0, attributes.st_mode & S_IFMT == S_IFREG else {
+            throw LocalError.invalid("Choose a regular file. Symbolic links and folders are not accepted.")
         }
+        let expected = attributes.st_size
+        let outputDescriptor = open(destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard outputDescriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let output = FileHandle(fileDescriptor: outputDescriptor, closeOnDealloc: true)
+        defer { try? output.close() }
+        var copied: Int64 = 0
+        // FileHandle bridges through autoreleased Foundation buffers. Background
+        // conversion tasks need a pool per chunk to keep large copies bounded.
+        while try autoreleasepool(invoking: { () throws -> Bool in
+            try control.check()
+            guard let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty else { return false }
+            copied += Int64(chunk.count)
+            guard copied <= expected else { throw LocalError.invalid("The selected file grew while it was being copied.") }
+            try output.write(contentsOf: chunk)
+            return true
+        }) {}
+        guard copied == expected else { throw LocalError.invalid("The selected file changed while it was being copied.") }
     }
 }
 

@@ -1,0 +1,10 @@
+
+> flux-file-converter@1.0.1 format:check
+> prettier --check electron server src scripts tests package.json
+
+Checking formatting...
+All matched files use Prettier code style!
+
+Python py_compile passed for native/archive.py, resources/archive.py, server/compat.py and scripts/*.py.
+Archive helper copies matched via cmp.
+git diff --check passed.
