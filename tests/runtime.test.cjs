@@ -235,6 +235,23 @@ test('MAS builds cannot fall back to host tools or accept an escaping engine man
     const manifest = path.join(directory, 'engines.json');
     await fs.writeFile(manifest, JSON.stringify({ schemaVersion: 1, engines }));
     assert.equal(Object.keys(await bundledEngines(directory)).length, REQUIRED_ENGINES.length);
+    const personal = { ...engines };
+    delete personal.blender;
+    await fs.writeFile(
+      manifest,
+      JSON.stringify({ schemaVersion: 1, engines: personal, excludedEngines: ['blender'] }),
+    );
+    assert.equal((await bundledEngines(directory)).blender, undefined);
+    delete personal.ffmpeg;
+    await fs.writeFile(
+      manifest,
+      JSON.stringify({
+        schemaVersion: 1,
+        engines: personal,
+        excludedEngines: ['blender', 'ffmpeg'],
+      }),
+    );
+    await assert.rejects(bundledEngines(directory), /ffmpeg engine is missing/);
     engines.ffmpeg = process.execPath;
     await fs.writeFile(manifest, JSON.stringify({ schemaVersion: 1, engines }));
     await assert.rejects(bundledEngines(directory), /missing/);

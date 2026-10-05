@@ -26,3 +26,7 @@ Use synthetic files for native pickers, conversion, naming/save/export, cancella
 Review `docs/privacy.md`, `docs/support.md`, the native format screen and App Store Connect metadata for consistency. The native app collects no user data. Required reasons cover private/user-selected file metadata, disk space checks and conversion timers. Open-source licenses ship in the package resource bundle. Keep TestFlight release private unless external testing is explicitly requested and Apple’s review/group requirements are satisfied.
 
 For external beta preparation, follow [beta-review.md](beta-review.md). Release 1.0.3 includes fictional sample files using the real converter, an offline privacy/support screen and matching public pages. The beta-review CLI guards exact platform builds and metadata; review submission keeps public links and tester notifications separate.
+
+## Personal full-engine Mac build
+
+The owner-only expanded Mac build is documented in [mac-full-engine.md](mac-full-engine.md). It bundles the server's conversion tools, excludes 3D by default, and is separate from the previously uploaded restricted native release. Its current tools target Apple Silicon. Public packaging is blocked until third-party licensing/corresponding-source review and both converter architectures are complete. Do not upload this personal bundle or treat its processing checks as TestFlight acceptance.

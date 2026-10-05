@@ -1382,21 +1382,21 @@ function App() {
                         </div>
                         <p>
                           {f.id === 'pdf'
-                            ? nativeLocal
+                            ? nativeLocal && !reviewInfo.fullEngine
                               ? 'First-page images, extracted text, or lossy rasterized PDF compression.'
                               : 'Page images and selectable text. Scanned pages can use English OCR.'
                             : f.id === 'archive'
-                              ? nativeLocal
+                              ? nativeLocal && !reviewInfo.fullEngine
                                 ? 'ZIP creation and safe extraction of regular files.'
                                 : 'ZIP creation, safe extraction, and archive repacking.'
                               : f.id === 'video'
-                                ? nativeLocal
+                                ? nativeLocal && !reviewInfo.fullEngine
                                   ? 'Lossless container changes with compatible codecs, or Apple media re-encoding.'
                                   : 'Container conversion, audio extraction, and still frames.'
                                 : f.id === 'data'
                                   ? 'Nested data stays structured. Tables require flat records.'
                                   : f.id === 'document'
-                                    ? nativeLocal
+                                    ? nativeLocal && !reviewInfo.fullEngine
                                       ? 'Styled DOCX/RTF to PDF/HTML; ODT/EPUB/HTML text extraction. Complex layouts may be unsupported.'
                                       : 'Office documents, rich text, and ebook conversion.'
                                     : f.id === 'image'
@@ -1518,7 +1518,9 @@ function App() {
                         [
                           'local',
                           'On-device conversion',
-                          'ImageIO, PDFKit, Apple media codecs, bundled FFmpeg, ZIP and structured data',
+                          reviewInfo.fullEngine
+                            ? 'Office, spreadsheets, presentations, media, images, ebooks, fonts, 3D, tables, compression and archives · bundled locally'
+                            : 'ImageIO, PDFKit, Apple media codecs, bundled FFmpeg, ZIP and structured data',
                         ],
                       ]
                     : [

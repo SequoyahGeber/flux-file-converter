@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and sign the on-device Mac app. Does not upload or release to testers."""
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -29,7 +30,16 @@ def main():
     parser.add_argument("--config", type=pathlib.Path, default=DEFAULT_CONFIG)
     parser.add_argument("--build", required=True)
     parser.add_argument("--development", action="store_true")
+    parser.add_argument("--work-dir", type=pathlib.Path, help="Keep build intermediates here for local packaging diagnostics.")
     args = parser.parse_args()
+    conversion_root = pathlib.Path(os.environ.get("FLUX_MAC_ENGINE_RESOURCES", "/private/tmp/flux-full-engine/ConversionEngine"))
+    if not (conversion_root / "capabilities.json").is_file():
+        raise SystemExit("Build the bundled converters with scripts/mac-engines.py before packaging Flux.")
+    engine_manifest = json.loads((conversion_root / "engines.json").read_text())
+    if not args.development and engine_manifest.get("distributionReady") is not True:
+        raise SystemExit("This full engine bundle is for personal use. Public packaging requires completed third-party licensing and corresponding-source review.")
+    if not args.development and set(engine_manifest.get("architectures", [])) != {"arm64", "x86_64"}:
+        raise SystemExit("Distribution requires complete bundled engines for Apple Silicon and Intel.")
     if not re.fullmatch(r"[1-9][0-9]{0,17}", args.build):
         raise SystemExit("Supply an increasing numeric build number.")
     settings = json.loads(args.config.read_text())
@@ -76,7 +86,9 @@ def main():
     env = dict(os.environ)
     # Use the installed release Xcode without changing the user's global selection.
     env["DEVELOPER_DIR"] = settings.get("developerDirectory", "/Applications/Xcode.app/Contents/Developer")
-    with tempfile.TemporaryDirectory(prefix="flux-native-release-") as temp:
+    if args.work_dir: args.work_dir.mkdir(parents=True, exist_ok=True)
+    workspace = contextlib.nullcontext(str(args.work_dir.resolve())) if args.work_dir else tempfile.TemporaryDirectory(prefix="flux-native-release-")
+    with workspace as temp:
         temporary = pathlib.Path(temp)
         archive = temporary / "Flux.xcarchive"
         build_args = ["xcodebuild", "-project", str(ROOT / "mac/Flux.xcodeproj"), "-scheme", "Flux",
@@ -93,6 +105,14 @@ def main():
         with (logs / ("mac-" + mode + "-archive.txt")).open("w") as log:
             subprocess.run(build_args, check=True, env=env, stdout=log, stderr=subprocess.STDOUT)
         app = archive / "Products/Applications/Flux File Converter.app"
+        # Copy after compilation: Xcode otherwise indexes every tool/data file.
+        command(["ditto", "--noextattr", "--norsrc", str(conversion_root), str(app / "Contents/Resources/ConversionEngine")])
+        # Native UI and picker permissions remain sandboxed; converter children
+        # inherit that sandbox and receive only private staged file copies.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("mac_sign_engines", ROOT / "scripts/mac-sign-engines.py")
+        signer = importlib.util.module_from_spec(spec); spec.loader.exec_module(signer)
+        signer.sign(app, identity, keychain)
         command(["codesign", "--verify", "--deep", "--strict", str(app)])
         entitlements = plistlib.loads(command(["codesign", "-d", "--entitlements", "-", "--xml", str(app)], stderr=subprocess.DEVNULL))
         if entitlements.get("com.apple.security.app-sandbox") is not True or (not args.development and entitlements.get("com.apple.security.get-task-allow", False)):
@@ -126,6 +146,9 @@ def main():
         command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(archive), str(archive_zip)])
         receipt = {"bundleId": settings["bundleId"], "version": version, "build": args.build,
                    "mode": mode, "architectures": architectures, "entitlements": entitlements,
+                   "engineArchitectures": engine_manifest.get("architectures", []),
+                   "excludedEngines": engine_manifest.get("excludedEngines", []),
+                   "distributionReady": engine_manifest.get("distributionReady", False),
                    "artifact": str(artifact), "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
                    "bytes": artifact.stat().st_size, "uploadVerified": False,
                    "testFlightAvailabilityVerified": False}

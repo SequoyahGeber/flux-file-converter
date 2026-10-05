@@ -4,6 +4,11 @@ const { StringDecoder } = require('node:string_decoder');
 
 const cancelled = () => Object.assign(new Error('Conversion cancelled.'), { code: 'CANCELLED' });
 const DEFAULT_TIMEOUT = 10 * 60 * 1000;
+let bundledEnvironment;
+// Set only by the trusted native worker using its private tool bundle.
+function configureBundledEnvironment(environment) {
+  bundledEnvironment = { ...environment };
+}
 const ENVIRONMENT_KEYS = [
   'HOME',
   'TMPDIR',
@@ -36,6 +41,7 @@ function engineEnvironment(source = process.env) {
     OPENBLAS_NUM_THREADS: threads,
     MAGICK_THREAD_LIMIT: threads,
     QT_QPA_PLATFORM: 'offscreen',
+    ...bundledEnvironment,
   };
 }
 
@@ -162,4 +168,4 @@ function run(command, args, { signal, onLine, timeout = DEFAULT_TIMEOUT, cwd } =
   });
 }
 
-module.exports = { run, engineEnvironment, DEFAULT_TIMEOUT };
+module.exports = { run, engineEnvironment, DEFAULT_TIMEOUT, configureBundledEnvironment };

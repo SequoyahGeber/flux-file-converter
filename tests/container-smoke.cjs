@@ -65,7 +65,9 @@ async function main() {
     assert.ok((await PDFDocument.load(await fs.readFile(slidesPDF))).getPageCount() > 0);
     // Allow the launcher to reap completed Office helpers before the next job.
     await new Promise((resolve) => setTimeout(resolve, 2200));
-    await rpc({ operation: 'convert', target: 'pdf' }, [presentation], slidesPDF, config);
+    const repeatedSlidesPDF = path.join(dir, 'slides-repeat.pdf');
+    await rpc({ operation: 'convert', target: 'pdf' }, [presentation], repeatedSlidesPDF, config);
+    assert.ok((await PDFDocument.load(await fs.readFile(repeatedSlidesPDF))).getPageCount() > 0);
     const pdf = path.join(dir, 'note.pdf');
     await rpc({ operation: 'convert', target: 'pdf' }, [document], pdf, config);
     assert.equal((await fs.readFile(pdf)).subarray(0, 4).toString(), '%PDF');

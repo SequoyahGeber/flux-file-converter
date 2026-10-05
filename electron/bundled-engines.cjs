@@ -26,6 +26,7 @@ async function bundledEngines(resources) {
     throw new Error('The bundled conversion engines need to be rebuilt.');
   const engines = {};
   for (const name of REQUIRED_ENGINES) {
+    if (name === 'blender' && manifest.excludedEngines?.includes('blender')) continue;
     const relative = manifest.engines[name];
     if (typeof relative !== 'string' || path.isAbsolute(relative))
       throw new Error(`The bundled ${name} engine is missing.`);

@@ -26,3 +26,4 @@ native/OfflineKit/.build/
 native/OfflineKit/.swiftpm/
 
 mac/Flux/DesktopUI/
+mac/Flux/ConversionEngine/
