@@ -108,6 +108,45 @@ test('Cloudflare login verifies signatures, issuer, audience, expiry and request
     /Invalid application host/,
   );
 });
+test('Cloudflare login lasts up to 30 days and still requires a valid unexpired token', async () => {
+  const { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } = await import('jose');
+  const keys = await generateKeyPair('RS256');
+  const jwk = await exportJWK(keys.publicKey);
+  jwk.kid = 'month-test';
+  const config = {
+    issuer: 'https://test.cloudflareaccess.com',
+    audience: 'app-id',
+    origin: 'https://flux.example.com',
+  };
+  const auth = await createAuth(config, createLocalJWKSet({ keys: [jwk] }));
+  const now = Math.floor(Date.now() / 1000);
+  const day = 24 * 60 * 60;
+  const token = async (age, expiry = now + day, issuedAt = true) => {
+    let jwt = new SignJWT({ email: 'a@example.com', type: 'app' })
+      .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
+      .setIssuer(config.issuer)
+      .setAudience(config.audience)
+      .setSubject('user-a');
+    if (issuedAt) jwt = jwt.setIssuedAt(now - age);
+    if (expiry !== null) jwt = jwt.setExpirationTime(expiry);
+    return jwt.sign(keys.privateKey);
+  };
+  const request = (jwt) => ({
+    method: 'GET',
+    url: '/api/state',
+    headers: { host: 'flux.example.com', 'cf-access-jwt-assertion': jwt },
+  });
+  for (const age of [9 * 60 * 60, day, 29 * day, 30 * day - 60])
+    assert.equal((await auth(request(await token(age)))).email, 'a@example.com');
+  for (const jwt of [
+    await token(30 * day + 60),
+    await token(day, now - 60),
+    await token(day, null),
+    await token(day, now + day, false),
+    await token(-60),
+  ])
+    await assert.rejects(auth(request(jwt)), /login has expired or is invalid/);
+});
 test('filenames reject traversal, injected options, devices and control characters', () => {
   for (const f of [
     '../../etc/passwd',

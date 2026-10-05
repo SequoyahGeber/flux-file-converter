@@ -28,7 +28,10 @@ async function createAuth(config, keySet) {
         audience: config.audience,
         algorithms: ['RS256'],
         clockTolerance: 5,
-        maxTokenAge: '8h',
+        // Match the month-long Access session while still enforcing any shorter
+        // signed expiry issued by Cloudflare.
+        maxTokenAge: '30d',
+        requiredClaims: ['exp'],
       }));
     } catch {
       throw fail('Your login has expired or is invalid. Sign in again.', 401);
