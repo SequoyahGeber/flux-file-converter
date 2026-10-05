@@ -4,7 +4,6 @@ const path = require('node:path');
 const os = require('node:os');
 const sharp = require('sharp');
 const { rpc } = require('../server/transport.cjs');
-const { run } = require('../electron/process.cjs');
 const { PDFDocument } = require('pdf-lib');
 async function main() {
   if (process.env.FLUX_VERIFY_PRIVILEGES === '1') {
@@ -59,7 +58,7 @@ async function main() {
     await fs.writeFile(doc, '# Hello\n\nA converted document.');
     const document = { path: doc, name: 'note.md', size: (await fs.stat(doc)).size };
     const slides = path.join(dir, 'slides.pptx');
-    await run('/usr/bin/pandoc', [doc, '--to', 'pptx', '--output', slides]);
+    await fs.copyFile(path.join(__dirname, 'fixtures/powerpoint-regression.pptx'), slides);
     const presentation = { path: slides, name: 'slides.pptx', size: (await fs.stat(slides)).size };
     const slidesPDF = path.join(dir, 'slides.pdf');
     await rpc({ operation: 'convert', target: 'pdf' }, [presentation], slidesPDF, config);
