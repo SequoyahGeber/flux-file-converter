@@ -4,6 +4,8 @@ const path = require('node:path');
 const os = require('node:os');
 const sharp = require('sharp');
 const { rpc } = require('../server/transport.cjs');
+const { run } = require('../electron/process.cjs');
+const { PDFDocument } = require('pdf-lib');
 async function main() {
   if (process.env.FLUX_VERIFY_PRIVILEGES === '1') {
     assert.equal(process.getuid(), 10001);
@@ -56,6 +58,15 @@ async function main() {
     const doc = path.join(dir, 'note.md');
     await fs.writeFile(doc, '# Hello\n\nA converted document.');
     const document = { path: doc, name: 'note.md', size: (await fs.stat(doc)).size };
+    const slides = path.join(dir, 'slides.pptx');
+    await run('/usr/bin/pandoc', [doc, '--to', 'pptx', '--output', slides]);
+    const presentation = { path: slides, name: 'slides.pptx', size: (await fs.stat(slides)).size };
+    const slidesPDF = path.join(dir, 'slides.pdf');
+    await rpc({ operation: 'convert', target: 'pdf' }, [presentation], slidesPDF, config);
+    assert.ok((await PDFDocument.load(await fs.readFile(slidesPDF))).getPageCount() > 0);
+    // Allow the launcher to reap completed Office helpers before the next job.
+    await new Promise((resolve) => setTimeout(resolve, 2200));
+    await rpc({ operation: 'convert', target: 'pdf' }, [presentation], slidesPDF, config);
     const pdf = path.join(dir, 'note.pdf');
     await rpc({ operation: 'convert', target: 'pdf' }, [document], pdf, config);
     assert.equal((await fs.readFile(pdf)).subarray(0, 4).toString(), '%PDF');
@@ -74,7 +85,7 @@ async function main() {
     await rpc({ operation: 'compress', compression: 'lossy' }, [file], opt, config);
     assert.equal((await sharp(opt).metadata()).format, 'webp');
     console.log(
-      'Passed Linux worker image, document, PDF, spreadsheet, ZIP and compression conversions.',
+      'Passed Linux worker image, document, repeated PowerPoint, PDF, spreadsheet, ZIP and compression conversions.',
     );
   } finally {
     await fs.rm(dir, { recursive: true, force: true });

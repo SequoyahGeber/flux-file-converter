@@ -192,7 +192,8 @@ function displayError(error) {
     return 'This file could not be decoded. It may be damaged or use an unsupported codec.';
   return message;
 }
-async function inspectFile(filePath, engines, resources) {
+async function inspectFile(filePath, engines, resources, { signal } = {}) {
+  if (signal?.aborted) throw cancelled();
   const stat = await fs.stat(filePath);
   if (!stat.isFile()) throw new Error('Choose files, rather than folders.');
   const name = path.basename(filePath),
@@ -220,7 +221,7 @@ async function inspectFile(filePath, engines, resources) {
     if (!group)
       try {
         const mime = (
-          await run('/usr/bin/file', ['--mime-type', '-b', filePath], { timeout: 5000 })
+          await run('/usr/bin/file', ['--mime-type', '-b', filePath], { signal, timeout: 5000 })
         ).stdout.trim();
         if (mime === 'application/pdf') group = { id: 'pdf' };
         else if (mime.startsWith('text/')) {
@@ -257,7 +258,7 @@ async function inspectFile(filePath, engines, resources) {
             await run(
               engines.magick,
               ['identify', '-ping', '-format', '%w × %h', filePath + '[0]'],
-              { timeout: 30000 },
+              { signal, timeout: 30000 },
             )
           ).stdout;
         }
@@ -268,7 +269,7 @@ async function inspectFile(filePath, engines, resources) {
       const result = await run(
         engines.ffprobe,
         ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', filePath],
-        { timeout: 15000 },
+        { signal, timeout: 15000 },
       );
       const meta = JSON.parse(result.stdout);
       info.duration = Number(meta.format?.duration) || 0;
@@ -286,7 +287,7 @@ async function inspectFile(filePath, engines, resources) {
         throw new Error('No convertible media streams were found.');
     }
     if (group.id === 'pdf' && engines.pdf) {
-      const result = await run(engines.pdf, ['inspect', filePath], { timeout: 15000 });
+      const result = await run(engines.pdf, ['inspect', filePath], { signal, timeout: 15000 });
       info.pages = JSON.parse(result.stdout).pages;
       info.details = `${info.pages} page${info.pages === 1 ? '' : 's'}`;
     }
@@ -296,7 +297,7 @@ async function inspectFile(filePath, engines, resources) {
           await run(
             engines.python,
             [path.join(resources, 'advanced.py'), 'font-inspect', filePath],
-            { timeout: 15000 },
+            { signal, timeout: 15000 },
           )
         ).stdout,
       ).outline;
@@ -307,6 +308,7 @@ async function inspectFile(filePath, engines, resources) {
     info.warning = displayError(e);
     info.targets = [];
   }
+  if (signal?.aborted) throw cancelled();
   return info;
 }
 async function bmp(buffer) {
@@ -529,9 +531,21 @@ function escapeHTML(text) {
 async function officeConvert(input, target, stage, engines, signal, group = 'document') {
   const dir = await fs.mkdtemp(path.join(stage, 'office-'));
   const profile = await fs.mkdtemp(path.join(stage, 'profile-'));
+  const fontPairs = [
+    ['Calibri', 'Carlito'],
+    ['Calibri Light', 'Carlito'],
+    ['Cambria', 'Caladea'],
+  ]
+    .map(
+      ([source, replacement], index) =>
+        `<item oor:path="/org.openoffice.Office.Common/Font/Substitution/FontPairs"><node oor:name="Flux${index}" oor:op="replace"><prop oor:name="ReplaceFont"><value>${source}</value></prop><prop oor:name="SubstituteFont"><value>${replacement}</value></prop><prop oor:name="Always"><value>true</value></prop><prop oor:name="OnScreenOnly"><value>false</value></prop></node></item>`,
+    )
+    .join('');
   await fs.writeFile(
     path.join(profile, 'registrymodifications.xcu'),
-    '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item></oor:items>',
+    '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Common/Font/Substitution"><prop oor:name="Replacement"><value>true</value></prop></item>' +
+      fontPairs +
+      '</oor:items>',
   );
   const filters = {
     document: {

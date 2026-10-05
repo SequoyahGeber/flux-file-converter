@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg imagemagick libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw \
     pandoc qpdf ghostscript libjpeg-turbo-progs optipng webp p7zip-full tesseract-ocr tesseract-ocr-eng \
     calibre blender python3 python3-venv libglib2.0-0 libgl1 fonts-dejavu fonts-liberation \
+    fonts-crosextra-carlito fonts-crosextra-caladea \
     libseccomp2 libseccomp-dev gcc libc6-dev ca-certificates file && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
