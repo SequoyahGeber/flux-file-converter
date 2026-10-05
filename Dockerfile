@@ -38,6 +38,7 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r res
     && ln -s /usr/bin/7z /usr/local/bin/7zz
 COPY server ./server
 COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
+COPY tests/fixtures/powerpoint-regression.pptx ./tests/fixtures/powerpoint-regression.pptx
 # The policy is copied separately so it cannot be silently omitted from a build.
 COPY deploy/imagemagick-policy.xml /etc/ImageMagick-6/policy.xml
 RUN node server/build-catalog.cjs && apt-get purge -y gcc libc6-dev libseccomp-dev && apt-get autoremove -y && rm -rf /root/.cache /tmp/*
