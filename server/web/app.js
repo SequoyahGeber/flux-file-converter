@@ -10,7 +10,9 @@ let state = { files: [], jobs: [], history: [], formats: [] },
   cancelled = false,
   uploadController,
   waitController,
-  loadingText = '';
+  loadingText = '',
+  connectionLost = false,
+  refreshingStatus = false;
 const bytes = (n) =>
   n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 function showError(e) {
@@ -20,7 +22,9 @@ function showError(e) {
 async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
   const response = await fetch('/api/' + url, {
     method,
-    signal,
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(method === 'PUT' ? 120000 : 30000)])
+      : AbortSignal.timeout(method === 'PUT' ? 120000 : 30000),
     credentials: 'same-origin',
     headers: {
       ...(method !== 'GET' ? { 'X-Flux-Request': '1' } : {}),
@@ -28,6 +32,10 @@ async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
       ...headers,
     },
     body: body instanceof Blob ? body : body ? JSON.stringify(body) : undefined,
+  }).catch((error) => {
+    if (error.name === 'TimeoutError')
+      throw new Error('The server did not respond in time. Check the connection and reconnect.');
+    throw error;
   });
   if (response.status === 401) {
     showError(new Error('Your login expired. Reload this page to sign in.'));
@@ -47,6 +55,28 @@ async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
     });
   return result;
 }
+async function refreshStatus() {
+  try {
+    Object.assign(state, await api('status'));
+    if (connectionLost) $('error').hidden = true;
+    connectionLost = false;
+  } catch (error) {
+    connectionLost = true;
+    throw error;
+  }
+}
+async function reconnect() {
+  if (refreshingStatus || loading) return;
+  refreshingStatus = true;
+  try {
+    await refreshStatus();
+  } catch (error) {
+    showError(error);
+  } finally {
+    refreshingStatus = false;
+    render();
+  }
+}
 async function quotaRequest(url, options, label) {
   while (!cancelled) {
     try {
@@ -59,7 +89,7 @@ async function quotaRequest(url, options, label) {
         if (cancelled) throw new DOMException('Cancelled.', 'AbortError');
         if (Date.now() >= refreshAt) {
           // A long hourly-quota wait is active use, not 30-minute inactivity.
-          Object.assign(state, await api('status'));
+          await refreshStatus();
           refreshAt = Date.now() + 15000;
         }
         loadingText = `Waiting for server quota · ${Math.ceil((until - Date.now()) / 1000)}s · ${label}`;
@@ -205,14 +235,17 @@ function render() {
     state.files.length +
     (state.files.length === 1 ? ' file · ' : ' files · ') +
     bytes(state.files.reduce((n, f) => n + f.size, 0));
-  const active = state.jobs.some((j) => ['queued', 'running'].includes(j.status));
+  const active = connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status));
   $('run').disabled = active || loading || !state.files.length;
   $('cancel').hidden = !active && !loading;
   $('status').textContent = loading
     ? loadingText || 'Working on your server…'
-    : active
-      ? 'Working on your server…'
-      : 'Ready when you are.';
+    : connectionLost
+      ? 'Connection lost. Checking the server again…'
+      : active
+        ? 'Working on your server…'
+        : 'Ready when you are.';
+  $('reconnect').hidden = !connectionLost;
   $('choose').disabled = loading || active;
   $('add').disabled = loading || active;
   $('clear').disabled = loading || active;
@@ -298,7 +331,9 @@ function render() {
         ? download(job.result)
         : node(
             'span',
-            job?.status || 'Ready',
+            connectionLost && ['queued', 'running'].includes(job?.status)
+              ? 'Status unavailable'
+              : job?.status || 'Ready',
             'job-state' + (job?.status === 'error' ? ' failed' : ''),
           ),
     );
@@ -450,7 +485,8 @@ function renderFormats() {
   }
 }
 async function upload(files) {
-  if (loading || state.jobs.some((j) => ['queued', 'running'].includes(j.status))) return;
+  if (loading || connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status)))
+    return;
   loading = true;
   cancelled = false;
   waitController = new AbortController();
@@ -490,7 +526,7 @@ async function upload(files) {
         body: {},
       });
       while (true) {
-        Object.assign(state, await api('status'));
+        await refreshStatus();
         const job = state.jobs.find((j) => j.id === completion.id);
         if (!job) throw new Error('This upload expired. Add the file again.');
         if (cancelled && ['queued', 'running'].includes(job.status))
@@ -526,7 +562,8 @@ async function upload(files) {
   }
 }
 async function start() {
-  if (loading || state.jobs.some((j) => ['queued', 'running'].includes(j.status))) return;
+  if (loading || connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status)))
+    return;
   $('error').hidden = true;
   loading = true;
   cancelled = false;
@@ -559,7 +596,7 @@ async function start() {
       loadingText = 'Converting files…';
       const result = await quotaRequest('jobs', { method: 'POST', body: spec }, 'unfinished files');
       while (true) {
-        Object.assign(state, await api('status'));
+        await refreshStatus();
         render();
         const job = state.jobs.find((j) => j.id === result.id);
         if (!job) throw new Error('This job expired. Convert the file again.');
@@ -587,7 +624,7 @@ async function clear() {
     targets.clear();
     compression.clear();
     names.clear();
-    Object.assign(state, await api('status'));
+    await refreshStatus();
     render();
   } catch (e) {
     showError(e);
@@ -624,10 +661,18 @@ $('cancel').onclick = async () => {
   try {
     for (const job of state.jobs.filter((j) => ['queued', 'running'].includes(j.status)))
       await api('cancel', { method: 'POST', body: { id: job.id } });
+    if (!loading) await reconnect();
   } catch (e) {
     showError(e);
   }
 };
+$('reconnect').onclick = reconnect;
+// Resume observing jobs after a transient outage or a page reload. Never
+// resubmit a conversion: its result may already exist on the server.
+setInterval(() => {
+  if (connectionLost || state.jobs.some((job) => ['queued', 'running'].includes(job.status)))
+    reconnect();
+}, 5000);
 document.body.ondragover = (e) => {
   e.preventDefault();
   $('dropzone').classList.add('dragging');

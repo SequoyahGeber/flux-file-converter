@@ -56,7 +56,11 @@ CMD ["clamd", "--foreground=true", "--config-file=/etc/clamav/clamd.conf"]
 FROM debian:trixie-slim AS launcher
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY server/supervisor.c /src/supervisor.c
-RUN gcc -O2 -Wall -Wextra /src/supervisor.c -o /flux-supervisor
+COPY tests/supervisor-lifecycle.c /tests/supervisor-lifecycle.c
+RUN mkdir -p /server && cp /src/supervisor.c /server/supervisor.c \
+    && gcc -O2 -Wall -Wextra /tests/supervisor-lifecycle.c -o /supervisor-test \
+    && /supervisor-test \
+    && gcc -O2 -Wall -Wextra /src/supervisor.c -o /flux-supervisor
 
 FROM cloudflare/cloudflared:latest AS cloudflared
 

@@ -17,6 +17,7 @@
 #include <string.h>
 
 static volatile sig_atomic_t stopping;
+static pid_t service_pids[7];
 static void stop(int sig) { (void)sig; stopping = 1; }
 static void die(const char *message) { fprintf(stderr, "Flux startup: %s\n", message); exit(70); }
 static void directory(const char *path, uid_t uid, gid_t gid, mode_t mode) {
@@ -60,7 +61,7 @@ static void variable(const char *name, const char *fallback) {
 static void literal(char *entry) { if (env_count >= 30) die("environment limit"); env[env_count++] = entry; }
 static pid_t launch(uid_t uid, gid_t gid, const char *home, char *const argv[], int role) {
   pid_t pid = fork(); if (pid < 0) die("cannot start service");
-  if (pid) return pid;
+  if (pid) { if (role >= 1 && role <= 5) service_pids[role] = pid; return pid; }
   reset_env(home);
   literal("FLUX_BIND=127.0.0.1");
   if (role == 1 || role == 2 || role == 6) variable("WORKER_SECRET", NULL);
@@ -92,7 +93,18 @@ static int port_ready(int port) {
   close(fd); return ready;
 }
 static void alive(void) {
-  int status; if (waitpid(-1, &status, WNOHANG) > 0) die("a service stopped; restarting the complete app");
+  int status; pid_t pid;
+  // PID 1 also adopts short-lived converter descendants. Reap those without
+  // treating a completed Office helper as a failed long-running service.
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    for (int role = 1; role <= 5; role++) {
+      if (service_pids[role] != pid) continue;
+      fprintf(stderr, "Flux service role=%d pid=%ld exit=%d signal=%d\n", role, (long)pid,
+              WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+              WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+      die("a service stopped; restarting the complete app");
+    }
+  }
   if (stopping) exit(0);
 }
 static void wait_port(int port) {
