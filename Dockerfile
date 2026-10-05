@@ -41,6 +41,9 @@ COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
 COPY tests/fixtures/powerpoint-regression.pptx ./tests/fixtures/powerpoint-regression.pptx
 # The policy is copied separately so it cannot be silently omitted from a build.
 COPY deploy/imagemagick-policy.xml /etc/ImageMagick-6/policy.xml
+COPY deploy/office-fonts.conf /etc/fonts/conf.d/69-flux-office-fonts.conf
+RUN test "$(fc-match -f '%{family}' 'Calibri Light')" = Carlito \
+    && test "$(fc-match -f '%{family}' Cambria)" = Caladea
 RUN node server/build-catalog.cjs && apt-get purge -y gcc libc6-dev libseccomp-dev && apt-get autoremove -y && rm -rf /root/.cache /tmp/*
 USER 10001:10001
 EXPOSE 8090
