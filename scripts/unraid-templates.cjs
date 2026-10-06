@@ -28,7 +28,7 @@ async function main() {
   const dir = path.join(__dirname, '../deploy/templates');
   await fs.mkdir(dir, { recursive: true });
   for (const d of definitions) {
-    const args = `--user=${d.user || '10001:10001'} --restart=on-failure:3 --read-only --cap-drop=ALL --security-opt=no-new-privileges --cpus=${d.cpu} --memory=${d.mem} --memory-swap=${d.mem} --pids-limit=${d.pids} --tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 --log-opt max-size=5m --log-opt max-file=2 ${d.args}`;
+    const args = `--user=${d.user || '10001:10001'} --restart=on-failure --read-only --cap-drop=ALL --security-opt=no-new-privileges --cpus=${d.cpu} --memory=${d.mem} --memory-swap=${d.mem} --pids-limit=${d.pids} --tmpfs /tmp:rw,noexec,nosuid,nodev,size=192m,mode=1777 --log-opt max-size=5m --log-opt max-file=2 ${d.args}`;
     await fs.writeFile(
       path.join(dir, 'my-' + d.name + '.xml'),
       `<?xml version="1.0"?>\n<Container version="2"><Name>${d.name}</Name><Repository>${d.image}</Repository><Registry>https://github.com/SequoyahGeber/flux-file-converter/pkgs/container/flux-api</Registry><Network>${d.network}</Network><MyIP>${d.ip || ''}</MyIP><Privileged>false</Privileged><Shell>sh</Shell><Project>https://github.com/SequoyahGeber/flux-file-converter</Project><Support>https://github.com/SequoyahGeber/flux-file-converter/issues</Support><WebUI>https://fileconverter.sequoyahgeber.com</WebUI><Icon>https://raw.githubusercontent.com/SequoyahGeber/flux-file-converter/main/resources/icon.png</Icon><ExtraParams>${xml(args)}</ExtraParams><PostArgs>${xml(d.post || '')}</PostArgs><Overview>Flux private file conversion. Resource limits and isolation must be preserved.</Overview>${Object.entries(

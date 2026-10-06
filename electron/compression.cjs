@@ -3,7 +3,7 @@ const path = require('node:path');
 const sharp = require('sharp');
 const { run, publish, sanitizeOptions } = require('./engine.cjs');
 const { normalize } = require('./catalog.cjs');
-const { outputStem } = require('./io.cjs');
+const { outputStem, baseStem, toolPaths } = require('./io.cjs');
 
 function compressionOptions(file, engines) {
   const ext = normalize(file.ext),
@@ -98,8 +98,15 @@ async function compress(
   if (signal?.aborted)
     throw Object.assign(new Error('Compression cancelled.'), { code: 'CANCELLED' });
   await fs.mkdir(outputDir, { recursive: true });
-  const stage = await fs.mkdtemp(path.join(outputDir, '.flux-'));
-  const stem = outputStem(path.basename(file.name, '.' + file.ext), 'file');
+  const physical = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  const stem = outputStem(baseStem(file.name, file.ext), 'file');
+  const paths = await toolPaths(physical, file.path, `${stem}.${file.ext}`).catch(async (e) => {
+    await fs.rm(physical, { recursive: true, force: true });
+    throw e;
+  });
+  const stage = paths.work;
+  // Tools read a pattern-free alias; size checks and the kept original use the real file.
+  const source = paths.source;
   const out = path.join(stage, `${stem}-compressed.${choice.target}`);
   const opts = sanitizeOptions(options);
   let keptOriginal = false;
@@ -123,23 +130,23 @@ async function compress(
       );
     } else if (file.family === 'image') {
       if (mode === 'lossless' && choice.target === 'jpg')
-        await run(engines.jpegtran, ['-copy', 'all', '-optimize', '-outfile', out, file.path], {
+        await run(engines.jpegtran, ['-copy', 'all', '-optimize', '-outfile', out, source], {
           signal,
         });
       else if (mode === 'lossless' && choice.target === 'png')
-        await run(engines.oxipng, ['-o', '4', '--out', out, '--', file.path], { signal });
+        await run(engines.oxipng, ['-o', '4', '--out', out, '--', source], { signal });
       else {
-        let input = file.path;
+        let input = source;
         if (['heic', 'heif', 'bmp', 'ico'].includes(file.ext)) {
           input = path.join(stage, 'decoded.png');
           if (file.ext === 'ico')
             await run(
               engines.ffmpeg,
-              ['-nostdin', '-v', 'error', '-i', file.path, '-frames:v', '1', input],
+              ['-nostdin', '-v', 'error', '-i', source, '-frames:v', '1', input],
               { signal },
             );
           else
-            await run('/usr/bin/sips', ['-s', 'format', 'png', file.path, '--out', input], {
+            await run('/usr/bin/sips', ['-s', 'format', 'png', source, '--out', input], {
               signal,
             });
         }
@@ -172,7 +179,7 @@ async function compress(
             '--stream-data=compress',
             '--recompress-flate',
             '--compression-level=9',
-            file.path,
+            source,
             out,
           ],
           { signal },
@@ -192,13 +199,13 @@ async function compress(
             '-dQUIET',
             `-sOutputFile=${out}`,
             '-f',
-            file.path,
+            source,
           ],
           { signal },
         );
       }
     } else {
-      const args = ['-nostdin', '-y', '-v', 'error', '-i', file.path];
+      const args = ['-nostdin', '-y', '-v', 'error', '-i', source];
       if (mode === 'frames')
         args.push(
           '-map',
@@ -290,7 +297,8 @@ async function compress(
       compression: mode,
     };
   } finally {
-    await fs.rm(stage, { recursive: true, force: true });
+    await paths.release();
+    await fs.rm(physical, { recursive: true, force: true });
   }
 }
 module.exports = { compressionOptions, compress };

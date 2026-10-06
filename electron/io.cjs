@@ -30,7 +30,11 @@ async function readBounded(file, limit) {
 }
 
 function outputStem(value, fallback = 'converted') {
-  value = value.replace(/[^\p{L}\p{N} ._()-]/gu, '_').replace(/^[.\s-]+/, '');
+  // NFC keeps decomposed accents and Indic vowel signs as letters, not underscores.
+  value = value
+    .normalize('NFC')
+    .replace(/[^\p{L}\p{M}\p{N} ._()-]/gu, '_')
+    .replace(/^[.\s-]+/, '');
   let result = '',
     size = 0;
   for (const character of value) {
@@ -40,4 +44,39 @@ function outputStem(value, fallback = 'converted') {
   }
   return result.trimEnd() || fallback;
 }
-module.exports = { writeAll, readBounded, outputStem };
+// Strips the detected extension regardless of case: Photo.JPG -> Photo.
+function baseStem(name, ext) {
+  return ext && name.toLowerCase().endsWith('.' + ext.toLowerCase())
+    ? name.slice(0, -(ext.length + 1))
+    : name;
+}
+// ImageMagick, FFmpeg and Ghostscript expand %-patterns, and ImageMagick also
+// reads [frame] suffixes, in file paths. A source named scan%03d.jpg would read
+// a neighbouring scan000.jpg. Tools receive aliases without those characters.
+const PATTERN = /[%[\]]/;
+async function toolPaths(stage, input, safeName) {
+  const fs = require('node:fs/promises');
+  const path = require('node:path');
+  const os = require('node:os');
+  let alias,
+    work = stage,
+    source = input;
+  if (PATTERN.test(stage) || (input && PATTERN.test(input))) {
+    alias = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-paths-'));
+    if (PATTERN.test(stage)) {
+      work = path.join(alias, 'stage');
+      await fs.symlink(stage, work);
+    }
+    if (input && PATTERN.test(input)) {
+      await fs.mkdir(path.join(alias, 'input'));
+      source = path.join(alias, 'input', safeName);
+      await fs.symlink(input, source);
+    }
+  }
+  return {
+    work,
+    source,
+    release: () => alias && fs.rm(alias, { recursive: true, force: true }),
+  };
+}
+module.exports = { writeAll, readBounded, outputStem, baseStem, toolPaths };

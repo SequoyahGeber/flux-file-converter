@@ -1,0 +1,48 @@
+{
+ "percent-jxl": {
+  "name": "scan_03d.jxl",
+  "pixel": "srgb(253,1,3)"
+ },
+ "percent-png": {
+  "name": "scan_03d.png",
+  "pixel": "srgb(254,0,0)"
+ },
+ "exfat": {
+  "first": "blue.jpg",
+  "second": "blue (1).jpg",
+  "entries": [
+   "._blue (1).jpg",
+   "._blue.jpg",
+   "blue (1).jpg",
+   "blue.jpg"
+  ]
+ },
+ "names": [
+  "Photo.png",
+  "café.jpg"
+ ],
+ "drawing.svg->png": {
+  "pixel": "srgba(0,0,255,1)",
+  "expected": "blue, not red"
+ },
+ "drawing.svg->jxl": {
+  "pixel": "srgba(1,1,255,1)",
+  "expected": "blue, not red"
+ },
+ "disguised.tiff->png": {
+  "pixel": "srgba(0,0,255,1)",
+  "expected": "blue, not red"
+ },
+ "disguised.tiff->jxl": {
+  "pixel": "srgba(1,1,255,1)",
+  "expected": "blue, not red"
+ },
+ "hls": {
+  "family": "video",
+  "targets": 0,
+  "warning": "Playlists and manifests that reference other files are not supported."
+ },
+ "calibre": {
+  "canary": false
+ }
+}

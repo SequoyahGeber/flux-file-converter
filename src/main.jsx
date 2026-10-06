@@ -1519,7 +1519,7 @@ function App() {
                           'local',
                           'On-device conversion',
                           reviewInfo.fullEngine
-                            ? 'Office, spreadsheets, presentations, media, images, ebooks, fonts, 3D, tables, compression and archives · bundled locally'
+                            ? `Office, spreadsheets, presentations, media, images, ebooks, fonts, ${families.some((f) => f.id === 'model') ? '3D, ' : ''}tables, compression and archives · bundled locally`
                             : 'ImageIO, PDFKit, Apple media codecs, bundled FFmpeg, ZIP and structured data',
                         ],
                       ]

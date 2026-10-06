@@ -1,0 +1,2 @@
+{"uplinkKBps":100,"outcome":"ERROR: The server did not respond in time. Check the connection and reconnect.","seconds":121,"puts":1,"serverBytesReceived":12288000,"fileBytes":20971520}
+{"uplinkKBps":200,"outcome":"UPLOADED","seconds":104,"puts":2,"serverBytesReceived":20971520,"fileBytes":20971520}

@@ -270,6 +270,13 @@ async function createApp(config, deps = {}) {
         send(res, { id, chunkSize: LIMITS.chunk }, 201);
         return;
       }
+      if (req.method === 'GET' && /^\/api\/uploads\/[a-f0-9-]{36}$/.test(url.pathname)) {
+        // Lets the browser resume from the confirmed offset after a lost response.
+        const upload = s.uploads.get(url.pathname.split('/').pop());
+        if (!upload) throw fail('Upload expired.', 404);
+        send(res, { offset: upload.offset, size: upload.size, busy: upload.busy });
+        return;
+      }
       if (req.method === 'PUT' && /^\/api\/uploads\/[a-f0-9-]{36}$/.test(url.pathname)) {
         const upload = s.uploads.get(url.pathname.split('/').pop());
         if (!upload) throw fail('Upload expired.', 404);
@@ -285,7 +292,10 @@ async function createApp(config, deps = {}) {
           req.headers['content-type'] !== 'application/octet-stream'
         )
           throw fail('Invalid upload chunk.', 409);
-        if (uploading >= 2) throw fail('Too many simultaneous uploads.', 429);
+        if (uploading >= LIMITS.uploadStreams)
+          throw Object.assign(fail('The server is busy with other uploads.', 429), {
+            retryAfter: 2,
+          });
         upload.busy = true;
         uploading++;
         s.active++;

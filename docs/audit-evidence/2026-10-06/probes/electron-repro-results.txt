@@ -1,0 +1,16 @@
+Independent reproductions, 2026-10-06, macOS 27.2 arm64, Blender/ImageMagick/djxl from /Applications and Homebrew.
+
+3D external reference (blend-make.py, blend-run.cjs)
+  input model.blend references //../private/notes.txt (relative to the model); input bytes do NOT contain the canary
+  model.blend -> fbx : success, output contains AUDIT-LOCAL-FILE-CANARY-7731  (local file embedded)
+  model.blend -> glb : success, no canary
+  model.blend -> obj : success, companion model.mtl contains absolute victim path "map_Kd <...>/home/private/notes.txt"
+
+Percent-sign filename (percent-run.cjs)
+  in/scan%03d.jpg = solid red, sibling in/scan000.jpg = solid lime
+  -> jxl  : success, decoded centre pixel srgb(1,255,0)  (WRONG FILE: lime)
+  -> png  : success, srgb(254,0,0) (correct)
+  -> webp : success, srgb(254,0,0) (correct)
+
+exFAT output folder (exfat-run.cjs; 20 MB disposable hdiutil ExFAT image, detached afterwards)
+  png -> jpg into exFAT folder: failure, code ENOTSUP "operation not supported on socket, link ..."; no files left on volume

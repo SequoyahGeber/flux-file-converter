@@ -1,11 +1,50 @@
 #!/usr/bin/env python3
 """Bundle the shared conversion engine, tools, libraries and data for a local Mac build."""
-import json, os, pathlib, shutil, subprocess, sys
+import hashlib, json, os, pathlib, shutil, subprocess, sys, tarfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEST = pathlib.Path(os.environ.get('FLUX_MAC_ENGINE_RESOURCES', '/private/tmp/flux-full-engine/ConversionEngine'))
+CACHE = pathlib.Path(os.environ.get('FLUX_MAC_ENGINE_CACHE', pathlib.Path.home() / 'Library/Caches/flux-mac-engines'))
 MACHO = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'}
+# Official Node.js LTS builds, pinned to https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.
+NODE_VERSION = 'v24.21.0'
+NODE_SHA256 = {'arm64': 'bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057',
+               'x64': '1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097'}
 def command(*args):
     return subprocess.check_output(args, text=True).strip()
+def sha256(file):
+    digest = hashlib.sha256()
+    with open(file, 'rb') as stream:
+        for block in iter(lambda: stream.read(1 << 20), b''): digest.update(block)
+    return digest.hexdigest()
+def node_binary(arch):
+    """Download (once) and verify an official Node.js build; return its extracted binary."""
+    name = f'node-{NODE_VERSION}-darwin-{arch}'
+    archive = CACHE / (name + '.tar.gz')
+    if not archive.exists() or sha256(archive) != NODE_SHA256[arch]:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        partial = archive.with_name(archive.name + '.partial')
+        subprocess.run(['curl','--fail','--location','--proto','=https','--tlsv1.2','--retry','2','--silent','--show-error','-o',str(partial),f'https://nodejs.org/dist/{NODE_VERSION}/{name}.tar.gz'], check=True)
+        if sha256(partial) != NODE_SHA256[arch]:
+            partial.unlink(); raise RuntimeError(f'Checksum mismatch for {name}.tar.gz')
+        partial.replace(archive)
+    # Extract only the verified executable; never reuse a previously extracted copy.
+    binary = CACHE / name / 'node'
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive) as tar, tar.extractfile(f'{name}/bin/node') as source, binary.open('wb') as target:
+        shutil.copyfileobj(source, target)
+    binary.chmod(0o755)
+    return binary
+def macho_architectures(root):
+    """Architectures shared by every Mach-O file under root, so one thin tool limits the whole stage."""
+    common = None
+    for file in sorted(root.rglob('*')):
+        if file.is_symlink() or not file.is_file() or file.suffix == '.class': continue
+        with file.open('rb') as stream: header = stream.read(4)
+        if header not in MACHO: continue
+        try: archs = set(command('lipo','-archs',str(file)).split())
+        except subprocess.CalledProcessError: raise RuntimeError(f'Cannot read architectures of {file}')
+        common = archs if common is None else common & archs
+    return sorted(common or [])
 def copy(source, destination):
     source = pathlib.Path(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -16,17 +55,22 @@ def main():
     DEST.mkdir(parents=True, exist_ok=True)
     refresh = '--refresh' in sys.argv
     with_3d = '--with-3d' in sys.argv
+    universal = '--universal' in sys.argv
     engines = json.loads(command('node', '-e', "require('./electron/engine.cjs').detectEngines(require('node:path').resolve('resources')).then(e=>console.log(JSON.stringify(e)))"))
     for folder in ['electron']:
         copy(ROOT / folder, DEST / folder)
     copy(ROOT / 'scripts/mac-engine.cjs', DEST / 'scripts/mac-engine.cjs')
     copy(ROOT / 'scripts/mac-calibre.sh', DEST / 'scripts/mac-calibre.sh')
     (DEST / 'scripts/mac-calibre.sh').chmod(0o755)
-    for name in ['archive.py', 'advanced.py', 'models.py', 'pdf-tool', 'office-formats.json']:
+    for name in ['archive.py', 'advanced.py', 'models.py', 'pdf-tool', 'office-formats.json', 'imagemagick']:
         copy(ROOT / 'resources' / name, DEST / name)
     subprocess.run(['node', '-e', "require('./scripts/desktop-dependencies.cjs').copyDesktopDependencies(process.cwd(),process.argv[1])", str(DEST)], check=True)
-    runtime = pathlib.Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
-    copy(runtime, DEST / 'bin/node')
+    # --universal adds the x64 build; the release gate requires both architectures.
+    runtimes = [node_binary(arch) for arch in (['arm64','x64'] if universal else ['arm64'])]
+    (DEST / 'bin').mkdir(parents=True, exist_ok=True)
+    if (DEST / 'bin/node').exists(): (DEST / 'bin/node').unlink()
+    if universal: subprocess.run(['lipo','-create','-output',str(DEST/'bin/node'),*map(str, runtimes)], check=True)
+    else: copy(runtimes[0], DEST / 'bin/node')
     prefixes = {}
     pending = set()
     def brew_path(source):
@@ -134,7 +178,7 @@ def main():
         'GS_LIB': relative(list((gs_root/'share/ghostscript').glob('*/Resource/Init')) + list((gs_root/'share/ghostscript').glob('*/lib')) + list((gs_root/'share/ghostscript').glob('*/Resource/Font'))),
         'TESSDATA_PREFIX': relative([tess_root/'share/tessdata']),
     }
-    (DEST / 'engines.json').write_text(json.dumps({'schemaVersion':1,'engines':manifest,'excludedEngines':[] if with_3d else ['blender'],'distributionReady':False,'environment':environment,'architectures':command('lipo','-archs',str(DEST/'bin/node')).split()}))
+    (DEST / 'engines.json').write_text(json.dumps({'schemaVersion':1,'engines':manifest,'excludedEngines':[] if with_3d else ['blender'],'distributionReady':False,'environment':environment,'architectures':macho_architectures(DEST)}))
     # Engine subprocesses use their own data directories instead of host installations.
     subprocess.run([str(DEST/'bin/node'),str(DEST/'scripts/mac-engine.cjs'),'--catalog'], check=True)
     print(f'Bundled {len(processed)} tool/library packages in {DEST}')

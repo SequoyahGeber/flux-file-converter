@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Desktop policy, loaded through MAGICK_CONFIGURE_PATH in addition to the
+     installed one. Content sniffing means any input name can reach these coders:
+     they read other local files, run scripts or fetch URLs. Flux renders SVG with
+     sharp from memory instead. -->
+<!DOCTYPE policymap [
+  <!ELEMENT policymap (policy)*>
+  <!ATTLIST policymap xmlns CDATA #FIXED "">
+  <!ELEMENT policy EMPTY>
+  <!ATTLIST policy xmlns CDATA #FIXED "" domain NMTOKEN #REQUIRED
+    name NMTOKEN #IMPLIED pattern CDATA #IMPLIED rights NMTOKEN #IMPLIED
+    stealth NMTOKEN #IMPLIED value CDATA #IMPLIED>
+]>
+<policymap>
+  <policy domain="coder" rights="none" pattern="{MSVG,SVG,SVGZ,MVG,MSL,TEXT,URL,HTTP,HTTPS,FTP,EPHEMERAL,SHOW,WIN,X}"/>
+  <policy domain="delegate" rights="none" pattern="{URL,HTTP,HTTPS,FTP,show,win,x}"/>
+  <policy domain="path" rights="none" pattern="@*"/>
+</policymap>

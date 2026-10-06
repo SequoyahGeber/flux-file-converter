@@ -17,7 +17,7 @@
     "formats": "node scripts/export-formats.cjs",
     "format": "prettier --write electron server src scripts tests package.json",
     "format:check": "prettier --check electron server src scripts tests package.json",
-    "test:web": "node tests/web-ui.cjs && node tests/invite-ui.cjs && node tests/login-ui.cjs && node tests/batch-ui.cjs && node tests/reconnect-ui.cjs",
+    "test:web": "node tests/web-ui.cjs && node tests/invite-ui.cjs && node tests/login-ui.cjs && node tests/batch-ui.cjs && node tests/reconnect-ui.cjs && node tests/upload-resilience-ui.cjs",
     "test:mac": "xcrun swiftc mac/Flux/SafeSave.swift tests/mac-policy.swift -o /tmp/flux-mac-policy && /tmp/flux-mac-policy",
     "testflight:check": "node scripts/mas.cjs --check",
     "package:mas:dev": "npm run native && npm run build && npm run formats && node scripts/mas.cjs --development",

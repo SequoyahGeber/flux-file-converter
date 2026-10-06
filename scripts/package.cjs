@@ -41,6 +41,7 @@ async function main() {
   for (const file of ['pdf-tool', 'archive.py', 'advanced.py', 'models.py', 'office-formats.json'])
     await copy(path.join(root, 'resources', file), path.join(resources, file));
   await copy(path.join(root, 'resources/icon.icns'), path.join(resources, 'icon.icns'));
+  await copy(path.join(root, 'resources/imagemagick'), path.join(resources, 'imagemagick'));
   await copy(path.join(root, 'reference'), path.join(resources, 'reference'));
   await fs.copyFile(path.resolve(base, '..', 'LICENSE'), path.join(resources, 'LICENSE.electron'));
   const engines = await detectEngines(path.join(root, 'resources'));

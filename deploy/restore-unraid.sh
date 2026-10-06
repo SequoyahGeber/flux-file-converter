@@ -3,6 +3,12 @@
 set -euo pipefail
 flux_root=/mnt/cache/appdata/flux-deployment
 test -f "$flux_root/gvisor/runsc"
+# Mount scratch disks before registering the runtime, so a Docker restart
+# cannot start Flux against empty, RAM-backed mount directories.
+for name in api worker scanner; do
+  mkdir -p "/mnt/flux-work-$name"
+  mountpoint -q "/mnt/flux-work-$name" || mount -o loop,noexec,nosuid,nodev "$flux_root/storage/$name.img" "/mnt/flux-work-$name"
+done
 # Keep unchanged, running binaries in place. Replace changed binaries atomically
 # so restoring prerequisites is safe while the existing container is running.
 if ! cmp -s "$flux_root/gvisor/runsc" /usr/local/bin/runsc; then
@@ -24,8 +30,4 @@ chmod 0755 /usr/local/bin/runsc-unraid
 jq '.runtimes.runsc.path="/usr/local/bin/runsc-unraid"' /etc/docker/daemon.json > /etc/docker/daemon.json.flux
 mv /etc/docker/daemon.json.flux /etc/docker/daemon.json
 if [ -f /var/run/dockerd.pid ]; then kill -HUP "$(cat /var/run/dockerd.pid)"; fi
-for name in api worker scanner; do
-  mkdir -p "/mnt/flux-work-$name"
-  mountpoint -q "/mnt/flux-work-$name" || mount -o loop,noexec,nosuid,nodev "$flux_root/storage/$name.img" "/mnt/flux-work-$name"
-done
 echo 'Flux runtime and bounded volumes restored.'

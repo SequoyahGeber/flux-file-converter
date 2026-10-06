@@ -1,0 +1,10 @@
+Mac full-engine worker checks, 2026-10-06 (scripts/mac-engine.cjs with a temporary stage whose
+engines.json points at wrapper scripts for Homebrew tools; LibreOffice absent).
+
+A08 tar.gz -> zip       : success; bundle.zip contains docs/readme.txt (contents repacked, not the .tar.gz wrapped)
+A14 unsupported target  : stderr last line "FLUX-ERROR: This conversion is not supported."; Swift shows only that text
+A09 parent exit         : 720p clip -> webm with FLUX_PARENT_PIPE=1; encoder running; parent closes stdin;
+                          worker exited after 0.9 s (code 1) and no tool processes remained
+Native builds           : Mac Release (CODE_SIGNING_ALLOWED=NO) and iPhone simulator Release succeeded;
+                          restricted Mac bundle has OfflineKit + DesktopUI and no ConversionEngine
+Swift                   : OfflineKit 28 tests passed; safe-save checks passed

@@ -15,7 +15,7 @@ const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { APP_URL, CSP, assetPath, jobView } = require('./desktop-policy.cjs');
 const { FileScopes } = require('./file-scopes.cjs');
-const { detectEngines, inspectFile, convert, catalog } = require('./engine.cjs');
+const { detectEngines, inspectFile, convert, catalog, sweepStages } = require('./engine.cjs');
 const { compress, compressionOptions } = require('./compression.cjs');
 const { archiveFiles } = require('./archives.cjs');
 if (process.env.FLUX_TEST_DATA_DIR) app.setPath('userData', process.env.FLUX_TEST_DATA_DIR);
@@ -41,9 +41,14 @@ let pendingOpen = [];
 const userState = () => path.join(app.getPath('userData'), 'state.json');
 async function persist() {
   const temp = userState() + '.tmp';
-  await fs.writeFile(temp, JSON.stringify({ outputDir, outputBookmark, history }, null, 2), {
-    mode: 0o600,
-  });
+  const handle = await fs.open(temp, 'w', 0o600);
+  try {
+    await handle.writeFile(JSON.stringify({ outputDir, outputBookmark, history }, null, 2));
+    // Flush before the rename so a power loss cannot leave an empty history.
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
   await fs.chmod(temp, 0o600);
   await fs.rename(temp, userState());
 }
@@ -431,6 +436,7 @@ else {
         batch.forEach(emit);
         (async () => {
           try {
+            await sweepStages(destination);
             for (const job of batch) {
               if (controller.signal.aborted) {
                 emit({ ...job, status: 'cancelled' });
@@ -480,7 +486,9 @@ else {
                 result.originalSize ??= job.file.size;
                 history.unshift(result);
                 history = history.slice(0, 100);
-                await save();
+                // The output is already published; a history write failure (for
+                // example a full disk) must not report it as a failed conversion.
+                await save().catch(() => {});
                 emit({ ...job, status: 'done', progress: 100, result });
               } catch (error) {
                 emit({

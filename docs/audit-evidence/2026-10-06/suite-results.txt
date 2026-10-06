@@ -1,0 +1,96 @@
+# Suite results, 2026-10-06 13:42 JST, commit 94def42
+Environment: macOS 27.2 (26B5101f), arm64, Node v26.9.0, swift-driver version: 1.168.6 Apple Swift version 6.4 (swiftlang-6.4.0.30.4 clang-2100.3.30.1)
+
+## npm-test
+✔ uploads, jobs and downloads are owner-scoped; scan failure cannot publish a result (34.482209ms)
+✔ a missing scratch file releases upload capacity after a failed chunk write (8.554125ms)
+✔ the overall job deadline aborts scanning and publishes no file (60.025708ms)
+✔ the single container retains hard limits, gVisor and no published ports (21.205125ms)
+ℹ tests 57
+ℹ suites 0
+ℹ pass 57
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21771.146458
+npm test  26.76s user 11.37s system 172% cpu 22.052 total
+exit 0
+
+## web
+
+> flux-file-converter@1.0.1 test:web
+> node tests/web-ui.cjs && node tests/invite-ui.cjs && node tests/login-ui.cjs && node tests/batch-ui.cjs && node tests/reconnect-ui.cjs
+
+Browser upload, conversion, custom save filename, download, format search, mobile layout, deletion and delayed upload cancellation passed.
+Owner invite creation, first-guest claim, hidden owner controls, URL removal and revocation passed.
+Three cross-site login redirects loaded the authenticated workspace without refresh; real JWT verification and browser fetch metadata passed.
+Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes and preserved focus passed (controlled clocks; stub codecs/scanner).
+Transient server outage recovers without duplicate jobs; reloaded running jobs finish and unlock controls. Real API, synthetic scanner/converter.
+exit 0
+
+## desktop
+> flux-file-converter@1.0.1 build
+> vite build
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 1902 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.63 kB │ gzip:  0.40 kB
+dist/assets/index-CVYi-QFo.css   22.21 kB │ gzip:  5.93 kB
+dist/assets/index-CazxKlKq.js   270.74 kB │ gzip: 84.41 kB
+✓ built in 1.13s
+Desktop acceptance passed: batch conversion, lossless/lossy compression, ZIP creation, extraction, format search, settings, and history.
+exit 0
+
+## mac
+
+> flux-file-converter@1.0.1 test:mac
+> xcrun swiftc mac/Flux/SafeSave.swift tests/mac-policy.swift -o /tmp/flux-mac-policy && /tmp/flux-mac-policy
+
+Atomic safe-save checks passed
+exit 0
+
+## format
+
+> flux-file-converter@1.0.1 format:check
+> prettier --check electron server src scripts tests package.json
+
+Checking formatting...
+All matched files use Prettier code style!
+exit 0
+
+## swift
+Test Case '-[OfflineKitTests.ConversionTests testZIPRoundTripAndNames]' passed (0.021 seconds).
+Test Suite 'ConversionTests' passed at 2026-10-06 13:34:26.336.
+	 Executed 23 tests, with 0 failures (0 unexpected) in 2.385 (2.387) seconds
+Test Suite 'OfflineKitTests.xctest' passed at 2026-10-06 13:34:26.336.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 2.681 (2.684) seconds
+Test Suite 'All tests' passed at 2026-10-06 13:34:26.336.
+	 Executed 28 tests, with 0 failures (0 unexpected) in 2.681 (2.689) seconds
+Flux audit 50,000 record CSV/JSON round trip: 0.25983091666694236 seconds
+◇ Test run started.
+↳ Testing Library Version: 2077
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+swift test --package-path native/OfflineKit --scratch-path $S/../swift-build   34.74s user 9.29s system 157% cpu 28.042 total
+exit 0
+
+## npm audit
+{'info': 0, 'low': 0, 'moderate': 0, 'high': 0, 'critical': 0, 'total': 0}
+
+## CI-equivalent Mac Release build (CODE_SIGNING_ALLOWED=NO)
+** BUILD SUCCEEDED **
+
+exit 0
+$SCRATCH/mac-ci-build/Build/Products/Release/Flux File Converter.app
+DesktopUI
+Flux.icns
+OfflineKit_OfflineKit.bundle
+PrivacyInfo.xcprivacy
+ZIPFoundation_ZIPFoundation.bundle
+ls: $SCRATCH/mac-ci-build/Build/Products/Release/Flux File Converter.app/Contents/Resources/ConversionEngine: No such file or directory
+
+[exited with code 0]

@@ -67,7 +67,7 @@ RUN mkdir -p /server && cp /src/supervisor.c /server/supervisor.c \
     && /supervisor-test \
     && gcc -O2 -Wall -Wextra /src/supervisor.c -o /flux-supervisor
 
-FROM cloudflare/cloudflared:latest AS cloudflared
+FROM cloudflare/cloudflared:2026.10.0@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07 AS cloudflared
 
 FROM worker AS unified
 USER 0:0

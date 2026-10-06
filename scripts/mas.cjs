@@ -262,6 +262,9 @@ async function build(options) {
     await fs.cp(path.join(ROOT, 'reference'), path.join(resources, 'reference'), {
       recursive: true,
     });
+    await fs.cp(path.join(ROOT, 'resources/imagemagick'), path.join(resources, 'imagemagick'), {
+      recursive: true,
+    });
     await fs.copyFile(options.privacyManifest, path.join(resources, 'PrivacyInfo.xcprivacy'));
     command('/usr/bin/xattr', ['-cr', app]);
     await sign({

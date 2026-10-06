@@ -17,6 +17,8 @@ import OfflineKit
     private var busy = false
     private var control: JobControl?
     private var cancelled = false
+    /// Distributable builds use OfflineKit; only the personal build bundles the full engine.
+    private let full = SharedMacEngine.isAvailable
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -25,6 +27,9 @@ import OfflineKit
         webView = LocalDesktopWebView(frame: .zero, configuration: configuration)
         super.init()
         OfflineEngine.clearTemporaryFiles()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            SharedMacEngine.terminateAll()
+        }
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "local")
         webView.navigationDelegate = self
         webView.onFiles = { [weak self] urls in
@@ -142,15 +147,22 @@ import OfflineKit
         }
     }
     private var outputLabel: String { outputFolder?.path ?? "Choose location when saving" }
-    private func targets(_ ext: String) -> [String] { SharedMacEngine.targets(ext) }
+    private func targets(_ ext: String) -> [String] {
+        full ? SharedMacEngine.targets(ext) : LocalFormats.outputs(for: ext).filter { $0 != "unzip" }
+    }
+    private func fileExtension(_ url: URL) -> String { full ? SharedMacEngine.fileExtension(url) : url.pathExtension.lowercased() }
     private var families: [[String: Any]] {
-        SharedMacEngine.families
+        if full { return SharedMacEngine.families }
+        return [("image", "Images", LocalFormats.images), ("video", "Video", LocalFormats.video), ("audio", "Audio", LocalFormats.audio),
+         ("document", "Documents & ebooks", LocalFormats.documents), ("pdf", "PDF", ["pdf"]),
+         ("data", "Structured data", LocalFormats.data), ("subtitle", "Subtitles", ["srt", "vtt"]), ("archive", "Archives", ["zip"])]
+            .map { ["id": $0.0, "name": $0.1, "formats": $0.2] }
     }
     private func state() -> [String: Any] {
-        ["nativeLocal": true, "fullEngine": true, "engines": ["local": true], "enginePaths": ["local": "Built into Flux · no downloads or server"], "outputDir": outputLabel,
+        ["nativeLocal": true, "fullEngine": full, "engines": ["local": true], "enginePaths": ["local": "Built into Flux · no downloads or server"], "outputDir": outputLabel,
          "history": history, "families": families, "running": busy, "files": [], "jobs": [],
          "samples": ReviewResources.samples.map { ["id": $0.id, "title": $0.title, "target": $0.target] },
-         "privacyText": ReviewResources.privacyText, "supportText": ReviewResources.supportText,
+         "privacyText": ReviewResources.privacyText, "supportText": full ? SharedMacEngine.supportNote + "\n\n" + ReviewResources.supportText : ReviewResources.supportText,
          "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]
     }
     private func register(_ urls: [URL]) throws -> [[String: Any]] {
@@ -163,15 +175,27 @@ import OfflineKit
                 if files.values.contains(url) { continue }
                 let scoped = url.startAccessingSecurityScopedResource()
                 let id = UUID().uuidString; files[id] = url; added.append(id); if scoped { scopedFiles.insert(id) }
-                let size = try LocalPolicy.fileSize(url), ext = url.pathExtension.lowercased()
-                let media = ["video", "audio"].contains(SharedMacEngine.descriptor(ext)["family"] as? String ?? "")
-                guard size <= (media ? LocalPolicy.mediaLimit : SharedMacEngine.fileLimit) else { throw LocalError.invalid("Media is limited to 5 GB; other files to 1.9 GB.") }
+                let size = try LocalPolicy.fileSize(url), ext = fileExtension(url)
                 let family = families.first { ($0["formats"] as! [String]).contains(ext) }?["id"] as? String ?? "unsupported"
-                let descriptor = SharedMacEngine.descriptor(ext)
-                let compression = descriptor["compressionOptions"] as? [[String: Any]] ?? [["id": "archive", "name": "Lossless ZIP", "note": "Preserves the complete original file."]]
-                records.append(["id": id, "path": id, "name": url.lastPathComponent, "ext": ext, "size": size, "family": family,
-                    "targets": targets(ext), "compressionOptions": compression,
-                    "notes": (descriptor["notes"] as? [String: String] ?? [:]).merging(["zip": "Preserves the original file in a ZIP."]) { first, _ in first }])
+                if full {
+                    let media = ["video", "audio"].contains(SharedMacEngine.descriptor(ext)["family"] as? String ?? "")
+                    guard size <= (media ? LocalPolicy.mediaLimit : SharedMacEngine.fileLimit) else { throw LocalError.invalid("Media is limited to 5 GB; other files to 1.9 GB.") }
+                    let descriptor = SharedMacEngine.descriptor(ext)
+                    let compression = descriptor["compressionOptions"] as? [[String: Any]] ?? [["id": "archive", "name": "Lossless ZIP", "note": "Preserves the complete original file."]]
+                    records.append(["id": id, "path": id, "name": url.lastPathComponent, "ext": ext, "size": size, "family": family,
+                        "targets": targets(ext), "compressionOptions": compression,
+                        "notes": (descriptor["notes"] as? [String: String] ?? [:]).merging(["zip": "Preserves the original file in a ZIP."]) { first, _ in first }])
+                } else {
+                    let media = LocalFormats.video.contains(ext) || LocalFormats.audio.contains(ext)
+                    guard size <= (media ? LocalPolicy.mediaLimit : LocalPolicy.fileLimit) else { throw LocalError.invalid("Media is limited to 5 GB; other files to 512 MB.") }
+                    var compression: [[String: String]] = [["id": "archive", "name": "Lossless ZIP", "note": "Keeps the complete original file in a ZIP. Compression may not reduce its size."]]
+                    if media || LocalFormats.images.contains(ext) || ext == "pdf" {
+                        compression.append(["id": "lossy", "name": "Smaller file", "note": ext == "pdf" ? LocalFormats.note(source: "pdf", target: "pdf", lossless: false) : "Re-encodes locally with reduced quality. Size reduction depends on the source."])
+                    }
+                    records.append(["id": id, "path": id, "name": url.lastPathComponent, "ext": ext, "size": size, "family": family,
+                        "targets": targets(ext), "compressionOptions": compression,
+                        "notes": Dictionary(uniqueKeysWithValues: targets(ext).map { ($0, LocalFormats.note(source: ext, target: $0, lossless: true)) })])
+                }
             }
             return records
         } catch {
@@ -185,7 +209,7 @@ import OfflineKit
             if cancelled { update["status"] = "cancelled"; update["progress"] = 0; emit("update", update); continue }
             let ids = operation == "pack" ? job["includeIds"] as! [String] : [id]
             guard let source = files[id] else { continue }
-            let ext = source.pathExtension.lowercased()
+            let ext = fileExtension(source)
             let raw = job["options"] as? [String: Any] ?? [:]
             var options = ConversionOptions()
             options.quality = ["high": 0.95, "balanced": 0.85, "small": 0.55][raw["quality"] as? String ?? "balanced"] ?? 0.85
@@ -200,18 +224,25 @@ import OfflineKit
                 } else { target = "zip" }
             } else { target = job["target"] as? String ?? "" }
             let name = job["outputName"] as? String ?? (operation == "pack" ? "Archive" : source.deletingPathExtension().lastPathComponent + "-converted")
-            let token = JobControl(); control = token
+            // The full engine's worker enforces its own two-hour tool limit.
+            let token = full ? JobControl(deadline: 2 * 60 * 60 + 600) : JobControl(); control = token
             update["status"] = "running"; update["progress"] = 5; emit("update", update)
             do {
                 let inputs = ids.compactMap { files[$0] }
-                var request = job
-                request["target"] = target
-                let specification = request
-                let result = try await Task.detached(priority: .userInitiated) { try await SharedMacEngine.convert(inputs: inputs, job: specification, name: name, control: token) }.value
+                let result: LocalResult
+                if full {
+                    var request = job
+                    request["target"] = target
+                    let specification = request
+                    result = try await Task.detached(priority: .userInitiated) { try await SharedMacEngine.convert(inputs: inputs, job: specification, name: name, control: token) }.value
+                } else {
+                    let settings = options
+                    result = try await Task.detached(priority: .userInitiated) { try await OfflineEngine.convert(inputs: inputs, target: target, name: name, options: settings, control: token) }.value
+                }
                 if token.isCancelled { result.remove(); throw LocalError.cancelled }
                 let resultID = UUID().uuidString; results[resultID] = result
                 let size = result.isDirectory ? Int64(0) : try LocalPolicy.fileSize(result.url)
-                let record: [String: Any] = ["id": resultID, "name": result.url.lastPathComponent, "target": result.isDirectory ? "folder" : result.url.pathExtension, "size": size,
+                let record: [String: Any] = ["id": resultID, "name": result.url.lastPathComponent, "target": result.isDirectory ? "folder" : full ? result.url.pathExtension : target, "size": size,
                     "operation": operation, "sourceName": source.lastPathComponent, "sourceFamily": families.first { ($0["formats"] as! [String]).contains(ext) }?["id"] ?? "unsupported",
                     "completedAt": Date().timeIntervalSince1970 * 1000, "saved": false, "savedBytes": ((try? LocalPolicy.fileSize(source)) ?? 0) - size]
                 history.insert(record, at: 0); update["result"] = record; update["status"] = "done"; update["progress"] = 100

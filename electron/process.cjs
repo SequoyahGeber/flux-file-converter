@@ -4,10 +4,23 @@ const { StringDecoder } = require('node:string_decoder');
 
 const cancelled = () => Object.assign(new Error('Conversion cancelled.'), { code: 'CANCELLED' });
 const DEFAULT_TIMEOUT = 10 * 60 * 1000;
-let bundledEnvironment;
+let bundledEnvironment, imagePolicy;
 // Set only by the trusted native worker using its private tool bundle.
 function configureBundledEnvironment(environment) {
   bundledEnvironment = { ...environment };
+}
+// Directory containing Flux's restrictive ImageMagick policy.xml.
+function configureImagePolicy(directory) {
+  imagePolicy = directory;
+}
+// The native Mac worker runs one job on the user's own machine and may use more
+// threads and time for long media; servers and Electron keep the defaults.
+let limits = { threads: undefined, timeout: DEFAULT_TIMEOUT };
+function configureLimits({ threads, timeout } = {}) {
+  limits = {
+    threads: Number.isSafeInteger(threads) && threads > 0 ? String(threads) : undefined,
+    timeout: Number.isSafeInteger(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT,
+  };
 }
 const ENVIRONMENT_KEYS = [
   'HOME',
@@ -32,7 +45,7 @@ function engineEnvironment(source = process.env) {
       source[key],
     ]),
   );
-  const threads = source.FLUX_SERVER === '1' ? '1' : '2';
+  const threads = source.FLUX_SERVER === '1' ? '1' : limits.threads || '2';
   return {
     ...env,
     PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
@@ -42,10 +55,19 @@ function engineEnvironment(source = process.env) {
     MAGICK_THREAD_LIMIT: threads,
     QT_QPA_PLATFORM: 'offscreen',
     ...bundledEnvironment,
+    ...(imagePolicy && {
+      // ImageMagick merges every policy.xml on this path; Flux's is listed first.
+      MAGICK_CONFIGURE_PATH: [
+        imagePolicy,
+        bundledEnvironment?.MAGICK_CONFIGURE_PATH || source.MAGICK_CONFIGURE_PATH,
+      ]
+        .filter(Boolean)
+        .join(path.delimiter),
+    }),
   };
 }
 
-function run(command, args, { signal, onLine, timeout = DEFAULT_TIMEOUT, cwd } = {}) {
+function run(command, args, { signal, onLine, timeout = limits.timeout, cwd } = {}) {
   if (
     typeof command !== 'string' ||
     !Array.isArray(args) ||
@@ -53,7 +75,7 @@ function run(command, args, { signal, onLine, timeout = DEFAULT_TIMEOUT, cwd } =
   )
     return Promise.reject(new Error('Invalid conversion command.'));
   if (signal?.aborted) return Promise.reject(cancelled());
-  timeout = Math.min(Math.max(Number(timeout) || DEFAULT_TIMEOUT, 1), DEFAULT_TIMEOUT);
+  timeout = Math.min(Math.max(Number(timeout) || limits.timeout, 1), limits.timeout);
   const name = path.basename(command),
     env = engineEnvironment();
   if (/^(ffmpeg|ffprobe)$/.test(name)) {
@@ -168,4 +190,11 @@ function run(command, args, { signal, onLine, timeout = DEFAULT_TIMEOUT, cwd } =
   });
 }
 
-module.exports = { run, engineEnvironment, DEFAULT_TIMEOUT, configureBundledEnvironment };
+module.exports = {
+  run,
+  engineEnvironment,
+  DEFAULT_TIMEOUT,
+  configureBundledEnvironment,
+  configureImagePolicy,
+  configureLimits,
+};

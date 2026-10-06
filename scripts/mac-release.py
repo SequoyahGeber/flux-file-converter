@@ -31,15 +31,20 @@ def main():
     parser.add_argument("--build", required=True)
     parser.add_argument("--development", action="store_true")
     parser.add_argument("--work-dir", type=pathlib.Path, help="Keep build intermediates here for local packaging diagnostics.")
+    parser.add_argument("--full-engine", action="store_true", help="Bundle the personal full converter stage instead of the restricted on-device engine.")
     args = parser.parse_args()
+    # Without --full-engine this builds the restricted OfflineKit app that can be
+    # distributed; the bridge only uses converters that are actually bundled.
     conversion_root = pathlib.Path(os.environ.get("FLUX_MAC_ENGINE_RESOURCES", "/private/tmp/flux-full-engine/ConversionEngine"))
-    if not (conversion_root / "capabilities.json").is_file():
-        raise SystemExit("Build the bundled converters with scripts/mac-engines.py before packaging Flux.")
-    engine_manifest = json.loads((conversion_root / "engines.json").read_text())
-    if not args.development and engine_manifest.get("distributionReady") is not True:
-        raise SystemExit("This full engine bundle is for personal use. Public packaging requires completed third-party licensing and corresponding-source review.")
-    if not args.development and set(engine_manifest.get("architectures", [])) != {"arm64", "x86_64"}:
-        raise SystemExit("Distribution requires complete bundled engines for Apple Silicon and Intel.")
+    engine_manifest = {}
+    if args.full_engine:
+        if not (conversion_root / "capabilities.json").is_file():
+            raise SystemExit("Build the bundled converters with scripts/mac-engines.py before packaging the full engine.")
+        engine_manifest = json.loads((conversion_root / "engines.json").read_text())
+        if not args.development and engine_manifest.get("distributionReady") is not True:
+            raise SystemExit("This full engine bundle is for personal use. Public packaging requires completed third-party licensing and corresponding-source review.")
+        if not args.development and set(engine_manifest.get("architectures", [])) != {"arm64", "x86_64"}:
+            raise SystemExit("Distribution requires complete bundled engines for Apple Silicon and Intel.")
     if not re.fullmatch(r"[1-9][0-9]{0,17}", args.build):
         raise SystemExit("Supply an increasing numeric build number.")
     settings = json.loads(args.config.read_text())
@@ -105,14 +110,17 @@ def main():
         with (logs / ("mac-" + mode + "-archive.txt")).open("w") as log:
             subprocess.run(build_args, check=True, env=env, stdout=log, stderr=subprocess.STDOUT)
         app = archive / "Products/Applications/Flux File Converter.app"
-        # Copy after compilation: Xcode otherwise indexes every tool/data file.
-        command(["ditto", "--noextattr", "--norsrc", str(conversion_root), str(app / "Contents/Resources/ConversionEngine")])
-        # Native UI and picker permissions remain sandboxed; converter children
-        # inherit that sandbox and receive only private staged file copies.
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("mac_sign_engines", ROOT / "scripts/mac-sign-engines.py")
-        signer = importlib.util.module_from_spec(spec); spec.loader.exec_module(signer)
-        signer.sign(app, identity, keychain)
+        if args.full_engine:
+            # Copy after compilation: Xcode otherwise indexes every tool/data file.
+            command(["ditto", "--noextattr", "--norsrc", str(conversion_root), str(app / "Contents/Resources/ConversionEngine")])
+            # Converter children inherit the app sandbox, including its network
+            # client and open user-selected scopes; they receive staged copies.
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("mac_sign_engines", ROOT / "scripts/mac-sign-engines.py")
+            signer = importlib.util.module_from_spec(spec); spec.loader.exec_module(signer)
+            signer.sign(app, identity, keychain)
+        elif (app / "Contents/Resources/ConversionEngine").exists():
+            raise SystemExit("The restricted build must not contain ConversionEngine.")
         command(["codesign", "--verify", "--deep", "--strict", str(app)])
         entitlements = plistlib.loads(command(["codesign", "-d", "--entitlements", "-", "--xml", str(app)], stderr=subprocess.DEVNULL))
         if entitlements.get("com.apple.security.app-sandbox") is not True or (not args.development and entitlements.get("com.apple.security.get-task-allow", False)):
@@ -146,6 +154,7 @@ def main():
         command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(archive), str(archive_zip)])
         receipt = {"bundleId": settings["bundleId"], "version": version, "build": args.build,
                    "mode": mode, "architectures": architectures, "entitlements": entitlements,
+                   "engine": "full" if args.full_engine else "restricted",
                    "engineArchitectures": engine_manifest.get("architectures", []),
                    "excludedEngines": engine_manifest.get("excludedEngines", []),
                    "distributionReady": engine_manifest.get("distributionReady", False),

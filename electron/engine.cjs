@@ -2,8 +2,8 @@ const fs = require('node:fs/promises');
 const fss = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { run } = require('./process.cjs');
-const { readBounded, outputStem } = require('./io.cjs');
+const { run, configureImagePolicy } = require('./process.cjs');
+const { readBounded, outputStem, baseStem, toolPaths } = require('./io.cjs');
 const { bundledEngines } = require('./bundled-engines.cjs');
 const { pathToFileURL } = require('node:url');
 const sharp = require('sharp');
@@ -117,6 +117,17 @@ async function detectEngines(
         '/Applications/Blender.app/Contents/MacOS/Blender',
         '/usr/bin/blender',
       ]);
+  // Desktop ImageMagick must run under Flux's coder policy (the container ships
+  // its own in /etc). Without the policy file, image routes stay disabled.
+  if (extras.magick && process.env.FLUX_SERVER !== '1') {
+    const policy = path.join(resources, 'imagemagick');
+    try {
+      await fs.access(path.join(policy, 'policy.xml'));
+      configureImagePolicy(policy);
+    } catch {
+      extras.magick = null;
+    }
+  }
   const registry = { images: [], media: [], documents: [] };
   if (office)
     try {
@@ -128,7 +139,7 @@ async function detectEngines(
   if (extras.magick) {
     const listing = (await run(extras.magick, ['-list', 'format'], { timeout: 30000 })).stdout;
     const pseudo = new Set(
-      'art caption canvas clipboard clip CMYK CMYKA gray graya gradient histogram http https inline label msl mvg null pango pattern plasma preview rgb rgba rgbo shtml stegano strimg text tile txt url vid x xc ycbcr ycbcra'
+      'art caption canvas clipboard clip msvg CMYK CMYKA gray graya gradient histogram http https inline label msl mvg null pango pattern plasma preview rgb rgba rgbo shtml stegano strimg text tile txt url vid x xc ycbcr ycbcra'
         .toLowerCase()
         .split(' '),
     );
@@ -184,6 +195,9 @@ async function detectEngines(
 }
 function displayError(error) {
   const message = error.message || String(error);
+  // Helper scripts report user-facing problems as their final exception line.
+  const raised = message.match(/^(?:ValueError|RuntimeError): (.+)$/m);
+  if (/^Traceback /.test(message) && raised) return raised[1];
   if (
     /Invalid data found|could not find codec|does not contain any stream|unsupported image|Input buffer|corrupt|Vips/i.test(
       message,
@@ -192,7 +206,20 @@ function displayError(error) {
     return 'This file could not be decoded. It may be damaged or use an unsupported codec.';
   return message;
 }
-async function inspectFile(filePath, engines, resources, { signal } = {}) {
+async function inspectFile(filePath, engines, resources, options = {}) {
+  const name = path.basename(filePath);
+  const paths = await toolPaths(os.tmpdir(), filePath, name.replace(/[%[\]]/g, '_'));
+  try {
+    return {
+      ...(await inspectSource(paths.source, engines, resources, options)),
+      path: filePath,
+      name,
+    };
+  } finally {
+    await paths.release();
+  }
+}
+async function inspectSource(filePath, engines, resources, { signal } = {}) {
   if (signal?.aborted) throw cancelled();
   const stat = await fs.stat(filePath);
   if (!stat.isFile()) throw new Error('Choose files, rather than folders.');
@@ -272,6 +299,13 @@ async function inspectFile(filePath, engines, resources, { signal } = {}) {
         { signal, timeout: 15000 },
       );
       const meta = JSON.parse(result.stdout);
+      // Playlists and manifests read other local media files named inside them.
+      if (
+        /(^|,)(hls|applehttp|concat|ffconcat|dash|webm_dash_manifest)(,|$)/.test(
+          meta.format?.format_name || '',
+        )
+      )
+        throw new Error('Playlists and manifests that reference other files are not supported.');
       info.duration = Number(meta.format?.duration) || 0;
       info.hasAudio = meta.streams.some((s) => s.codec_type === 'audio');
       info.hasVideo = meta.streams.some(
@@ -340,6 +374,20 @@ async function bmp(buffer) {
   return out;
 }
 async function image(input, target, out, stage, options, engines, signal) {
+  // librsvg resolves <image> references against an SVG's folder. Rendering from
+  // memory gives it no base, so an SVG (even one renamed as another format)
+  // cannot embed neighbouring files. ImageMagick's SVG coders are disabled.
+  const detected = await sharp(input)
+    .metadata()
+    .then((meta) => meta.format)
+    .catch(() => undefined);
+  if (detected === 'svg') {
+    const rendered = path.join(stage, 'rendered.png');
+    await sharp(await readBounded(input, 64 * 1024 ** 2), { limitInputPixels: 100000000 })
+      .png()
+      .toFile(rendered);
+    input = rendered;
+  }
   let source = input;
   const sharpTargets = ['jpg', 'png', 'webp', 'avif', 'tiff', 'gif', 'bmp', 'ico', 'pdf', 'svg'];
   if (!sharpTargets.includes(target)) {
@@ -369,7 +417,7 @@ async function image(input, target, out, stage, options, engines, signal) {
       if (!engines.ffmpeg) throw new Error('FFmpeg is needed to decode ICO files.');
       await run(
         engines.ffmpeg,
-        ['-nostdin', '-y', '-v', 'error', '-i', input, '-frames:v', '1', source],
+        ['-nostdin', '-y', '-v', 'error', '-i', input, '-frames:v', '1', '-update', '1', source],
         { signal },
       );
     } else await run('/usr/bin/sips', ['-s', 'format', 'png', input, '--out', source], { signal });
@@ -456,7 +504,8 @@ async function media(file, target, out, options, engines, signal, progress) {
   const quality = options.quality === 'high' ? '18' : options.quality === 'small' ? '30' : '23';
   let args = ['-nostdin', '-y', '-v', 'error', '-i', file.path];
   if (audioCodecs[target]) args.push('-map', '0:a:0', '-vn', ...audioCodecs[target]);
-  else if (['jpg', 'png'].includes(target)) args.push('-map', '0:v:0', '-frames:v', '1');
+  else if (['jpg', 'png'].includes(target))
+    args.push('-map', '0:v:0', '-frames:v', '1', '-update', '1');
   else if (target === 'gif')
     args.push(
       '-t',
@@ -541,9 +590,11 @@ async function officeConvert(input, target, stage, engines, signal, group = 'doc
         `<item oor:path="/org.openoffice.Office.Common/Font/Substitution/FontPairs"><node oor:name="Flux${index}" oor:op="replace"><prop oor:name="ReplaceFont"><value>${source}</value></prop><prop oor:name="SubstituteFont"><value>${replacement}</value></prop><prop oor:name="Always"><value>true</value></prop><prop oor:name="OnScreenOnly"><value>false</value></prop></node></item>`,
     )
     .join('');
+  // Untrusted documents may link remote or local images; LibreOffice must not
+  // fetch them (BlockUntrustedRefererLinks), nor run macros.
   await fs.writeFile(
     path.join(profile, 'registrymodifications.xcu'),
-    '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Common/Font/Substitution"><prop oor:name="Replacement"><value>true</value></prop></item>' +
+    '<?xml version="1.0"?><oor:items xmlns:oor="http://openoffice.org/2001/registry"><item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop><prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop><prop oor:name="BlockUntrustedRefererLinks" oor:op="fuse"><value>true</value></prop></item><item oor:path="/org.openoffice.Office.Common/Font/Substitution"><prop oor:name="Replacement"><value>true</value></prop></item>' +
       fontPairs +
       '</oor:items>',
   );
@@ -612,7 +663,11 @@ async function document(file, target, out, stage, engines, signal) {
     return;
   }
   if (['mobi', 'azw3'].includes(target)) {
-    await run(engines.calibre, [file.path, out], { signal });
+    // Calibre's HTML input otherwise adds linked local pages to the book.
+    const html = ['html', 'htm', 'xhtml', 'shtml'].includes(file.ext);
+    await run(engines.calibre, [file.path, out, ...(html ? ['--max-levels', '0'] : [])], {
+      signal,
+    });
     return;
   }
   const pandocFrom = {
@@ -833,10 +888,34 @@ async function publish(stagePath, outputDir) {
       await fs.link(stagePath, dest);
       return dest;
     } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
+      if (e.code === 'EEXIST') continue;
+      // exFAT/FAT volumes (most USB drives and SD cards) have no hard links.
+      if (!['ENOTSUP', 'EPERM', 'EXDEV', 'EMLINK', 'ENOSYS'].includes(e.code)) throw e;
+    }
+    try {
+      await fs.copyFile(stagePath, dest, require('node:fs').constants.COPYFILE_EXCL);
+      return dest;
+    } catch (e) {
+      if (e.code === 'EEXIST') continue;
+      await fs.rm(dest, { force: true });
+      throw e;
     }
   }
   throw new Error('Could not find an unused output name.');
+}
+// A crash or force-quit can leave hidden staging folders (partial copies) in the
+// output folder, where sync clients may upload them. Only this app's mkdtemp
+// names are removed, and only while no job is running (single-instance app).
+async function sweepStages(outputDir) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(outputDir, { withFileTypes: true });
+  } catch {}
+  for (const entry of entries)
+    if (entry.isDirectory() && /^\.flux-[A-Za-z0-9]{6}$/.test(entry.name))
+      await fs
+        .rm(path.join(outputDir, entry.name), { recursive: true, force: true })
+        .catch(() => {});
 }
 function sanitizeOptions(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) options = {};
@@ -859,8 +938,14 @@ async function convert(
     throw new Error('This conversion is not supported.');
   if (signal?.aborted) throw cancelled();
   await fs.mkdir(outputDir, { recursive: true });
-  const stage = await fs.mkdtemp(path.join(outputDir, '.flux-'));
-  const stem = outputStem(path.basename(file.name, '.' + file.ext));
+  const physical = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  const stem = outputStem(baseStem(file.name, file.ext));
+  const paths = await toolPaths(physical, file.path, `${stem}.${file.ext}`).catch(async (e) => {
+    await fs.rm(physical, { recursive: true, force: true });
+    throw e;
+  });
+  const stage = paths.work;
+  file = { ...file, path: paths.source };
   const out = path.join(stage, `${stem}.${target}`);
   let product = out;
   const opts = sanitizeOptions(options);
@@ -980,7 +1065,8 @@ async function convert(
     e.message = displayError(e);
     throw e;
   } finally {
-    await fs.rm(stage, { recursive: true, force: true });
+    await paths.release();
+    await fs.rm(physical, { recursive: true, force: true });
   }
 }
 module.exports = {
@@ -989,6 +1075,7 @@ module.exports = {
   convert,
   run,
   publish,
+  sweepStages,
   structured,
   readStructured,
   sanitizeOptions,

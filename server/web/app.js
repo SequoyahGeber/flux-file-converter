@@ -16,15 +16,34 @@ let state = { files: [], jobs: [], history: [], formats: [] },
 const bytes = (n) =>
   n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 function showError(e) {
+  // A failed status check is shown by the live status line and Reconnect button.
+  if (e?.connection) return;
   $('error').textContent = e.message || String(e);
   $('error').hidden = false;
+}
+// Safari before 17.4 lacks AbortSignal.any; Safari 15 lacks AbortSignal.timeout.
+function timeoutSignal(ms) {
+  if (AbortSignal.timeout) return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new DOMException('Timed out.', 'TimeoutError')), ms);
+  return controller.signal;
+}
+function anySignal(signals) {
+  if (AbortSignal.any) return AbortSignal.any(signals);
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
 }
 async function api(url, { method = 'GET', body, headers = {}, signal } = {}) {
   const response = await fetch('/api/' + url, {
     method,
-    signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(method === 'PUT' ? 120000 : 30000)])
-      : AbortSignal.timeout(method === 'PUT' ? 120000 : 30000),
+    signal: signal ? anySignal([signal, timeoutSignal(30000)]) : timeoutSignal(30000),
     credentials: 'same-origin',
     headers: {
       ...(method !== 'GET' ? { 'X-Flux-Request': '1' } : {}),
@@ -62,7 +81,7 @@ async function refreshStatus() {
     connectionLost = false;
   } catch (error) {
     connectionLost = true;
-    throw error;
+    throw error.message === 'Login required.' ? error : Object.assign(error, { connection: true });
   }
 }
 async function reconnect() {
@@ -484,6 +503,86 @@ function renderFormats() {
     $('format-list').append(row);
   }
 }
+// Sends one chunk, failing only when no bytes move for STALL_MS. A whole-request
+// timeout would make every chunk impossible on a slow uplink.
+const STALL_MS = 60000;
+function putChunk(id, blob, offset, signal) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let timer;
+    const stall = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        xhr.abort();
+        reject(new Error('The upload stalled for a minute. Check the connection.'));
+      }, STALL_MS);
+    };
+    const abort = () => {
+      xhr.abort();
+      reject(new DOMException('Upload cancelled.', 'AbortError'));
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+    };
+    xhr.open('PUT', '/api/uploads/' + id);
+    xhr.setRequestHeader('X-Flux-Request', '1');
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('X-Flux-Offset', String(offset));
+    xhr.upload.onprogress = stall;
+    xhr.onload = () => {
+      done();
+      if (xhr.status === 401) {
+        showError(new Error('Your login expired. Reload this page to sign in.'));
+        return reject(new Error('Login required.'));
+      }
+      let result = {};
+      try {
+        result = JSON.parse(xhr.responseText);
+      } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(result);
+      reject(
+        Object.assign(new Error(result.error || 'The upload could not continue.'), {
+          status: xhr.status,
+          retryAfter: Number(xhr.getResponseHeader('Retry-After')) || 0,
+        }),
+      );
+    };
+    xhr.onerror = () => {
+      done();
+      reject(new Error('The connection was interrupted while uploading.'));
+    };
+    stall();
+    xhr.send(blob);
+  });
+}
+async function sendFile(f, upload, signal) {
+  let offset = 0,
+    failures = 0;
+  while (offset < f.size) {
+    if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
+    $('status').textContent =
+      'Uploading ' + f.name + ' · ' + Math.floor((offset / f.size) * 100) + '%';
+    try {
+      offset = (
+        await putChunk(upload.id, f.slice(offset, offset + upload.chunkSize), offset, signal)
+      ).offset;
+      failures = 0;
+    } catch (error) {
+      if (cancelled || error.name === 'AbortError' || [401, 403, 404, 413].includes(error.status))
+        throw error;
+      if (++failures > 6) throw error;
+      // Resume from the server's confirmed offset; a lost response may hide a
+      // chunk that was stored, and an interrupted one may still be closing.
+      const delay = Math.min(error.retryAfter * 1000 || 1000 * 2 ** failures, 30000);
+      $('status').textContent = 'Connection interrupted · retrying ' + f.name + '…';
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      const confirmed = await api('uploads/' + upload.id, { signal });
+      if (!confirmed.busy) offset = confirmed.offset;
+    }
+  }
+}
 async function upload(files) {
   if (loading || connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status)))
     return;
@@ -508,17 +607,7 @@ async function upload(files) {
       );
       uploadID = upload.id;
       if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
-      for (let offset = 0; offset < f.size; offset += upload.chunkSize) {
-        if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
-        $('status').textContent =
-          'Uploading ' + f.name + ' · ' + Math.floor((offset / f.size) * 100) + '%';
-        await api('uploads/' + upload.id, {
-          method: 'PUT',
-          body: f.slice(offset, offset + upload.chunkSize),
-          headers: { 'Content-Type': 'application/octet-stream', 'X-Flux-Offset': String(offset) },
-          signal: controller.signal,
-        });
-      }
+      await sendFile(f, upload, controller.signal);
       if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
       $('status').textContent = 'Scanning ' + f.name + '…';
       const completion = await api('uploads/' + upload.id + '/complete', {

@@ -1,0 +1,1 @@
+{"uplinkKBps":100,"outcome":"UPLOADED","seconds":206,"puts":2,"serverBytesReceived":20971520,"fileBytes":20971520}

@@ -25,6 +25,7 @@ struct LocalView: View {
                     HStack(spacing: 14) {
                         Image(systemName: "arrow.left.arrow.right").font(.title).foregroundStyle(.white)
                             .frame(width: 56, height: 56).background(.purple.gradient, in: RoundedRectangle(cornerRadius: 15))
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 5) {
                             Text("Convert. Keep it local.").font(.title2.bold())
                             Label("On-device · No uploads · No login", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
@@ -72,6 +73,8 @@ struct LocalView: View {
                                 VStack(alignment: .leading) {
                                     Text("Quality: \(Int(model.options.quality * 100))%").font(.caption)
                                     Slider(value: $model.options.quality, in: 0.2...1)
+                                        .accessibilityLabel("Quality")
+                                        .accessibilityValue("\(Int(model.options.quality * 100)) percent")
                                 }
                             }
                             Text(LocalFormats.note(source: model.source, target: model.target, lossless: model.options.lossless)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -118,6 +121,9 @@ struct LocalView: View {
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }
             .onChange(of: scenePhase) { if scenePhase == .background && model.busy { model.cancel() } }
+            // Status and errors change without moving focus; announce them to VoiceOver.
+            .onChange(of: model.message) { if !model.message.isEmpty { AccessibilityNotification.Announcement(model.message).post() } }
+            .onChange(of: model.error) { if !model.error.isEmpty { AccessibilityNotification.Announcement(model.error).post() } }
             #if os(iOS)
             .sheet(item: $exportFile, onDismiss: { saving = false }) { file in
                 ExportPicker(url: file.url) { success in

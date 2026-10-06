@@ -1,0 +1,2 @@
+{"abortSignalAnyRemoved":false,"outcome":"UPLOADED"}
+{"abortSignalAnyRemoved":true,"outcome":"ERROR: AbortSignal.any is not a function"}

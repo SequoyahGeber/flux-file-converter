@@ -9,6 +9,8 @@ const LIMITS = Object.freeze({
   files: 20,
   users: 32,
   queue: 8,
+  // Concurrent chunk streams across all users; each session has at most two uploads.
+  uploadStreams: 8,
   ttl: 30 * 60 * 1000,
   job: 600000,
 });

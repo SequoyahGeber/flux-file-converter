@@ -24,7 +24,7 @@ services:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set the Cloudflare tunnel token}
     volumes: [api-work:/work/api, worker-work:/work/worker, scanner-work:/work/scanner, definitions:/var/lib/clamav]
     networks: [outbound]
-    restart: on-failure:3
+    restart: on-failure
     logging: { driver: json-file, options: { max-size: 5m, max-file: "2" } }
 networks:
   outbound: { name: flux-outbound, external: true }

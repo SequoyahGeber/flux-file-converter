@@ -16,11 +16,13 @@ public final class JobControl: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
     private let started = ProcessInfo.processInfo.systemUptime
-    public init() {}
+    private let deadline: TimeInterval
+    /// On-device jobs default to ten minutes; the full Mac engine allows long media.
+    public init(deadline: TimeInterval = 600) { self.deadline = deadline }
     public func cancel() { lock.lock(); stopped = true; lock.unlock() }
     public var isCancelled: Bool {
         lock.lock(); defer { lock.unlock() }
-        return stopped || ProcessInfo.processInfo.systemUptime - started > 600
+        return stopped || ProcessInfo.processInfo.systemUptime - started > deadline
     }
     public func check() throws { if isCancelled { throw LocalError.cancelled } }
 }
