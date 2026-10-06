@@ -332,7 +332,8 @@ async function createApp(config, deps = {}) {
         if (s.jobs.size >= 100) throw fail('Clear recent jobs before submitting more.', 429);
         upload.busy = true;
         s.active++;
-        let committed = false;
+        let committed = false,
+          failure;
         const jobId = crypto.randomUUID(),
           job = {
             id: jobId,
@@ -389,16 +390,14 @@ async function createApp(config, deps = {}) {
               }),
             )
             .catch((e) => {
-              job.status = job.timedOut
-                ? 'error'
-                : controller.signal.aborted
-                  ? 'cancelled'
-                  : 'error';
-              job.error = job.timedOut
-                ? 'Job exceeded the ten-minute limit.'
-                : e.status
-                  ? e.message
-                  : 'The file scan could not finish.';
+              failure = {
+                status: job.timedOut ? 'error' : controller.signal.aborted ? 'cancelled' : 'error',
+                error: job.timedOut
+                  ? 'Job exceeded the ten-minute limit.'
+                  : e.status
+                    ? e.message
+                    : 'The file scan could not finish.',
+              };
             })
             .finally(async () => {
               try {
@@ -407,6 +406,9 @@ async function createApp(config, deps = {}) {
                 s.uploads.delete(id);
                 reserved -= upload.size;
                 s.active--;
+                // Report the failure only once cleanup has released the slot, so a
+                // client reacting to it (e.g. Delete my files) is not refused.
+                if (failure) Object.assign(job, failure);
               }
             }),
         );
@@ -558,17 +560,19 @@ async function createApp(config, deps = {}) {
               }),
             )
             .catch(async (e) => {
-              job.status = job.timedOut
-                ? 'error'
-                : controller.signal.aborted
-                  ? 'cancelled'
-                  : 'error';
+              // Clean up first: the status becomes visible only as the slot is
+              // released in the immediately following finally.
+              await fs.rm(output, { force: true }).catch(() => {});
               job.error = job.timedOut
                 ? 'Job exceeded the ten-minute limit.'
                 : e.status
                   ? e.message
                   : 'The conversion could not finish. Try a smaller file or another format.';
-              await fs.rm(output, { force: true });
+              job.status = job.timedOut
+                ? 'error'
+                : controller.signal.aborted
+                  ? 'cancelled'
+                  : 'error';
             })
             .finally(() => {
               reserved -= LIMITS.output;
