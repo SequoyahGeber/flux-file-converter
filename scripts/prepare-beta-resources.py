@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Reproduce synthetic review samples, offline policies and public static pages."""
+"""Reproduce synthetic review samples, offline policies and public static pages.
+
+The pages are served at flux.sequoyahgeber.com from Cloudflare Pages: upload the
+contents of release/flux-site.zip to the flux-site project. The same docs/site
+also still publishes to the old GitHub Pages address for builds made before the
+move (see docs/beta-review.md)."""
 import hashlib
 import html
 import json
@@ -13,6 +18,9 @@ import zlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "native/OfflineKit/Sources/OfflineKit/Resources"
 SITE = ROOT / "docs/site"
+SITE_ZIP = ROOT / "release/flux-site.zip"
+# Cloudflare Pages reads this file; GitHub Pages ignores it.
+HEADERS = "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n"
 
 
 def archive(path, entries):
@@ -71,7 +79,12 @@ def main():
         (destination / "index.html").write_text(page)
     (SITE / ".nojekyll").write_text("")
     (SITE / "index.html").write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flux Local</title><style>{styles}</style></head><body><h1>Flux Local</h1><p>File conversion, compression and ZIP tools for Mac and iPhone. Files stay on your device. No login or server connection is required.</p><p><a href="privacy/">Privacy policy</a> · <a href="support/">Support and supported conversions</a> · <a href="https://github.com/SequoyahGeber/flux-file-converter">Source and licenses</a></p><p>Beta testers can report issues through Send Beta Feedback in TestFlight. Please use synthetic files and omit private contents.</p></body></html>')
+    (SITE / "_headers").write_text(HEADERS)
+    SITE_ZIP.parent.mkdir(parents=True, exist_ok=True)
+    archive(SITE_ZIP, {path.relative_to(SITE).as_posix(): path.read_bytes()
+                       for path in sorted(SITE.rglob("*")) if path.is_file() and path.name != ".nojekyll"})
     print("Prepared five fictional samples and matching offline/public policy and support pages.")
+    print(f"Packed {SITE_ZIP.relative_to(ROOT)}: upload its contents to the flux-site Cloudflare Pages project.")
 
 
 if __name__ == "__main__":

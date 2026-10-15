@@ -13,7 +13,7 @@ import asc
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = "6818735397"
-SITE = "https://sequoyahgeber.github.io/flux-file-converter"
+SITE = "https://flux.sequoyahgeber.com"
 CONTACT = Path.home() / ".appstoreconnect/flux/BetaReviewContact.local.json"
 CONTACT_FIELDS = ["contactFirstName", "contactLastName", "contactEmail", "contactPhone"]
 DESCRIPTION = ("Flux converts files entirely on your Mac or iPhone, with no account or server connection. "

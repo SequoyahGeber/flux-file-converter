@@ -19,6 +19,6 @@ IPHONE WALKTHROUGH
 LIMITATIONS
 This local beta supports fewer formats than the separate website. It does not claim arbitrary type-to-type conversion or perfect Office layout fidelity. Complex unsupported DOCX structures and incompatible media codecs report errors. PDF to image converts the first page. Compressed PDF output rasterizes pages and loses editable text/forms. Text extraction is labeled separately. Media up to 5 GB; other files up to 512 MB; text 16 MB; images 24 megapixels; one conversion at a time; 10-minute cooperative deadline. ZIP extraction is bounded to 2,000 entries, 1 GB expanded and 200x expansion, rejecting unsafe paths and links.
 
-Privacy: https://sequoyahgeber.github.io/flux-file-converter/privacy/
-Support: https://sequoyahgeber.github.io/flux-file-converter/support/
+Privacy: https://flux.sequoyahgeber.com/privacy/
+Support: https://flux.sequoyahgeber.com/support/
 Native apps have no analytics, advertising or tracking SDKs. Apple separately handles TestFlight feedback/crash information. Files are never uploaded for conversion.

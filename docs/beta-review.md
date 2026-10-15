@@ -10,10 +10,12 @@ Flux needs no account or demo credentials. Its fictional PNG, styled DOCX, MP4, 
 
 ## Public information
 
-- [Privacy policy](https://sequoyahgeber.github.io/flux-file-converter/privacy/)
-- [Support](https://sequoyahgeber.github.io/flux-file-converter/support/)
+- [Privacy policy](https://flux.sequoyahgeber.com/privacy/)
+- [Support](https://flux.sequoyahgeber.com/support/)
 
-`scripts/prepare-beta-resources.py` reproduces the sample files, offline policy/help and static pages from source. GitHub Pages receives only `docs/site`, through the pinned workflow in `.github/workflows/review-pages.yml`. It contains no upload endpoint, account gate or analytics. The separate Unraid converter and its domain are unaffected.
+`scripts/prepare-beta-resources.py` reproduces the sample files, offline policy/help and static pages from source, and packs `docs/site` into `release/flux-site.zip`. Upload that zip's contents to the `flux-site` Cloudflare Pages project, which serves flux.sequoyahgeber.com like the Ippo, Trove and Margin sites. The pages contain no upload endpoint, account gate or analytics. The separate Unraid converter and its domain are unaffected.
+
+Builds before the move link to the old GitHub Pages copy at sequoyahgeber.github.io/flux-file-converter, which the pinned workflow in `.github/workflows/review-pages.yml` still publishes from the same `docs/site`. Keep it running until no tester has one of those builds, then retire the workflow and its Pages environment.
 
 ## Verification and release
 

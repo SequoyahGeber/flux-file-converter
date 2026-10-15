@@ -16,8 +16,8 @@ public enum ReviewResources {
         Sample(id: "data", title: "Sample data · JSON → CSV", filename: "Flux-sample-data.json", target: "csv"),
         Sample(id: "archive", title: "Sample archive · ZIP → folder", filename: "Flux-sample-archive.zip", target: "unzip")
     ]
-    public static let privacyURL = URL(string: "https://sequoyahgeber.github.io/flux-file-converter/privacy/")!
-    public static let supportURL = URL(string: "https://sequoyahgeber.github.io/flux-file-converter/support/")!
+    public static let privacyURL = URL(string: "https://flux.sequoyahgeber.com/privacy/")!
+    public static let supportURL = URL(string: "https://flux.sequoyahgeber.com/support/")!
     public static var privacyText: String { text("Flux-privacy.txt") }
     public static var supportText: String { text("Flux-support.txt") }
     private static func text(_ name: String) -> String {
