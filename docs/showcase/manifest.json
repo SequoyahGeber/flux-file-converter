@@ -1,0 +1,81 @@
+{
+  "source_commit": "7fe285d97f45e9ca102cd7e744b8392544cf30e4",
+  "captured_on": "2026-10-15",
+  "application": "Flux Electron desktop",
+  "environment": "Cloud Linux desktop",
+  "capture_method": "cua_repl native app screenshots",
+  "synthetic_inputs_only": true,
+  "implementation_modified": false,
+  "files": [
+    {
+      "path": "docs/showcase/01-overview.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 86773,
+      "sha256": "ab7b234df92db466d473083fd85643b778637a12e1ce83febc40dfdca8f3736f"
+    },
+    {
+      "path": "docs/showcase/02-batch-conversion.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 91005,
+      "sha256": "a0430e350c9d6b9689db359bf6e2c316ac8e039103e609a77d13b18b2a1c21ae"
+    },
+    {
+      "path": "docs/showcase/03-converted-results.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 79526,
+      "sha256": "b2ea6e4d162e54a53e17ec2d6a35fc088b96a9b15dbb3ec2b0454e6258a9ff36"
+    },
+    {
+      "path": "docs/showcase/04-compression-options.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 102400,
+      "sha256": "c786ff48617357d869b7250e8a6db98144576617fb8f245de4b3c2a72be4e648"
+    },
+    {
+      "path": "docs/showcase/05-compressed-results.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 93354,
+      "sha256": "23a9c923ec78a0d8a9f044a5a88abb9ff506ecd72ec1a63c7a2b72f59168bb35"
+    },
+    {
+      "path": "docs/showcase/06-zip-workflow.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 87389,
+      "sha256": "0292a21bdf4a4ea027613fdc33d2496afe5de52ada522ac8cc54d40fded8ed9c"
+    },
+    {
+      "path": "docs/showcase/07-zip-result.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 87123,
+      "sha256": "9ca5f1138e7637a3e6d4d90cbf8513dd1843888e8c0709a916b60b588d676f76"
+    },
+    {
+      "path": "docs/showcase/08-format-catalog.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 187031,
+      "sha256": "1731796b7cad531c64aad5ff22c8898479d68d8477fe03596d70b35a661134b7"
+    },
+    {
+      "path": "docs/showcase/09-format-detail.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 76352,
+      "sha256": "0b6964d70021ce6ee2eb5b8d2843a074329684c2bbe06188fc0bdd64ab918550"
+    },
+    {
+      "path": "docs/showcase/10-settings.jpg",
+      "width": 1364,
+      "height": 1024,
+      "bytes": 96318,
+      "sha256": "25cda5b7089b11032edf74d8313155db2ee774ec50bcf7e7aa75edea888d7c7b"
+    }
+  ]
+}
