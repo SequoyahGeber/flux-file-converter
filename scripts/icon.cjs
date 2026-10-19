@@ -1,4 +1,5 @@
-// Render the repository's vector artwork with the standard macOS Dock inset.
+// Render the repository's vector artwork: icon.svg on Apple's macOS template (an 824 px tile inset 100 px)
+// for the Mac and Electron, and the full-bleed icon-ios.svg for the iPhone app, whose mask iOS applies.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
@@ -8,6 +9,10 @@ async function main() {
   const resources = path.join(__dirname, '../resources');
   const svg = await fs.readFile(path.join(resources, 'icon.svg'));
   await sharp(svg).png().toFile(path.join(resources, 'icon.png'));
+  await sharp(await fs.readFile(path.join(resources, 'icon-ios.svg')))
+    .flatten({ background: '#5643a0' })
+    .png()
+    .toFile(path.join(__dirname, '../ios/Flux/Assets.xcassets/AppIcon.appiconset/AppIcon.png'));
   if (process.platform !== 'darwin') return;
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-icon-'));
   const iconset = path.join(temp, 'Flux.iconset');
