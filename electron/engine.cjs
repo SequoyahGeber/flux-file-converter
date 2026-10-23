@@ -904,18 +904,48 @@ async function publish(stagePath, outputDir) {
   throw new Error('Could not find an unused output name.');
 }
 // A crash or force-quit can leave hidden staging folders (partial copies) in the
-// output folder, where sync clients may upload them. Only this app's mkdtemp
-// names are removed, and only while no job is running (single-instance app).
+// output folder, where sync clients may upload them. Only stages carrying this
+// app's ownership marker are removed, and only while no job is running
+// (single-instance app). Unmarked or look-alike entries are always preserved.
+const STAGE_MARKER = '.flux-stage-owner';
+const STAGE_NAME = /^\.flux-[A-Za-z0-9]{6}$/;
+async function createStage(outputDir) {
+  const dir = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  try {
+    const marker = { app: 'flux', pid: process.pid, created: new Date().toISOString() };
+    await fs.writeFile(path.join(dir, STAGE_MARKER), JSON.stringify(marker), { flag: 'wx' });
+  } catch (e) {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    throw e;
+  }
+  return dir;
+}
+async function ownsStage(dir) {
+  try {
+    const marker = path.join(dir, STAGE_MARKER);
+    const info = await fs.lstat(marker);
+    if (!info.isFile() || info.size > 4096) return false;
+    const value = JSON.parse(await fs.readFile(marker, 'utf8'));
+    return Boolean(value) && typeof value === 'object' && value.app === 'flux';
+  } catch {
+    return false;
+  }
+}
 async function sweepStages(outputDir) {
   let entries = [];
   try {
     entries = await fs.readdir(outputDir, { withFileTypes: true });
   } catch {}
-  for (const entry of entries)
-    if (entry.isDirectory() && /^\.flux-[A-Za-z0-9]{6}$/.test(entry.name))
-      await fs
-        .rm(path.join(outputDir, entry.name), { recursive: true, force: true })
-        .catch(() => {});
+  for (const entry of entries) {
+    if (!STAGE_NAME.test(entry.name) || !entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const dir = path.join(outputDir, entry.name);
+    try {
+      const info = await fs.lstat(dir);
+      if (!info.isDirectory() || info.isSymbolicLink()) continue;
+      if (!(await ownsStage(dir))) continue;
+      await fs.rm(dir, { recursive: true, force: true });
+    } catch {}
+  }
 }
 function sanitizeOptions(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) options = {};
@@ -938,7 +968,7 @@ async function convert(
     throw new Error('This conversion is not supported.');
   if (signal?.aborted) throw cancelled();
   await fs.mkdir(outputDir, { recursive: true });
-  const physical = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  const physical = await createStage(outputDir);
   const stem = outputStem(baseStem(file.name, file.ext));
   const paths = await toolPaths(physical, file.path, `${stem}.${file.ext}`).catch(async (e) => {
     await fs.rm(physical, { recursive: true, force: true });
@@ -1076,6 +1106,7 @@ module.exports = {
   run,
   publish,
   sweepStages,
+  createStage,
   structured,
   readStructured,
   sanitizeOptions,

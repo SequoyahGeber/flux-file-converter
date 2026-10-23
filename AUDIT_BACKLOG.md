@@ -5,7 +5,7 @@ resumed project work implements and verifies a correction. No production files o
 
 ## AUD-001 — Stage cleanup deletes unrelated directories in the chosen output folder
 
-- **Status:** OPEN — verified, no implementation change applied.
+- **Status:** FIXED — marker-based ownership (`.flux-stage-owner`), regression test `tests/stage-ownership.test.cjs`.
 - **Severity:** High / P1 (recursive deletion of user-owned content without confirmation or Trash recovery).
 - **Affected revision:** `a42015430bf2085693d8bd791a92eb16e99615b7` (local and remote main checked October 15, 2026).
 - **Paths:** `electron/engine.cjs:909–918` (`sweepStages`); `electron/main.cjs:432–439` (batch startup).

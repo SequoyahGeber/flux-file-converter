@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const sharp = require('sharp');
-const { run, publish, sanitizeOptions } = require('./engine.cjs');
+const { run, publish, sanitizeOptions, createStage } = require('./engine.cjs');
 const { normalize } = require('./catalog.cjs');
 const { outputStem, baseStem, toolPaths } = require('./io.cjs');
 
@@ -98,7 +98,7 @@ async function compress(
   if (signal?.aborted)
     throw Object.assign(new Error('Compression cancelled.'), { code: 'CANCELLED' });
   await fs.mkdir(outputDir, { recursive: true });
-  const physical = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  const physical = await createStage(outputDir);
   const stem = outputStem(baseStem(file.name, file.ext), 'file');
   const paths = await toolPaths(physical, file.path, `${stem}.${file.ext}`).catch(async (e) => {
     await fs.rm(physical, { recursive: true, force: true });

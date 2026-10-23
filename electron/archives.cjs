@@ -1,6 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { run, publish } = require('./engine.cjs');
+const { run, publish, createStage } = require('./engine.cjs');
 const { outputStem, baseStem } = require('./io.cjs');
 async function archiveFiles(
   files,
@@ -13,7 +13,7 @@ async function archiveFiles(
   if (!engines.archive) throw new Error('The archive engine is unavailable.');
   if (signal?.aborted) throw Object.assign(new Error('Cancelled.'), { code: 'CANCELLED' });
   await fs.mkdir(outputDir, { recursive: true });
-  const stage = await fs.mkdtemp(path.join(outputDir, '.flux-'));
+  const stage = await createStage(outputDir);
   let published;
   try {
     onProgress(5);
