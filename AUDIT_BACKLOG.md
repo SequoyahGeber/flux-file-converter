@@ -64,3 +64,28 @@ handling before considering the finding resolved; do not silently sweep users' e
 No implementation/test/workflow files were changed by this documentation commit. The container workflow's `build`
 job skips ordinary branch pushes, and stable promotion is guarded to release tags or manual dispatch; no release tag,
 manual release, image publication or deployment is part of this audit.
+
+
+## AUD-002 — File-drop overlay remains after dropping a file and blocks the app
+
+- **Tracking:** `FLUX-DROP-OVERLAY-001` in the Studio task board.
+- **Status:** OPEN — owner-reported on 24 October 2026; not independently reproduced or fixed.
+- **Severity:** High / P1 — drag-and-drop leaves the interface unusable and requires force-quitting.
+- **Platform:** macOS, reported for Flux File Converter; exact app variant/version/build and macOS version not supplied.
+- **Observed source revision:** repository HEAD `3480ff4`; this is not a claim that the installed affected build was produced from that commit.
+
+### Owner-reported reproduction
+
+1. Open Flux File Converter.
+2. Drag a file from Finder (including Downloads) onto the app.
+3. Release the file over the drop target.
+
+**Actual:** The drag/drop-location overlay remains covering the whole app screen after the drop. It blocks further interaction; the owner reports having to force-quit and reopen the app. No conversion success, crash, or data loss is established by this report.
+
+**Expected:** The drag overlay dismisses when the drop is completed or cancelled, the dropped file is handed to the normal import flow (or an accessible error is shown), and the app remains usable.
+
+**Workaround confirmed by owner:** Choose File, then select the file in Finder's file picker. That path works.
+
+### Follow-up and acceptance
+
+Identify the affected native/Electron variant and build, reproduce using a disposable synthetic file, and inspect the drag-enter/exit/drop state lifecycle before diagnosing a cause. Verify successful drop, rejected/unsupported input, cancelled drag, leaving/re-entering the window, and repeated drops all clear the overlay and keep controls interactive. Preserve the working Choose File path. Add a focused regression for the actual lifecycle fault and perform real macOS UI validation. Implementation, tests, and independent reproduction are pending; this entry logs the report only.
