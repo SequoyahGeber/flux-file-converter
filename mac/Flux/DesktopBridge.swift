@@ -32,8 +32,10 @@ import OfflineKit
         }
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "local")
         webView.navigationDelegate = self
+        webView.onDragEnd = { [weak self] in self?.emit("update", ["dragEnded": true]) }
         webView.onFiles = { [weak self] urls in
-            guard let self, !self.busy else { return }
+            guard let self else { return }
+            guard !self.busy else { self.emit("update", ["bridgeError": "Finish or cancel the current batch before adding files."]); return }
             do { self.emit("files", try self.register(urls)) }
             catch { self.emit("update", ["bridgeError": error.localizedDescription]) }
         }
@@ -290,8 +292,17 @@ import OfflineKit
 
 final class LocalDesktopWebView: WKWebView {
     var onFiles: (([URL]) -> Void)?
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : [] }
+    /// The page never receives `drop` for a native file drop, so it is told when any drag ends.
+    var onDragEnd: (() -> Void)?
+    private func acceptsFiles(_ sender: NSDraggingInfo) -> NSDragOperation { sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : [] }
+    // super keeps WebKit's dragenter/dragover/dragleave sequence paired for the page.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { _ = super.draggingEntered(sender); return acceptsFiles(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { _ = super.draggingUpdated(sender); return acceptsFiles(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { super.draggingExited(sender); onDragEnd?() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { super.draggingEnded(sender); onDragEnd?() }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        // Conclude WebKit's drag session; this fires dragleave since the drop is handled natively.
+        super.draggingExited(sender); onDragEnd?()
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty else { return false }
         onFiles?(urls); return true
     }

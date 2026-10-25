@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import { mergeJob } from './queue.mjs';
+import { createDragTracker } from './dragState.mjs';
 import { Modal } from './Modal.jsx';
 
 const icons = {
@@ -181,7 +182,8 @@ function App() {
     [showOptions, setShowOptions] = useState(false),
     [bulkTarget, setBulkTarget] = useState('');
   const searchRef = useRef();
-  const dragDepth = useRef(0);
+  const dragTracker = useRef();
+  dragTracker.current ||= createDragTracker(setDragging);
   const applyState = (s) => {
     setEngines(s.engines);
     setEnginePaths(s.enginePaths);
@@ -219,6 +221,10 @@ function App() {
       })
       .catch((e) => setError(e.message));
     const off = api.onUpdate((job) => {
+      if (job.dragEnded) {
+        dragTracker.current.end();
+        return;
+      }
       if (job.bridgeError) {
         setError(job.bridgeError);
         return;
@@ -247,6 +253,7 @@ function App() {
     return () => {
       off();
       offFiles();
+      dragTracker.current.end();
     };
   }, []);
   useEffect(() => {
@@ -336,9 +343,11 @@ function App() {
   }
   async function drop(e) {
     e.preventDefault();
-    setDragging(false);
-    dragDepth.current = 0;
-    if (running) return;
+    dragTracker.current.end();
+    if (running) {
+      setError('Finish or cancel the current batch before adding files.');
+      return;
+    }
     if (!api) {
       setError('Open the Flux Mac app to use drag and drop.');
       return;
@@ -405,18 +414,17 @@ function App() {
   return (
     <div
       className="app-shell"
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (e.dataTransfer.types.includes('Files')) dragTracker.current.over();
+      }}
       onDragEnter={(e) => {
         e.preventDefault();
-        if (e.dataTransfer.types.includes('Files')) {
-          dragDepth.current++;
-          setDragging(true);
-        }
+        if (e.dataTransfer.types.includes('Files')) dragTracker.current.enter();
       }}
       onDragLeave={(e) => {
         e.preventDefault();
-        dragDepth.current--;
-        if (dragDepth.current <= 0) setDragging(false);
+        dragTracker.current.leave();
       }}
       onDrop={drop}
     >
