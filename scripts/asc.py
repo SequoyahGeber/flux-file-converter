@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 
-CONFIG = Path.home() / ".appstoreconnect/flux/AppStoreConnect.local.env"
+CONFIG = Path(os.environ.get("ASC_ENV", Path.home() / ".appstoreconnect/AppStoreConnect.local.env")).expanduser()
 API = "https://api.appstoreconnect.apple.com/v1"
 
 
@@ -19,7 +19,8 @@ def credentials():
             if line.strip() and not line.lstrip().startswith("#") and "=" in line:
                 key, value = line.split("=", 1); values.setdefault(key.strip(), value.strip())
     if not all(values.get(key) for key in ["ASC_KEY_ID", "ASC_ISSUER_ID"]):
-        raise SystemExit("Configure ASC_KEY_ID and ASC_ISSUER_ID in the environment or the private Flux configuration.")
+        raise SystemExit(f"App Store Connect config missing or incomplete at {CONFIG}. "
+                         "Set ASC_ENV to a file containing ASC_KEY_ID and ASC_ISSUER_ID.")
     return values["ASC_KEY_ID"], values["ASC_ISSUER_ID"]
 
 

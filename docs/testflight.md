@@ -9,6 +9,8 @@ Mac and iPhone are on-device apps using one App Store Connect record and bundle 
 
 Both platforms use [the Flux app record](https://appstoreconnect.apple.com/apps/6818735397/testflight), a private internal owner group, and no public tester link. The original separate iPhone record is retained only as history and is no longer the release target.
 
+Shared ASC credentials (`ASC_KEY_ID` and `ASC_ISSUER_ID`) are loaded from `~/.appstoreconnect/AppStoreConnect.local.env` (mode `0600`); set `ASC_ENV` to use another external file. Private keys stay in `~/.appstoreconnect/private_keys/`. Flux-specific signing settings remain in `~/.appstoreconnect/flux`. Never print or commit credential values.
+
 ## Build and checks
 
 The shared `native/OfflineKit` Swift package pins ZIPFoundation 0.9.20 and Yams 6.2.2. The checked-in static XCFramework embeds FFmpeg 9.0.2 with networking, URL protocols, programs, external libraries, GPL and nonfree features disabled. `python3 scripts/build-local-media.py` reproduces it from checksum-pinned source; the C wrapper permits only explicitly opened file descriptors and denies secondary resource opens. Decoder probing uses one thread per track. FFmpeg only remuxes compatible encoded tracks; Apple frameworks perform supported local image/audio/video encoding.
