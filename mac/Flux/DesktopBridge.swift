@@ -299,7 +299,12 @@ final class LocalDesktopWebView: WKWebView {
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { _ = super.draggingEntered(sender); return acceptsFiles(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { _ = super.draggingUpdated(sender); return acceptsFiles(sender) }
     override func draggingExited(_ sender: NSDraggingInfo?) { super.draggingExited(sender); onDragEnd?() }
-    override func draggingEnded(_ sender: NSDraggingInfo) { super.draggingEnded(sender); onDragEnd?() }
+    // draggingEnded is optional and WKWebView does not implement it; an unguarded super call
+    // throws inside AppKit's drag completion and leaves every later drag rejected.
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        if WKWebView.instancesRespond(to: #selector(NSDraggingDestination.draggingEnded(_:))) { super.draggingEnded(sender) }
+        onDragEnd?()
+    }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         // Conclude WebKit's drag session; this fires dragleave since the drop is handled natively.
         super.draggingExited(sender); onDragEnd?()

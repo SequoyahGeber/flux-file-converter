@@ -3,7 +3,14 @@
 // also clears on a native end event and when `dragover` stops arriving.
 export const DRAG_IDLE_MS = 2000;
 
-export function createDragTracker(setDragging, timers = { setTimeout, clearTimeout }) {
+// The default timers are wrapped: WebKit throws if setTimeout/clearTimeout are
+// called as methods of another object, which left the overlay stuck on screen.
+const windowTimers = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id),
+};
+
+export function createDragTracker(setDragging, timers = windowTimers) {
   let depth = 0;
   let timer;
   const stop = () => {

@@ -1413,12 +1413,15 @@ select {
 .policy-modal .secondary-button {
   margin-right: 10px;
 }
-.policy-modal {
+/* Qualified so it overrides the later .format-modal width. */
+.format-modal.policy-modal {
   width: min(680px, 90vw);
   max-height: 85vh;
 }
 .policy-text {
   white-space: pre-wrap;
+  /* Long host names must wrap rather than widen and clip every line. */
+  overflow-wrap: anywhere;
   line-height: 1.65;
   font-size: 14px;
   color: #493d53;

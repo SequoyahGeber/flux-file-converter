@@ -69,7 +69,26 @@ manual release, image publication or deployment is part of this audit.
 ## AUD-002 — File-drop overlay remains after dropping a file and blocks the app
 
 - **Tracking:** `FLUX-DROP-OVERLAY-001` in the Studio task board.
-- **Status:** OPEN — owner-reported on 24 October 2026; not independently reproduced or fixed.
+- **Status:** FIXED — 29 October 2026, in the 1.0.3 native Mac release after build 2026100305. Regression tests are in `tests/drag-state.test.cjs`.
+
+### Resolution (29 October 2026)
+
+Commit `1f1ce68` added a drag tracker and a native drag-end signal, but a real Finder drop on a signed development
+build still reproduced the stuck overlay. That build had two faults:
+
+1. `src/dragState.mjs` called `setTimeout`/`clearTimeout` as methods of a plain object. WebKit throws "Can only call
+   Window.clearTimeout on instances of Window", so `end()` failed before it could hide the overlay. Node does not
+   enforce this, which is why the unit tests passed. The default timers are now wrapped functions.
+2. `LocalDesktopWebView.draggingEnded` called `super.draggingEnded`, but WKWebView does not implement that optional
+   `NSDraggingDestination` method. The resulting exception inside AppKit's drag completion
+   (`NSCoreDragCompletionProc`, then "Reentrant message … kDragIPCCompleted") left the drag session stuck, so every
+   later drag was ignored. The super call is now guarded by `instancesRespond(to:)`.
+
+Real macOS validation used a signed development build of the fixed source and disposable synthetic PNGs dragged from
+Finder. The overlay appeared while hovering and cleared on drop for three successive drops into the background
+window. A cancelled drag (in and back out to Finder) cleared the overlay and added nothing. All three dropped files
+then converted, and the Choose files and sample flows still worked. AppKit logged no drag exceptions. The tests
+reproduce both faults: a `this`-checking timer host, and a source guard on the `draggingEnded` super call.
 - **Severity:** High / P1 — drag-and-drop leaves the interface unusable and requires force-quitting.
 - **Platform:** macOS, reported for Flux File Converter; exact app variant/version/build and macOS version not supplied.
 - **Observed source revision:** repository HEAD `3480ff4`; this is not a claim that the installed affected build was produced from that commit.

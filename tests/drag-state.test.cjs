@@ -32,6 +32,29 @@ function harness(createDragTracker, DRAG_IDLE_MS) {
   };
 }
 
+test('the default timers work when the host requires window as this (WebKit)', async () => {
+  const { createDragTracker } = await import('../src/dragState.mjs');
+  const original = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
+  // Mirror WebKit: "Can only call Window.clearTimeout on instances of Window".
+  for (const name of ['setTimeout', 'clearTimeout']) {
+    globalThis[name] = function (...args) {
+      if (this !== undefined && this !== globalThis)
+        throw new TypeError(`Illegal ${name} invocation`);
+      return original[name](...args);
+    };
+  }
+  try {
+    const states = [];
+    const tracker = createDragTracker((v) => states.push(v));
+    tracker.enter();
+    tracker.over();
+    tracker.end();
+    assert.deepEqual(states, [true, true, false]);
+  } finally {
+    Object.assign(globalThis, original);
+  }
+});
+
 test('drag overlay clears on drop, native end, window exit, idle and repeated drags', async () => {
   const { createDragTracker, DRAG_IDLE_MS } = await import('../src/dragState.mjs');
 
@@ -84,6 +107,16 @@ test('the Mac web view tells the page when a drag ends and reports a rejected dr
   for (const hook of ['draggingExited', 'draggingEnded', 'performDragOperation'])
     assert.match(view, new RegExp(`func ${hook}\\b`));
   assert.match(view, /performDragOperation[\s\S]*onDragEnd\?\(\)[\s\S]*onFiles\?\(urls\)/);
+  // WKWebView lacks the optional draggingEnded:, so super must be guarded or AppKit's
+  // drag session wedges after the first drop.
+  const ended = view.slice(
+    view.indexOf('func draggingEnded'),
+    view.indexOf('func performDragOperation'),
+  );
+  assert.match(
+    ended,
+    /instancesRespond\(to: #selector\(NSDraggingDestination\.draggingEnded\(_:\)\)\) \{ super\.draggingEnded/,
+  );
   assert.match(swift, /\["dragEnded": true\]/);
   assert.match(swift, /guard !self\.busy else \{ self\.emit\("update", \["bridgeError"/);
   const page = fs.readFileSync(path.join(__dirname, '../src/main.jsx'), 'utf8');
