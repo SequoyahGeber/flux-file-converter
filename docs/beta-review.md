@@ -1,6 +1,6 @@
 # Flux public beta review
 
-The review-ready release is 1.0.3, build 2026100305, for Mac and iPhone in the same App Store Connect record (`6818735397`). The previous local release is 1.0.2; the older server-client builds are retired.
+The current external beta is 1.0.3, build 2026102901 (source `dc12d41`), for Mac and iPhone in the same App Store Connect record (`6818735397`). It was submitted on 29 October 2026 to the External testers group, which has no testers and no public link, and to the internal Flux Owner group. Build 2026100305 was approved for external testing on 3 October; 2026102901 adds the Mac drag-and-drop fix (AUD-002) and the wider offline privacy dialog. The previous local release is 1.0.2; the older server-client builds are retired.
 
 ## Trove precedent
 
@@ -25,7 +25,7 @@ The iPhone export sheet binds its file and presentation together, preventing an 
 
 Generate both projects, build signed artifacts with `scripts/mac-release.py` and `scripts/ios-release.py`, validate/upload those exact hashes with Apple’s CLI, then confirm VALID, externally eligible and export-compliant states by platform. Keep artifacts, private keys, review contacts and raw logs outside Git.
 
-`python3 scripts/beta-review.py 2026100305` is read-only. It checks live pages, exact source/artifact receipts, reviewer evidence, processing, export compliance, complete contacts and current metadata. `--apply-metadata` reads the existing owner contact from `~/.appstoreconnect/flux/BetaReviewContact.local.json`, writes the walkthrough/description/privacy URL and verifies Apple’s saved values without printing private contact details. `--submit` requests Beta App Review, verifies its state and disables automatic tester notification. Credentials live in the private Flux App Store Connect configuration.
+`python3 scripts/beta-review.py 2026102901` is read-only. It checks live pages, exact source/artifact receipts, reviewer evidence, processing, export compliance, complete contacts and current metadata. `--apply-metadata` reads the existing owner contact from `~/.appstoreconnect/flux/BetaReviewContact.local.json`, writes the walkthrough/description/privacy URL and verifies Apple’s saved values without printing private contact details. `--submit` requests Beta App Review, verifies its state and disables automatic tester notification. Credentials live in the private Flux App Store Connect configuration.
 
 Submission does not enable public links or invite testers. WAITING_FOR_REVIEW is not approval. Verify Apple’s final review state before enabling a public external group. Existing internal testing remains separate.
 

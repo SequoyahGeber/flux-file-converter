@@ -38,7 +38,9 @@ def main():
     if int(args.build) < 2026100305 or version != "1.0.3": issues.append("Use the review-ready 1.0.3 build or update this preflight for the new release.")
     for page, title in [("privacy", "Flux privacy policy"), ("support", "Flux support")]:
         try:
-            with urllib.request.urlopen(SITE + "/" + page + "/", timeout=20) as response:
+            # Cloudflare answers 403 to the default Python-urllib user agent.
+            request = urllib.request.Request(SITE + "/" + page + "/", headers={"User-Agent": "flux-beta-review-preflight"})
+            with urllib.request.urlopen(request, timeout=20) as response:
                 live = response.status == 200 and "<h1>" + title + "</h1>" in response.read(200_000).decode()
         except (OSError, UnicodeError): live = False
         print(page + ": " + ("live" if live else "NOT LIVE"))
