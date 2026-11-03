@@ -880,6 +880,62 @@ async function structured(file, target, out) {
     throw new Error('Converted data exceeds 50 MB.');
   await fs.writeFile(out, result);
 }
+// Without hard links, a finished result must still never appear half written at its
+// final name. The name is reserved with an empty exclusive file (so nothing is
+// overwritten), then the complete product is renamed onto that reservation. A crash
+// can only leave the empty reservation, never truncated content.
+async function reserveName(dest) {
+  let handle;
+  try {
+    handle = await fs.open(dest, 'wx');
+  } catch (e) {
+    if (e.code === 'EEXIST') return null;
+    throw e;
+  }
+  try {
+    const { dev, ino } = await handle.stat();
+    await handle.close();
+    return { dev, ino };
+  } catch (e) {
+    await handle.close().catch(() => {});
+    await fs.rm(dest, { force: true }).catch(() => {});
+    throw e;
+  }
+}
+async function holdsReservation(dest, reservation) {
+  try {
+    const info = await fs.lstat(dest);
+    return (
+      info.isFile() &&
+      info.size === 0 &&
+      info.dev === reservation.dev &&
+      info.ino === reservation.ino
+    );
+  } catch {
+    return false;
+  }
+}
+async function placeOnReservation(stagePath, dest, outputDir, reservation) {
+  try {
+    if (!(await holdsReservation(dest, reservation)))
+      throw new Error('The reserved output name was taken by another file.');
+    await fs.rename(stagePath, dest);
+    return;
+  } catch (e) {
+    if (e.code !== 'EXDEV') throw e;
+  }
+  // The product sits on another volume: finish a copy beside the destination first.
+  const temp = await createStage(outputDir);
+  try {
+    const copy = path.join(temp, path.basename(dest));
+    await fs.copyFile(stagePath, copy, require('node:fs').constants.COPYFILE_EXCL);
+    if (!(await holdsReservation(dest, reservation)))
+      throw new Error('The reserved output name was taken by another file.');
+    await fs.rename(copy, dest);
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+}
 async function publish(stagePath, outputDir) {
   const parsed = path.parse(stagePath);
   for (let i = 0; i < 10000; i++) {
@@ -892,12 +948,14 @@ async function publish(stagePath, outputDir) {
       // exFAT/FAT volumes (most USB drives and SD cards) have no hard links.
       if (!['ENOTSUP', 'EPERM', 'EXDEV', 'EMLINK', 'ENOSYS'].includes(e.code)) throw e;
     }
+    const reservation = await reserveName(dest);
+    if (!reservation) continue;
     try {
-      await fs.copyFile(stagePath, dest, require('node:fs').constants.COPYFILE_EXCL);
+      await placeOnReservation(stagePath, dest, outputDir, reservation);
       return dest;
     } catch (e) {
-      if (e.code === 'EEXIST') continue;
-      await fs.rm(dest, { force: true });
+      // Remove only the empty placeholder this call created, never someone else's file.
+      if (await holdsReservation(dest, reservation)) await fs.rm(dest, { force: true });
       throw e;
     }
   }
