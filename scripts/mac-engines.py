@@ -5,10 +5,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEST = pathlib.Path(os.environ.get('FLUX_MAC_ENGINE_RESOURCES', '/private/tmp/flux-full-engine/ConversionEngine'))
 CACHE = pathlib.Path(os.environ.get('FLUX_MAC_ENGINE_CACHE', pathlib.Path.home() / 'Library/Caches/flux-mac-engines'))
 MACHO = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'}
-# Official Node.js LTS builds, pinned to https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.
-NODE_VERSION = 'v24.21.0'
-NODE_SHA256 = {'arm64': 'bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057',
-               'x64': '1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097'}
+# Official Node.js LTS builds, pinned to https://nodejs.org/dist/v24.22.2/SHASUMS256.txt.
+NODE_VERSION = 'v24.22.2'
+NODE_SHA256 = {'arm64': 'aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a',
+               'x64': 'd5e336d588c45be0c37dbd52cc29895593009ca4997a77a1fd02815131ed0e52'}
 def command(*args):
     return subprocess.check_output(args, text=True).strip()
 def sha256(file):

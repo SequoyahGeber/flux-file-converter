@@ -6,7 +6,7 @@ This owner's build targets Apple Silicon converters. The Swift UI remains univer
 
 ## Build
 
-On the configured development Mac, `python3 scripts/mac-engines.py` creates a private stage at `/private/tmp/flux-full-engine/ConversionEngine`. `FLUX_MAC_ENGINE_RESOURCES` overrides it. Dependencies include a pinned official Node.js runtime (v24.21.0, verified by SHA-256), complete Office/Calibre apps and Homebrew tool/library/data prefixes; their private manifest paths are relocated for installation. `--with-3d` opts into Blender; the normal personal build excludes it.
+On the configured development Mac, `python3 scripts/mac-engines.py` creates a private stage at `/private/tmp/flux-full-engine/ConversionEngine`. `FLUX_MAC_ENGINE_RESOURCES` overrides it. Dependencies include a pinned official Node.js runtime (v24.22.2, verified by SHA-256), complete Office/Calibre apps and Homebrew tool/library/data prefixes; their private manifest paths are relocated for installation. `--with-3d` opts into Blender; the normal personal build excludes it.
 
 Run `python3 scripts/mac-prune-engines.py STAGE/ConversionEngine --architecture arm64` before signing. This removes static build archives, manuals, developer headers, package-installation tools, cached bytecode and redundant Intel slices. Runtime fonts, codec modules, Python dependencies and Calibre's headless PDF renderer remain. Notices are retained before pruning. Re-sign after any pruning; signed Calibre resources use extended attributes, which must survive copying and ZIP packaging.
 
