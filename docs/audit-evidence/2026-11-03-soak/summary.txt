@@ -1,0 +1,22 @@
+Flux long-session soak (FLUX-BL-012)
+
+Command: npm run soak -- --iterations 300 --seed 1 --concurrency 1
+Node v26.12.0, arm64 darwin (Darwin 27.2.0), sharp 0.35.5
+Engines found: archive, blender, calibre, cwebp, ffmpeg, ffprobe, ghostscript, jpegtran, magick, office, oxipng, pandoc, qpdf, sevenzip, tesseract
+Skipped routes: pdf:two pages.pdf->png (engine not found: pdf); pdf:two pages.pdf->txt (engine not found: pdf)
+Iterations: 300 of 300 completed
+Wall time: 31.6 s
+Outcomes: ok 280, failed as expected 9, unexpected failure 0, cancelled 11 (corrupt inputs accepted: 0; aborted jobs that finished first: 9)
+Baseline (job 40): rss 46.3 MiB, heapUsed 13.2 MiB, fds 13, tmp entries 0
+Final: rss 46.3 MiB, heapUsed 14.5 MiB, fds 13, children 0, tmp entries 3 (0 bytes), flux-paths-* 0, stages 0
+Peak: rss 48.3 MiB, heapUsed 16.4 MiB, fds 13, children 0, tmp entries 3, tmp bytes 0
+Heap slope after warm-up (30 jobs): 4684 bytes/job; rss change 0.0 MiB (reported only, never a finding alone)
+
+Findings:
+- temp: Temp folder holds 3 entries (0 bytes), baseline 0: gs_3p6ZoB, gs_HEWw41, gs_uXGVsm.
+
+Limits: this exercises the in-process Electron engine driven from Node, one run, one seed.
+The server isolates every job in a supervised worker and the native Mac app uses OfflineKit; neither was soaked.
+Samples are taken after each job finishes, so with --concurrency above 1 the baseline can include in-flight work.
+Skipped routes above were not exercised in this run.
+RSS includes native allocator caches (sharp/libvips), so it is reported but not a finding by itself.

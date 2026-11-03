@@ -108,3 +108,46 @@ reproduce both faults: a `this`-checking timer host, and a source guard on the `
 ### Follow-up and acceptance
 
 Identify the affected native/Electron variant and build, reproduce using a disposable synthetic file, and inspect the drag-enter/exit/drop state lifecycle before diagnosing a cause. Verify successful drop, rejected/unsupported input, cancelled drag, leaving/re-entering the window, and repeated drops all clear the overlay and keep controls interactive. Preserve the working Choose File path. Add a focused regression for the actual lifecycle fault and perform real macOS UI validation. Implementation, tests, and independent reproduction are pending; this entry logs the report only.
+
+
+## AUD-003 — Cancelling a Ghostscript PDF compression leaves `gs_*` files in the temp folder
+
+- **Status:** OPEN
+- **Severity:** Low / P3 (three zero-byte files per cancelled job; no data loss, but they accumulate in a long session and are never swept).
+- **Found by:** long-session soak `FLUX-BL-012`, record in `docs/audit-evidence/2026-11-03-soak/`.
+- **Paths:** `electron/compression.cjs` (`compress`, the `lossy` PDF branch that runs `engines.ghostscript`); `electron/process.cjs` (`run`, SIGTERM then SIGKILL after 1.5 s on abort). Engine code was not changed.
+- **Scope:** the in-process Electron engine. The server isolates each job in a supervised worker and the native Mac app was not soaked, so neither is claimed affected or clear.
+
+### Trigger and reproduction
+
+Cancel a lossy ("Smaller PDF") compression while Ghostscript is running. `run` signals the process group, and the
+`gs_*` files Ghostscript creates in `TMPDIR` stay behind. That the termination prevents Ghostscript's own cleanup is
+inferred from the timing (completed Ghostscript jobs leave nothing), not traced inside the tool. The engine passes
+`TMPDIR` through to its tools, so the files land in the temp folder rather than the job's stage, and the stage
+cleanup does not cover them.
+
+```
+npm run soak -- --iterations 300 --seed 1 --out <scratch>/soak.json
+```
+
+Exit code 1, finding `temp`. The soak points `TMPDIR` into its own scratch root, so nothing outside it is touched. The
+run is timing-dependent (abort delays are real time): the other 300-job runs of seed 1 on this Mac ended with 3 and
+6 leftover files.
+
+### Observed numbers
+
+- 300 of 300 jobs completed: 280 ok, 9 failed as expected (corrupt inputs), 11 cancelled, 0 unexpected failures.
+- Job 103, a cancelled `compress` lossy PDF, took the temp folder from 0 to 3 entries (`gs_` plus six characters,
+  0 bytes each). It was the only cancelled Ghostscript job in the run; the other 10 Ghostscript jobs completed and left nothing.
+- The same run showed no other finding: open file handles 13 at baseline and at the end, no child process alive,
+  no `flux-paths-*` alias, no `.flux-*` stage left, heap 13.2 MiB at baseline and 14.5 MiB at the end (slope
+  4.7 KB/job, below the 64 KiB limit), RSS flat.
+- Limit: the native PDF tool (`pdf` engine) was not installed, so PDF to PNG/text routes were skipped and the
+  Ghostscript path was the only PDF route that ran.
+
+### Suggested next-session fix
+
+Give each Ghostscript run a private `TMPDIR` inside the job stage (for example by passing an `env` override through
+`run`), so the existing `finally` that removes the stage also removes anything the tool abandons. Alternatively list
+and remove the job's `gs_*` files after a cancelled run. Re-run the soak command above and expect exit 0, then add a
+regression test that cancels a Ghostscript job and checks the temp folder.

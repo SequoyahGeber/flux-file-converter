@@ -45,6 +45,7 @@ Dated records; they describe the commits they audited, not current behavior. Rea
 | 4 Oct 2026 | [stability/safety/performance](audit-2026-10-04.md) | in the comprehensive audit's fix record | `audit-evidence/2026-10-04/` |
 | 4 Oct 2026 | [comprehensive](audit-comprehensive-2026-10-04.md) | [audit-fixes-2026-10-04.md](audit-fixes-2026-10-04.md) | `audit-evidence/2026-10-04-comprehensive/`, `audit-evidence/2026-10-04-fixes/` |
 | 6 Oct 2026 | [application audit](audit-2026-10-06.md) | [audit-fixes-2026-10-06.md](audit-fixes-2026-10-06.md) | `audit-evidence/2026-10-06/` |
+| 3 Nov 2026 | long-session soak (300 mixed jobs, seed 1; one leak filed as AUD-003 in [AUDIT_BACKLOG.md](../AUDIT_BACKLOG.md)) | open, see AUD-003 | `audit-evidence/2026-11-03-soak/` |
 
 ## Local-only output (ignored by Git)
 

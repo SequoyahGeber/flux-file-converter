@@ -12,6 +12,7 @@
     "native": "swiftc -O native/PDFTool.swift -o resources/pdf-tool -framework PDFKit -framework AppKit",
     "test": "node --test tests/*.test.cjs",
     "package": "npm run native && npm run build && npm run formats && node scripts/package.cjs",
+    "soak": "node --expose-gc scripts/soak.cjs",
     "preview": "vite preview --host 127.0.0.1",
     "test:desktop": "npm run build && node tests/desktop.cjs",
     "formats": "node scripts/export-formats.cjs",

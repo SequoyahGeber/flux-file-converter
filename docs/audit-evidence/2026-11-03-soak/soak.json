@@ -1,0 +1,547 @@
+{
+ "summary": {
+  "leak": true,
+  "findings": [
+   {
+    "id": "temp",
+    "message": "Temp folder holds 3 entries (0 bytes), baseline 0: gs_3p6ZoB, gs_HEWw41, gs_uXGVsm."
+   }
+  ],
+  "iterationsPlanned": 300,
+  "iterationsCompleted": 300,
+  "wallMs": 31626,
+  "counts": {
+   "ok": 280,
+   "failedExpected": 9,
+   "unexpectedFailure": 0,
+   "cancelled": 11
+  },
+  "corruptAccepted": 0,
+  "abortedFinishedBeforeAbort": 9,
+  "warmupJobs": 30,
+  "heapSlopeBytesPerJob": 4684,
+  "rssGrowthBytes": 408
+ },
+ "options": {
+  "iterations": 300,
+  "seed": 1,
+  "concurrency": 1
+ },
+ "environment": {
+  "node": "v26.12.0",
+  "arch": "arm64",
+  "platform": "darwin",
+  "darwin": "27.2.0",
+  "sharp": "0.35.5",
+  "engines": [
+   "archive",
+   "blender",
+   "calibre",
+   "cwebp",
+   "ffmpeg",
+   "ffprobe",
+   "ghostscript",
+   "jpegtran",
+   "magick",
+   "office",
+   "oxipng",
+   "pandoc",
+   "qpdf",
+   "sevenzip",
+   "tesseract"
+  ]
+ },
+ "families": {
+  "image": {
+   "ok": 81,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 1
+  },
+  "percent-name": {
+   "ok": 29,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 0
+  },
+  "compress": {
+   "ok": 61,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 4
+  },
+  "data": {
+   "ok": 30,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 0
+  },
+  "media": {
+   "ok": 27,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 4
+  },
+  "document": {
+   "ok": 33,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 2
+  },
+  "archive": {
+   "ok": 19,
+   "failedExpected": 0,
+   "unexpectedFailure": 0,
+   "cancelled": 0
+  },
+  "corrupt": {
+   "ok": 0,
+   "failedExpected": 9,
+   "unexpectedFailure": 0,
+   "cancelled": 0
+  }
+ },
+ "skipped": [
+  {
+   "route": "pdf:two pages.pdf->png",
+   "reason": "engine not found: pdf"
+  },
+  {
+   "route": "pdf:two pages.pdf->txt",
+   "reason": "engine not found: pdf"
+  }
+ ],
+ "unexpectedFailures": [],
+ "baseline": {
+  "job": 40,
+  "t": 6346,
+  "rss": 48501896,
+  "heapUsed": 13890992,
+  "external": 5888695,
+  "fds": 13,
+  "children": 0,
+  "tmpEntries": 0,
+  "tmpBytes": 0,
+  "aliases": 0,
+  "stages": 0
+ },
+ "final": {
+  "job": 301,
+  "t": 31611,
+  "rss": 48502304,
+  "heapUsed": 15202840,
+  "external": 3110116,
+  "fds": 13,
+  "children": 0,
+  "tmpEntries": 3,
+  "tmpBytes": 0,
+  "aliases": 0,
+  "stages": 0,
+  "tmpNames": [
+   "gs_3p6ZoB",
+   "gs_HEWw41",
+   "gs_uXGVsm"
+  ]
+ },
+ "peak": {
+  "rss": 50664632,
+  "heapUsed": 17210120,
+  "external": 8128695,
+  "fds": 13,
+  "children": 0,
+  "tmpEntries": 3,
+  "tmpBytes": 0
+ },
+ "samplesEvery10th": [
+  {
+   "job": 10,
+   "t": 3318,
+   "rss": 49402968,
+   "heapUsed": 13495712,
+   "external": 5635721,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 20,
+   "t": 4267,
+   "rss": 49927304,
+   "heapUsed": 13467456,
+   "external": 3478772,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 30,
+   "t": 4677,
+   "rss": 46371976,
+   "heapUsed": 13671168,
+   "external": 3376196,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 40,
+   "t": 6346,
+   "rss": 48501896,
+   "heapUsed": 13890992,
+   "external": 5888695,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 50,
+   "t": 6858,
+   "rss": 50664632,
+   "heapUsed": 14051176,
+   "external": 8128695,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 60,
+   "t": 8575,
+   "rss": 48632968,
+   "heapUsed": 14060888,
+   "external": 3323196,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 70,
+   "t": 9004,
+   "rss": 46978256,
+   "heapUsed": 14102160,
+   "external": 5685986,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 80,
+   "t": 9941,
+   "rss": 46798080,
+   "heapUsed": 14121464,
+   "external": 3132014,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 90,
+   "t": 11535,
+   "rss": 46585088,
+   "heapUsed": 14315824,
+   "external": 3252918,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 100,
+   "t": 12689,
+   "rss": 47125856,
+   "heapUsed": 14380784,
+   "external": 5623183,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 0,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 110,
+   "t": 13305,
+   "rss": 49943880,
+   "heapUsed": 14406288,
+   "external": 3380613,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 120,
+   "t": 14088,
+   "rss": 47420744,
+   "heapUsed": 14423256,
+   "external": 3253348,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 130,
+   "t": 14457,
+   "rss": 47535432,
+   "heapUsed": 14479968,
+   "external": 3310506,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 140,
+   "t": 15098,
+   "rss": 48076152,
+   "heapUsed": 14611760,
+   "external": 5691082,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 150,
+   "t": 16631,
+   "rss": 48240040,
+   "heapUsed": 14676016,
+   "external": 5702109,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 160,
+   "t": 17388,
+   "rss": 47830440,
+   "heapUsed": 14711248,
+   "external": 5563926,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 170,
+   "t": 18049,
+   "rss": 47633784,
+   "heapUsed": 14702144,
+   "external": 3314536,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 180,
+   "t": 19182,
+   "rss": 48895352,
+   "heapUsed": 14727800,
+   "external": 3116515,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 190,
+   "t": 20630,
+   "rss": 48813432,
+   "heapUsed": 14742664,
+   "external": 3184310,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 200,
+   "t": 21121,
+   "rss": 48878968,
+   "heapUsed": 14797072,
+   "external": 3247210,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 210,
+   "t": 22620,
+   "rss": 47601064,
+   "heapUsed": 14837600,
+   "external": 3324945,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 220,
+   "t": 23185,
+   "rss": 47830440,
+   "heapUsed": 14886544,
+   "external": 3244645,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 230,
+   "t": 24777,
+   "rss": 48567720,
+   "heapUsed": 14952200,
+   "external": 3387442,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 240,
+   "t": 25514,
+   "rss": 48584104,
+   "heapUsed": 14959344,
+   "external": 3187778,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 250,
+   "t": 26853,
+   "rss": 48633256,
+   "heapUsed": 14989112,
+   "external": 3252076,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 260,
+   "t": 27617,
+   "rss": 48879112,
+   "heapUsed": 15063112,
+   "external": 5561195,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 270,
+   "t": 28046,
+   "rss": 49157640,
+   "heapUsed": 15042152,
+   "external": 3113080,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 280,
+   "t": 29493,
+   "rss": 48698888,
+   "heapUsed": 15092688,
+   "external": 3451225,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 290,
+   "t": 30003,
+   "rss": 49157664,
+   "heapUsed": 15211536,
+   "external": 5950889,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  },
+  {
+   "job": 300,
+   "t": 31280,
+   "rss": 48567840,
+   "heapUsed": 15208304,
+   "external": 3315297,
+   "fds": 13,
+   "children": 0,
+   "tmpEntries": 3,
+   "tmpBytes": 0,
+   "aliases": 0,
+   "stages": 0
+  }
+ ]
+}
