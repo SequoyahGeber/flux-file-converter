@@ -1,4 +1,6 @@
 import XCTest
+import ImageIO
+import PDFKit
 import ZIPFoundation
 @testable import OfflineKit
 
@@ -120,6 +122,58 @@ final class AuditFixTests: XCTestCase {
             guard case LocalError.cancelled = error else { return XCTFail("Expected cancellation, got \(error)") }
         }
         XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1)
+    }
+    func twoColourPDF(rotation: Int, origin: CGPoint = .zero) throws -> URL {
+        let raw = root.appendingPathComponent("raw-\(rotation).pdf"), url = root.appendingPathComponent("two-colour-\(rotation).pdf")
+        var box = CGRect(x: origin.x, y: origin.y, width: 200, height: 100)
+        let context = try XCTUnwrap(CGContext(raw as CFURL, mediaBox: &box, nil))
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1)); context.fill(CGRect(x: origin.x, y: origin.y, width: 100, height: 100))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1)); context.fill(CGRect(x: origin.x + 100, y: origin.y, width: 100, height: 100))
+        context.endPDFPage(); context.closePDF()
+        let document = try XCTUnwrap(PDFDocument(url: raw))
+        try XCTUnwrap(document.page(at: 0)).rotation = rotation
+        XCTAssertTrue(document.write(to: url))
+        return url
+    }
+    func colourFractions(_ image: CGImage) throws -> (red: Double, blue: Double, white: Double) {
+        let width = image.width, height = image.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var red = 0, blue = 0, white = 0
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            let r = pixels[offset], g = pixels[offset + 1], b = pixels[offset + 2]
+            if r > 180 && g < 90 && b < 90 { red += 1 } else if b > 180 && r < 90 && g < 90 { blue += 1 } else if r > 220 && g > 220 && b > 220 { white += 1 }
+        }
+        let total = Double(width * height)
+        return (Double(red) / total, Double(blue) / total, Double(white) / total)
+    }
+    func decoded(_ url: URL) throws -> CGImage {
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        return try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+    }
+    func assertWhole(_ image: CGImage, portrait: Bool, _ label: String) throws {
+        XCTAssertEqual(image.height > image.width, portrait, "\(label) orientation \(image.width)x\(image.height)")
+        let fractions = try colourFractions(image)
+        XCTAssertGreaterThanOrEqual(fractions.red, 0.4, "\(label) red \(fractions)")
+        XCTAssertGreaterThanOrEqual(fractions.blue, 0.4, "\(label) blue \(fractions)")
+        XCTAssertLessThanOrEqual(fractions.white, 0.1, "\(label) white \(fractions)")
+    }
+    func testRotatedPDFPagesRenderWholeToImagesAndSmallerPDF() async throws {
+        for (rotation, origin) in [(0, CGPoint.zero), (90, .zero), (270, .zero), (0, CGPoint(x: 50, y: 30)), (90, CGPoint(x: 50, y: 30)), (270, CGPoint(x: 50, y: 30))] {
+            let input = try twoColourPDF(rotation: rotation, origin: origin), portrait = rotation != 0
+            for target in ["png", "jpg"] {
+                let result = try await convert(input, target); defer { result.remove() }
+                try assertWhole(try decoded(result.url), portrait: portrait, "\(target) rotation \(rotation) origin \(origin)")
+            }
+            let result = try await convert(input, "pdf"); defer { result.remove() }
+            let page = try XCTUnwrap(PDFDocument(url: result.url)?.page(at: 0))
+            let size = page.bounds(for: .mediaBox).applying(page.transform(for: .mediaBox))
+            XCTAssertEqual(abs(size.height) > abs(size.width), portrait, "pdf rotation \(rotation) origin \(origin) page \(size)")
+            try assertWhole(try ImagesPDF.render(page, scale: 2), portrait: portrait, "pdf rotation \(rotation) origin \(origin)")
+        }
     }
     func testHTMLStripKeepsPreviousBehaviour() throws {
         let cases = [

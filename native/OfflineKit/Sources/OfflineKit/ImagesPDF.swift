@@ -34,15 +34,20 @@ enum ImagesPDF {
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw LocalError.invalid("The image encoder could not write this file.") }
     }
+    /// Size of the page as displayed: the media box carried through the page's /Rotate transform, so 90 and 270 swap width and height.
+    static func displaySize(_ page: PDFPage) -> CGSize {
+        let shown = page.bounds(for: .mediaBox).applying(page.transform(for: .mediaBox))
+        return CGSize(width: abs(shown.width), height: abs(shown.height))
+    }
     static func render(_ page: PDFPage, scale: Double) throws -> CGImage {
-        let box = page.bounds(for: .mediaBox)
-        guard box.width.isFinite, box.height.isFinite, box.width > 0, box.height > 0 else { throw LocalError.invalid("Invalid PDF page size.") }
-        let actual = min(scale, 4096 / max(box.width, box.height))
-        let width = max(1, Int(box.width * actual)), height = max(1, Int(box.height * actual))
+        let size = displaySize(page)
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { throw LocalError.invalid("Invalid PDF page size.") }
+        let actual = min(scale, 4096 / max(size.width, size.height))
+        let width = max(1, Int(size.width * actual)), height = max(1, Int(size.height * actual))
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
             bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw LocalError.unsupported }
         context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.scaleBy(x: actual, y: actual); context.translateBy(x: -box.minX, y: -box.minY)
+        context.scaleBy(x: actual, y: actual)
         page.draw(with: .mediaBox, to: context)
         guard let image = context.makeImage() else { throw LocalError.unsupported }; return image
     }
@@ -76,7 +81,7 @@ enum ImagesPDF {
                     CGImageDestinationAddImage(destination, rendered, [kCGImageDestinationLossyCompressionQuality: options.quality] as CFDictionary)
                     guard CGImageDestinationFinalize(destination), let provider = CGDataProvider(data: jpeg),
                           let compressed = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { throw LocalError.unsupported }
-                    drawPDFPage(compressed, box: page.bounds(for: .mediaBox), context: context)
+                    drawPDFPage(compressed, box: CGRect(origin: .zero, size: displaySize(page)), context: context)
                     }
                 }
                 context.closePDF()
