@@ -43,17 +43,72 @@ enum Documents {
             return try EPUB.text(archive, control: control)
         }
         let text = try LocalPolicy.readText(input)
-        if ext == "html" || ext == "htm" { return try htmlText(text) }
+        if ext == "html" || ext == "htm" { return try htmlText(text, control: control) }
         if ext == "rtf" { return try rtfText(text, control: control) }
         return text
     }
-    static func htmlText(_ source: String) throws -> String {
+    static func htmlText(_ source: String, control: JobControl) throws -> String {
         guard source.utf8.count <= LocalPolicy.textLimit else { throw LocalError.invalid("HTML exceeds 16 MB.") }
-        var text = source.replacingOccurrences(of: "(?is)<(script|style|head)\\b[^>]*>.*?</\\1\\s*>", with: "", options: .regularExpression)
+        var text = try stripHiddenElements(source, control: control)
         text = text.replacingOccurrences(of: "(?i)</(?:p|div|h[1-6]|li)>|<br\\s*/?>", with: "\n", options: .regularExpression)
         text = text.replacingOccurrences(of: "<[^>]{0,4096}>", with: "", options: .regularExpression)
         for (entity, value) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "), ("&amp;", "&")] { text = text.replacingOccurrences(of: entity, with: value) }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Removes script, style and head elements with the same results as the regex
+    /// `(?is)<(script|style|head)\b[^>]*>.*?</\1\s*>`, in linear time. ICU's version
+    /// backtracked through the rest of the file for every unclosed tag.
+    /// Names and whitespace are matched as ASCII where ICU was Unicode-aware, and a
+    /// non-ASCII byte after the name counts as a word character; real HTML tags are
+    /// ASCII, and every difference keeps text rather than dropping it.
+    static func stripHiddenElements(_ source: String, control: JobControl) throws -> String {
+        let bytes = Array(source.utf8), count = bytes.count
+        let names = ["script", "style", "head"].map { Array($0.utf8) }
+        func lower(_ byte: UInt8) -> UInt8 { (65...90).contains(byte) ? byte + 32 : byte }
+        func isWord(_ byte: UInt8) -> Bool { byte >= 0x80 || byte == 95 || (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte) }
+        func isSpace(_ byte: UInt8) -> Bool { byte == 32 || (9...13).contains(byte) }
+        func hasName(_ name: [UInt8], at index: Int) -> Bool {
+            guard index + name.count <= count else { return false }
+            for offset in 0..<name.count where lower(bytes[index + offset]) != name[offset] { return false }
+            return true
+        }
+        // Search starts only move forward, so each memo answers later queries
+        // until they pass it; a failed search is never repeated.
+        var greaterThan = (from: Int.max, at: count)
+        var closes = Array(repeating: (from: Int.max, at: count, end: count), count: names.count)
+        func nextGreaterThan(_ start: Int) -> Int? {
+            if !(greaterThan.from <= start && start <= greaterThan.at) { greaterThan = (start, bytes[start...].firstIndex(of: 62) ?? count) }
+            return greaterThan.at < count ? greaterThan.at : nil
+        }
+        /// Index of the '>' ending the first `</name\s*>` at or after `start`.
+        func closeEnd(_ which: Int, _ start: Int) -> Int? {
+            if !(closes[which].from <= start && start <= closes[which].at) {
+                var index = start, found = (at: count, end: count)
+                while found.at == count, index + 1 < count {
+                    if bytes[index] == 60, bytes[index + 1] == 47, hasName(names[which], at: index + 2) {
+                        var end = index + 2 + names[which].count
+                        while end < count, isSpace(bytes[end]) { end += 1 }
+                        if end < count, bytes[end] == 62 { found = (index, end) }
+                    }
+                    index += 1
+                }
+                closes[which] = (start, found.at, found.end)
+            }
+            return closes[which].at < count ? closes[which].end : nil
+        }
+        var output: [UInt8] = [], kept = 0, index = 0, iteration = 0
+        while index < count {
+            if iteration % 4096 == 0 { try control.check() }
+            iteration += 1
+            guard bytes[index] == 60, let which = names.indices.first(where: { hasName(names[$0], at: index + 1) }) else { index += 1; continue }
+            let nameEnd = index + 1 + names[which].count
+            guard nameEnd < count, !isWord(bytes[nameEnd]), let open = nextGreaterThan(nameEnd), let end = closeEnd(which, open + 1) else { index += 1; continue }
+            output.append(contentsOf: bytes[kept..<index])
+            index = end + 1; kept = index
+        }
+        if kept == 0 { return source }
+        output.append(contentsOf: bytes[kept...])
+        return String(decoding: output, as: UTF8.self)
     }
     static func escape(_ text: String) -> String {
         text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")

@@ -44,7 +44,7 @@ enum EPUB {
             guard ["application/xhtml+xml", "text/html"].contains(item.attributes["media-type"] ?? "") else { throw LocalError.invalid("EPUB reading order contains an unsupported chapter type.") }
             let data = try Archives.read(path, archive: archive, control: control)
             guard let html = String(data: data, encoding: .utf8) else { throw LocalError.invalid("EPUB chapter is not UTF-8.") }
-            text += try Documents.htmlText(html) + "\n\n"; count += 1
+            text += try Documents.htmlText(html, control: control) + "\n\n"; count += 1
             guard text.utf8.count <= LocalPolicy.textLimit else { throw LocalError.invalid("EPUB text exceeds 16 MB.") }
         }
         guard count > 0 else { throw LocalError.invalid("EPUB has no supported primary chapters.") }

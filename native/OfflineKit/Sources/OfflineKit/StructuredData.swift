@@ -22,6 +22,10 @@ enum StructuredData {
             }
         }
         try control.check()
+        // Yams resolves dates, .nan/.inf and !!binary to values JSONSerialization
+        // cannot write; it raises an Objective-C exception instead of throwing.
+        // Wrapping in an array also admits top-level fragments.
+        guard JSONSerialization.isValidJSONObject([object]) else { throw LocalError.invalid("YAML contains a date, binary data or a non-finite number that cannot be converted. Quote the value to keep it as text.") }
         let json = try JSONSerialization.data(withJSONObject: object, options: [.fragmentsAllowed, .sortedKeys, .prettyPrinted])
         guard json.count <= LocalPolicy.textLimit else { throw LocalError.invalid("Converted data exceeds 16 MB.") }
         if target == "json" { try json.write(to: output) }

@@ -84,4 +84,61 @@ final class AuditFixTests: XCTestCase {
             XCTAssertThrowsError(try Subtitles.convert(source, fromVTT: true, target: "srt"))
         }
     }
+    func testYAMLDatesNonFiniteAndBinaryRefuseWithLocalErrorInsteadOfCrashing() async throws {
+        let files = [("date.yaml", "- date: 2024-01-15\n"), ("nan.yaml", "- value: .nan\n"), ("inf.yaml", "- value: .inf\n"), ("neginf.yaml", "- value: -.inf\n"), ("bin.yaml", "- data: !!binary aGVsbG8=\n")]
+        let jobs = { (try? FileManager.default.contentsOfDirectory(atPath: OfflineEngine.jobsDirectory.path)) ?? [] }
+        let before = Set(jobs())
+        for (name, content) in files {
+            let input = try text(name, content)
+            for target in ["json", "yaml", "csv"] {
+                do { let result = try await convert(input, target); defer { result.remove() }; XCTFail("\(name) converted to \(target)") }
+                catch let error as LocalError {
+                    if case .cancelled = error { XCTFail("\(name) to \(target) reported cancellation") }
+                    XCTAssertTrue(error.localizedDescription.contains("Quote the value"), error.localizedDescription)
+                }
+            }
+        }
+        XCTAssertEqual(Set(jobs()), before)
+        let quoted = try await convert(try text("quoted.yaml", "- date: \"2024-01-15\"\n"), "json"); defer { quoted.remove() }
+        let restored = try JSONSerialization.jsonObject(with: Data(contentsOf: quoted.url)) as? [[String: String]]
+        XCTAssertEqual(restored, [["date": "2024-01-15"]])
+    }
+    func hugeUnclosedHead() -> String {
+        String(repeating: "<head>x", count: 16_000) + String(repeating: "Plain words after the tags. ", count: 7500)
+    }
+    func testHugeUnclosedHeadTagsConvertQuickly() async throws {
+        let input = try text("huge.html", hugeUnclosedHead())
+        let start = ProcessInfo.processInfo.systemUptime
+        let result = try await convert(input, "txt"); defer { result.remove() }
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 2)
+        XCTAssertTrue(try String(contentsOf: result.url, encoding: .utf8).hasSuffix("Plain words after the tags."))
+    }
+    func testHTMLStripCancelsPromptly() throws {
+        let control = JobControl(); control.cancel()
+        let start = ProcessInfo.processInfo.systemUptime
+        XCTAssertThrowsError(try Documents.htmlText(hugeUnclosedHead(), control: control)) { error in
+            guard case LocalError.cancelled = error else { return XCTFail("Expected cancellation, got \(error)") }
+        }
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1)
+    }
+    func testHTMLStripKeepsPreviousBehaviour() throws {
+        let cases = [
+            ("<html><head><title>T</title></head><body><script>x</script><p>A</p><STYLE type=t>y</style ><p>B</p></body></html>", "A\nB"),
+            ("<header>Title</header>", "Title"),
+            ("<script>keep me", "keep me"),
+            ("<head>a<script>b</script>c", "ac"),
+            ("<script><script>x</script>y</script>", "y"),
+            ("<SCRIPT>x</Script\t\n>after", "after"),
+            ("<scripts>kept</scripts>", "kept"),
+            ("<style/>tail", "tail"),
+            ("<head>a</head >b", "b"),
+            ("<script>x</scriptx>y", "xy"),
+            ("", ""),
+            ("text <", "text <"),
+            ("<p>日本語のテキスト</p><script>削除</script><p>残る</p>", "日本語のテキスト\n残る"),
+        ]
+        for (source, expected) in cases {
+            XCTAssertEqual(try Documents.htmlText(source, control: JobControl()), expected, source)
+        }
+    }
 }
