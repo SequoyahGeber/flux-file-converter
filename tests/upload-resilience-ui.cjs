@@ -8,6 +8,8 @@ const { createApp } = require('../server/app.cjs');
 const { LIMITS } = require('../server/security.cjs');
 
 async function main() {
+  // Holds the worker so other users' completed uploads keep the global queue full.
+  let hold;
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-resilience-'));
   const app = await createApp(
     { storage },
@@ -18,12 +20,10 @@ async function main() {
       },
       scan: async () => 'full',
       capabilities: { formats: [], families: [] },
-      rpc: async (spec, files) => ({
-        family: 'video',
-        ext: 'mp4',
-        targets: ['mov'],
-        size: files[0].size,
-      }),
+      rpc: async (spec, files) => {
+        await hold?.promise;
+        return { family: 'video', ext: 'mp4', targets: ['mov'], size: files[0].size };
+      },
     },
   );
   await new Promise((resolve) => app.server.listen(0, '127.0.0.1', resolve));
@@ -137,10 +137,57 @@ async function main() {
     assert.equal(lost, true);
     const status = await page.evaluate(() => fetch('/api/status').then((r) => r.json()));
     assert.equal(status.files.length, 4);
+
+    // The server-wide queue is full when the upload completes: wait and retry.
+    hold = {};
+    hold.promise = new Promise((resolve) => (hold.release = resolve));
+    const api = (user, url, init = {}) =>
+      fetch('http://127.0.0.1:' + port + '/api/' + url, {
+        ...init,
+        headers: { 'x-test-user': user, ...init.headers },
+      });
+    for (let i = 0; i < LIMITS.queue / 2; i++)
+      for (const name of ['a.mp4', 'b.mp4']) {
+        const user = 'queue' + i;
+        const { id } = await (
+          await api(user, 'uploads', {
+            method: 'POST',
+            body: JSON.stringify({ name, size: 4 }),
+          })
+        ).json();
+        await api(user, 'uploads/' + id, {
+          method: 'PUT',
+          body: 'test',
+          headers: { 'content-type': 'application/octet-stream', 'x-flux-offset': '0' },
+        });
+        assert.equal(
+          (await api(user, 'uploads/' + id + '/complete', { method: 'POST' })).status,
+          202,
+        );
+      }
+    let queueFull = 0;
+    page.on('response', (response) => {
+      if (/\/complete$/.test(response.url()) && response.status() === 429) queueFull++;
+    });
+    await page.locator('#files').setInputFiles({
+      name: 'queue-full.mp4',
+      mimeType: 'video/mp4',
+      buffer: Buffer.alloc(4096, 1),
+    });
+    await page.waitForFunction(
+      () =>
+        /Waiting for server quota/.test(document.querySelector('#status').textContent) ||
+        !document.querySelector('#error').hidden,
+    );
+    hold.release();
+    await page.locator('#rows').getByText('queue-full.mp4').waitFor({ timeout: 30000 });
+    assert.ok(queueFull >= 1, 'the full queue answered 429');
+    assert.equal(await page.locator('#error').isVisible(), false);
     console.log(
-      'Uploads succeed without AbortSignal.any/timeout, wait for busy server streams, and resume after dropped or lost chunk responses.',
+      'Uploads succeed without AbortSignal.any/timeout, wait for busy server streams and a full server queue, and resume after dropped or lost chunk responses.',
     );
   } finally {
+    hold?.release?.();
     for (const request of held) request.destroy();
     await browser.close();
     await app.close();

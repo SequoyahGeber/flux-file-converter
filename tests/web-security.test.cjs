@@ -216,6 +216,44 @@ test('the global queue is bounded and executes one job at a time', async () => {
   assert.equal(await second, 2);
   assert.equal(peak, 1);
 });
+test('aborting a pending queue entry drops it at once and frees its capacity', async () => {
+  const queue = new Queue(3);
+  const ran = [];
+  let release;
+  const first = queue.add(() => new Promise((r) => (release = r)));
+  const cancel = new AbortController();
+  const dropped = queue.add(async () => ran.push('dropped'), cancel.signal);
+  const kept = queue.add(async () => ran.push('kept'));
+  assert.equal(queue.full, true);
+  cancel.abort();
+  await assert.rejects(
+    Promise.race([
+      dropped,
+      new Promise((r) => setTimeout(r, 100)).then(() => 'still pending'),
+    ]).then((value) => assert.fail(value)),
+    /Cancelled/,
+  );
+  assert.equal(queue.full, false);
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(
+    queue.add(async () => ran.push('pre-aborted'), aborted.signal),
+    /Cancelled/,
+  );
+  assert.equal(queue.pending.length, 1);
+  // A started entry is cancelled by its own job, never removed by the queue.
+  const running = new AbortController();
+  const next = queue.add(async () => {
+    running.abort();
+    return 'finished';
+  }, running.signal);
+  release();
+  await first;
+  await kept;
+  assert.equal(await next, 'finished');
+  assert.deepEqual(ran, ['kept']);
+  assert.equal(queue.pending.length, 0);
+});
 test('rate limits stop floods and recover only after the window expires', () => {
   let time = 10;
   const limiter = new RateLimit(() => time);

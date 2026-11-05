@@ -95,11 +95,25 @@ class Queue {
     this.pending = [];
     this.active = false;
   }
-  add(fn) {
-    if (this.pending.length + Number(this.active) >= this.max)
-      return Promise.reject(fail('The server queue is full. Try again shortly.', 503));
+  get full() {
+    return this.pending.length + Number(this.active) >= this.max;
+  }
+  // Aborting the signal drops a still-pending entry at once; a started entry is
+  // cancelled by its own job instead.
+  add(fn, signal) {
+    if (signal?.aborted) return Promise.reject(fail('Cancelled.'));
+    if (this.full) return Promise.reject(fail('The server queue is full. Try again shortly.', 503));
     return new Promise((resolve, reject) => {
-      this.pending.push({ fn, resolve, reject });
+      const entry = { fn, resolve, reject, signal };
+      if (signal) {
+        entry.abort = () => {
+          const index = this.pending.indexOf(entry);
+          if (index >= 0) this.pending.splice(index, 1);
+          reject(fail('Cancelled.'));
+        };
+        signal.addEventListener('abort', entry.abort, { once: true });
+      }
+      this.pending.push(entry);
       this.drain();
     });
   }
@@ -108,6 +122,7 @@ class Queue {
     this.active = true;
     while (this.pending.length) {
       const next = this.pending.shift();
+      next.signal?.removeEventListener('abort', next.abort);
       try {
         next.resolve(await next.fn());
       } catch (e) {

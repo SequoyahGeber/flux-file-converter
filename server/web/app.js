@@ -610,10 +610,12 @@ async function upload(files) {
       await sendFile(f, upload, controller.signal);
       if (cancelled) throw new DOMException('Upload cancelled.', 'AbortError');
       $('status').textContent = 'Scanning ' + f.name + '…';
-      const completion = await api('uploads/' + upload.id + '/complete', {
-        method: 'POST',
-        body: {},
-      });
+      // A full server queue answers 429 and keeps the upload, so wait and retry.
+      const completion = await quotaRequest(
+        'uploads/' + upload.id + '/complete',
+        { method: 'POST', body: {} },
+        f.name,
+      );
       while (true) {
         await refreshStatus();
         const job = state.jobs.find((j) => j.id === completion.id);

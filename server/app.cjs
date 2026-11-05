@@ -330,6 +330,11 @@ async function createApp(config, deps = {}) {
           throw fail('Upload is incomplete.', 409);
         if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);
         if (s.jobs.size >= 100) throw fail('Clear recent jobs before submitting more.', 429);
+        // Refuse before touching the upload, so it stays resumable and the client retries.
+        if (queue.full)
+          throw Object.assign(fail('The server queue is full. Try again shortly.', 429), {
+            retryAfter: 5,
+          });
         upload.busy = true;
         s.active++;
         let committed = false,
@@ -349,45 +354,47 @@ async function createApp(config, deps = {}) {
         s.jobs.set(jobId, job);
         track(
           queue
-            .add(() =>
-              bounded(job, controller, async () => {
-                if (controller.signal.aborted) throw fail('Cancelled.');
-                job.status = 'running';
-                const scanMode = await scanner(upload.path, { signal: controller.signal });
-                const inspected = await worker(
-                  { operation: 'inspect' },
-                  [upload],
-                  null,
-                  config,
-                  controller.signal,
-                );
-                if (controller.signal.aborted) throw fail('Cancelled.');
-                if (
-                  upload.size > LIMITS.scanFull &&
-                  (!['video', 'audio'].includes(inspected.family) ||
-                    (!inspected.hasAudio && !inspected.hasVideo))
-                )
-                  throw fail(
-                    'Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.',
-                    413,
+            .add(
+              () =>
+                bounded(job, controller, async () => {
+                  if (controller.signal.aborted) throw fail('Cancelled.');
+                  job.status = 'running';
+                  const scanMode = await scanner(upload.path, { signal: controller.signal });
+                  const inspected = await worker(
+                    { operation: 'inspect' },
+                    [upload],
+                    null,
+                    config,
+                    controller.signal,
                   );
-                const info = {
-                  ...safeMetadata(inspected),
-                  path: upload.path,
-                  name: upload.name,
-                  size: upload.size,
-                  id,
-                  scanMode,
-                };
-                if (scanMode === 'chunked')
-                  info.warning =
-                    'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
-                s.files.set(id, info);
-                stored += upload.size;
-                committed = true;
-                job.status = 'done';
-                job.file = { id, ...safeMetadata(info), scanMode };
-              }),
+                  if (controller.signal.aborted) throw fail('Cancelled.');
+                  if (
+                    upload.size > LIMITS.scanFull &&
+                    (!['video', 'audio'].includes(inspected.family) ||
+                      (!inspected.hasAudio && !inspected.hasVideo))
+                  )
+                    throw fail(
+                      'Files above 1.9 GB must be valid audio or video. Documents and archives need full-file malware scanning.',
+                      413,
+                    );
+                  const info = {
+                    ...safeMetadata(inspected),
+                    path: upload.path,
+                    name: upload.name,
+                    size: upload.size,
+                    id,
+                    scanMode,
+                  };
+                  if (scanMode === 'chunked')
+                    info.warning =
+                      'Large media: overlapping signature scans were used. This cannot fully analyze embedded containers.';
+                  s.files.set(id, info);
+                  stored += upload.size;
+                  committed = true;
+                  job.status = 'done';
+                  job.file = { id, ...safeMetadata(info), scanMode };
+                }),
+              controller.signal,
             )
             .catch((e) => {
               failure = {
@@ -489,75 +496,78 @@ async function createApp(config, deps = {}) {
         Object.defineProperty(job, 'controller', { value: controller });
         track(
           queue
-            .add(() =>
-              bounded(job, controller, async () => {
-                if (controller.signal.aborted) throw fail('Cancelled.');
-                job.status = 'running';
-                const info = await worker(
-                  {
+            .add(
+              () =>
+                bounded(job, controller, async () => {
+                  if (controller.signal.aborted) throw fail('Cancelled.');
+                  job.status = 'running';
+                  const info = await worker(
+                    {
+                      operation: op,
+                      target: spec.target,
+                      compression: spec.compression,
+                      options: options(spec.options),
+                    },
+                    files,
+                    output,
+                    config,
+                    controller.signal,
+                  );
+                  const scanMode = await scanner(output, { signal: controller.signal });
+                  if (
+                    info.size > LIMITS.scanFull &&
+                    ![
+                      'mp4',
+                      'mkv',
+                      'mov',
+                      'webm',
+                      'avi',
+                      'm4v',
+                      'mpg',
+                      'mpeg',
+                      'flv',
+                      '3gp',
+                      'ts',
+                      'mts',
+                      'm2ts',
+                      'vob',
+                      'wmv',
+                      'ogv',
+                      'mp3',
+                      'wav',
+                      'flac',
+                      'aac',
+                      'm4a',
+                      'ogg',
+                      'opus',
+                      'aiff',
+                      'aif',
+                      'wma',
+                      'amr',
+                      'ac3',
+                      'caf',
+                    ].includes(info.target)
+                  )
+                    throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
+                  if (controller.signal.aborted) throw fail('Cancelled.');
+                  filename(info.name);
+                  const stat = await fs.lstat(output);
+                  if (!stat.isFile() || stat.size > LIMITS.output)
+                    throw fail('Invalid output.', 502);
+                  const result = {
+                    id,
+                    ...info,
+                    size: stat.size,
+                    path: output,
                     operation: op,
-                    target: spec.target,
-                    compression: spec.compression,
-                    options: options(spec.options),
-                  },
-                  files,
-                  output,
-                  config,
-                  controller.signal,
-                );
-                const scanMode = await scanner(output, { signal: controller.signal });
-                if (
-                  info.size > LIMITS.scanFull &&
-                  ![
-                    'mp4',
-                    'mkv',
-                    'mov',
-                    'webm',
-                    'avi',
-                    'm4v',
-                    'mpg',
-                    'mpeg',
-                    'flv',
-                    '3gp',
-                    'ts',
-                    'mts',
-                    'm2ts',
-                    'vob',
-                    'wmv',
-                    'ogv',
-                    'mp3',
-                    'wav',
-                    'flac',
-                    'aac',
-                    'm4a',
-                    'ogg',
-                    'opus',
-                    'aiff',
-                    'aif',
-                    'wma',
-                    'amr',
-                    'ac3',
-                    'caf',
-                  ].includes(info.target)
-                )
-                  throw fail('Large non-media outputs exceed the full-file scanning limit.', 413);
-                if (controller.signal.aborted) throw fail('Cancelled.');
-                filename(info.name);
-                const stat = await fs.lstat(output);
-                if (!stat.isFile() || stat.size > LIMITS.output) throw fail('Invalid output.', 502);
-                const result = {
-                  id,
-                  ...info,
-                  size: stat.size,
-                  path: output,
-                  operation: op,
-                  scanMode,
-                };
-                stored += stat.size;
-                s.results.set(id, result);
-                job.status = 'done';
-                job.result = { ...result, path: undefined };
-              }),
+                    scanMode,
+                  };
+                  stored += stat.size;
+                  s.results.set(id, result);
+                  job.status = 'done';
+                  job.result = { ...result, path: undefined };
+                }),
+              controller.signal,
             )
             .catch(async (e) => {
               // Clean up first: the status becomes visible only as the slot is
