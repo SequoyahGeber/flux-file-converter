@@ -7,6 +7,117 @@ const { PDFDocument, StandardFonts } = require('pdf-lib');
 const { detectEngines, run } = require('../electron/engine.cjs');
 const { desktopPerformance } = require('./fixtures/desktop-performance.cjs');
 let root;
+async function textSizes(page, state, required) {
+  for (const selector of required) await page.locator(selector).first().waitFor();
+  const result = await page.evaluate(() => {
+    const elements = new Set(document.querySelectorAll('input, select, textarea'));
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent.trim()) elements.add(walker.currentNode.parentElement);
+    }
+    const measured = [...elements]
+      .filter(
+        (el) =>
+          el instanceof HTMLElement &&
+          !el.closest('script, style, option, [inert]') &&
+          el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+      )
+      .map((el) => ({
+        selector:
+          el.tagName.toLowerCase() +
+          (el.className ? '.' + el.className.trim().split(/\s+/).join('.') : ''),
+        text: (el.value || el.textContent).trim().slice(0, 80),
+        size: parseFloat(getComputedStyle(el).fontSize),
+      }));
+    return { count: measured.length, failures: measured.filter((item) => item.size < 10) };
+  });
+  assert.ok(result.count > 0, state + ': no visible text measured');
+  assert.deepEqual(result.failures, [], state + ': ' + JSON.stringify(result.failures));
+}
+async function textContrast(page, selectors, minimum = 4.5) {
+  for (const selector of selectors) await page.locator(selector).first().waitFor();
+  const results = await page.evaluate((targets) => {
+    const luminance = (color) => {
+      const values = color
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map(Number)
+        .map((value) => {
+          value /= 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+      return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+    };
+    return targets.flatMap((selector) =>
+      [...document.querySelectorAll(selector)].map((element) => {
+        let parent = element,
+          background;
+        while (parent) {
+          background = getComputedStyle(parent).backgroundColor;
+          if (background !== 'rgba(0, 0, 0, 0)') break;
+          parent = parent.parentElement;
+        }
+        const foreground = getComputedStyle(element).color;
+        const a = luminance(foreground),
+          b = luminance(background);
+        return {
+          selector,
+          foreground,
+          background,
+          ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+        };
+      }),
+    );
+  }, selectors);
+  for (const selector of selectors)
+    assert.ok(
+      results.some((result) => result.selector === selector),
+      selector + ': no contrast targets',
+    );
+  for (const result of results) assert.ok(result.ratio >= minimum, JSON.stringify(result));
+}
+async function actionContrast(page, selector, minimum = 4.5) {
+  await textContrast(page, [selector], minimum);
+  await page.locator(selector).first().hover();
+  await page.locator(selector).first().evaluate(async (el) => {
+    await Promise.all(el.getAnimations().map((animation) => animation.finished));
+  });
+  await textContrast(page, [selector], minimum);
+  // Move off the control so later checks measure its normal state.
+  await page.mouse.move(0, 0);
+}
+async function reachableControls(page, state, selectors) {
+  for (const selector of selectors) {
+    const control = page.locator(selector).first();
+    await control.scrollIntoViewIfNeeded();
+    const bounds = await control.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: rect.x,
+        y: rect.y,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: innerWidth,
+        height: innerHeight,
+      };
+    });
+    assert.ok(
+      bounds.x >= -0.5 &&
+        bounds.y >= -0.5 &&
+        bounds.right <= bounds.width + 0.5 &&
+        bounds.bottom <= bounds.height + 0.5,
+      state + ': ' + selector + ' ' + JSON.stringify(bounds),
+    );
+  }
+}
+async function nativeMenuAction(page, action) {
+  // Exercise the exact fixed JavaScript used by the native menu, without a
+  // production test hook. Swift compilation and key equivalents need native proof.
+  const source = await fs.readFile(path.join(__dirname, '../mac/Flux/FluxApp.swift'), 'utf8');
+  const script = source.match(/callAsyncJavaScript\("""([\s\S]*?)""", arguments:/);
+  assert.ok(script, 'Native menu activation script is missing');
+  await page.evaluate('(action) => {' + script[1] + '\n}', action);
+}
 async function currentPage(page, name) {
   const current = page.locator('.side-button[aria-current="page"]');
   await current.filter({ hasText: name }).waitFor();
@@ -102,12 +213,16 @@ async function announcementFixtures(electronApp, url) {
       window.a11yFixture = {
         requests: [],
         reject: false,
+        native: false,
         emit: (event) => update(event),
         complete: () => update({ batchComplete: true, history: [] }),
       };
       window.flux = {
         getState: async () => ({
-          engines: {},
+          engines: { data: true, local: true },
+          nativeLocal: window.a11yFixture.native,
+          samples: [{ id: 'json', title: 'JSON to CSV', target: 'csv' }],
+          privacyText: 'Fixture privacy policy. Files are converted locally.',
           enginePaths: {},
           outputDir: '/fixture/results',
           families: [{ id: 'data', name: 'Data', formats: ['json'] }],
@@ -115,6 +230,9 @@ async function announcementFixtures(electronApp, url) {
           files,
           running: false,
         }),
+        describeFormat: async () => ['csv'],
+        refreshEngines: async () => window.flux.getState(),
+        releaseFiles: async () => true,
         onUpdate: (callback) => {
           update = callback;
           return () => {};
@@ -137,7 +255,30 @@ async function announcementFixtures(electronApp, url) {
       await page.getByRole('button', { name: 'All formats 1 format', exact: true }).count(),
       1,
     );
+    await textSizes(page, 'Fixture queue', ['.file-info', '.unsupported-label']);
+    await textContrast(page, ['.unsupported-label', '.workspace-footer']);
+    await actionContrast(page, '.remove-button', 3);
     const node = await page.locator('.notification').elementHandle();
+    await notification(page, node, '');
+    for (const [action, name] of [
+      ['compress', 'Compress files'],
+      ['archive', 'ZIP & Unzip'],
+      ['history', 'Recent files'],
+      ['formats', 'All formats'],
+      ['convert', 'Convert files'],
+    ]) {
+      await nativeMenuAction(page, action);
+      await currentPage(page, name);
+    }
+    await nativeMenuAction(page, 'start');
+    await page.getByRole('button', { name: 'Cancel batch', exact: true }).waitFor();
+    await nativeMenuAction(page, 'compress');
+    await currentPage(page, 'Convert files');
+    await page.getByRole('alert').getByText(/before switching workspaces/).waitFor();
+    await page.getByRole('button', { name: 'Dismiss error', exact: true }).click();
+    await nativeMenuAction(page, 'cancel');
+    await page.locator('.queue-bottom .primary-button').waitFor();
+    await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
     await notification(page, node, '');
     const start = async () => {
       await page.locator('.queue-bottom .primary-button').click();
@@ -204,6 +345,13 @@ async function announcementFixtures(electronApp, url) {
       'Batch finished. 1 file ready. 1 file failed. 1 file cancelled.',
     );
     assert.equal(await page.locator('.row-warning[role="status"]').count(), 2);
+    await textSizes(page, 'Fixture mixed results', [
+      '.row-warning',
+      '.result-button',
+      '.unsupported-label',
+    ]);
+    await textContrast(page, ['.row-warning', '.unsupported-label', '.workspace-footer']);
+    await actionContrast(page, '.result-button');
     await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
     await notification(page, node, '');
     // Only failed/cancelled files are retried; old successes and unsupported files stay out.
@@ -246,6 +394,10 @@ async function announcementFixtures(electronApp, url) {
       window.a11yFixture.complete();
     });
     await notification(page, node, 'Batch finished. Your results are ready.');
+    const completedRequests = await page.evaluate(() => window.a11yFixture.requests);
+    assert.equal(await page.locator('.queue-bottom .primary-button').isDisabled(), true);
+    await nativeMenuAction(page, 'start');
+    assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests), completedRequests);
     // Allow the production timeout to clear it; the live region must remain mounted.
     await notification(page, node, '');
     await page.getByRole('button', { name: 'ZIP & Unzip', exact: true }).click();
@@ -266,6 +418,83 @@ async function announcementFixtures(electronApp, url) {
     await start();
     await page.getByRole('button', { name: 'Cancel batch', exact: true }).click();
     await notification(page, node, 'Batch finished. 4 files cancelled.');
+    await nativeMenuAction(page, 'formats');
+    await currentPage(page, 'All formats');
+    // No batch control exists on this page.
+    const requests = await page.evaluate(() => window.a11yFixture.requests);
+    await nativeMenuAction(page, 'start');
+    await nativeMenuAction(page, 'cancel');
+    assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests), requests);
+    await page.getByRole('button', { name: 'JSON', exact: true }).click();
+    await page.getByRole('dialog', { name: 'JSON files', exact: true }).waitFor();
+    for (const action of ['convert', 'compress', 'archive', 'history', 'start', 'cancel'])
+      await nativeMenuAction(page, action);
+    await currentPage(page, 'All formats');
+    assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests), requests);
+    await textSizes(page, 'Fixture format dialog', ['.modal-formats b']);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /Settings/ }).click();
+    await currentPage(page, 'Settings');
+    await textSizes(page, 'Fixture mixed engine availability', [
+      '.engine-status:not(.unavailable)',
+      '.engine-status.unavailable',
+      '.engine-row code',
+    ]);
+    await textContrast(page, ['.engine-status:not(.unavailable)', '.engine-status.unavailable']);
+    await page.evaluate(() => {
+      window.a11yFixture.native = true;
+    });
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await page.getByRole('button', { name: 'Privacy policy', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Privacy policy', exact: true }).waitFor();
+    await textSizes(page, 'Native privacy dialog', ['.policy-text']);
+    await page.keyboard.press('Escape');
+    await nativeMenuAction(page, 'convert');
+    // These CSS viewports cover the minimum window and the space available at
+    // 150% zoom. They do not prove WKWebView pageZoom or native key equivalents.
+    for (const viewport of [
+      { width: 900, height: 560 },
+      { width: 600, height: 373 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await reachableControls(page, 'Narrow queue', [
+        '.queue-bottom .primary-button',
+        '.output-bar .text-button',
+        '.sidebar-bottom .side-button',
+      ]);
+    }
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await textSizes(page, 'Native sample picker', [
+      '.sample-picker select',
+      '.sample-picker small',
+    ]);
+    for (const viewport of [{ width: 900, height: 560 }, { width: 600, height: 373 }]) {
+      await page.setViewportSize(viewport);
+      await reachableControls(page, 'Narrow native home', [
+        '.dropzone .primary-button',
+        '.sample-picker select',
+        '.sample-picker .secondary-button',
+        '.output-bar .text-button',
+        '.sidebar-bottom .side-button',
+      ]);
+      const overflowing = await page.locator('.dropzone').evaluate((el) => {
+        const parent = el.getBoundingClientRect();
+        return [...el.children].some((child) => {
+          const rect = child.getBoundingClientRect();
+          return (
+            rect.top < parent.top ||
+            rect.bottom > parent.bottom ||
+            rect.left < parent.left ||
+            rect.right > parent.right
+          );
+        });
+      });
+      assert.equal(
+        overflowing,
+        false,
+        'Native sample picker overflows at ' + JSON.stringify(viewport),
+      );
+    }
     assert.deepEqual(errors, []);
   } finally {
     await page.close();
@@ -321,6 +550,8 @@ async function main() {
   try {
     await page.waitForSelector('h1');
     await currentPage(page, 'Convert files');
+    await textSizes(page, 'Home', ['.dropzone', '.art-file span', '.workspace-footer']);
+    await textContrast(page, ['.workspace-footer']);
     const notice = await page.locator('.notification').elementHandle();
     await notification(page, notice, '');
     assert.equal(await page.getByRole('button', { name: 'Convert files', exact: true }).count(), 1);
@@ -331,6 +562,7 @@ async function main() {
     await options.click();
     assert.equal(await options.getAttribute('aria-expanded'), 'true');
     await focusContrast(page, page.getByLabel('Quality / file size'));
+    await textSizes(page, 'Options', ['.options-panel label', '.options-panel select']);
     await options.click();
     assert.equal(await options.getAttribute('aria-expanded'), 'false');
     await page.screenshot({ path: path.join(root, '01-home.png') });
@@ -363,6 +595,12 @@ async function main() {
       1,
     );
     await focusContrast(page, page.getByLabel('Output format for Holiday photo.png'));
+    await textSizes(page, 'Conversion queue', [
+      '.file-info > span',
+      '.queue-toolbar',
+      '.queue-bottom',
+    ]);
+    await actionContrast(page, '.remove-button', 3);
     await page.screenshot({ path: path.join(root, '02-batch.png') });
     // Capture a real running row when it renders, even if it finishes before the next assertion.
     await page.evaluate(() => {
@@ -401,6 +639,8 @@ async function main() {
     let state = await page.evaluate(() => window.flux.getState());
     assert.equal(state.history.length, 4);
     for (const result of state.history) assert.ok((await fs.stat(result.path)).size > 0);
+    await textSizes(page, 'Conversion results', ['.row-result', '.result-button']);
+    await actionContrast(page, '.result-button');
     await page.screenshot({ path: path.join(root, '03-results.png') });
     await page.getByRole('button', { name: /Compress files/ }).click();
     await currentPage(page, 'Compress files');
@@ -425,6 +665,7 @@ async function main() {
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2, {
       timeout: 120000,
     });
+    await textSizes(page, 'Lossless compression', ['.mode-options small', '.row-result']);
     await page.screenshot({ path: path.join(root, '04-lossless.png') });
     await page.getByRole('button', { name: /Smaller file/, pressed: false }).click();
     assert.equal(
@@ -435,6 +676,9 @@ async function main() {
       await compression.getByRole('button', { name: /Lossless/, pressed: false }).count(),
       1,
     );
+    await options.click();
+    await textSizes(page, 'Smaller file compression', ['.options-panel', '.mode-options small']);
+    await options.click();
     await page.getByRole('button', { name: /Compress 2 files/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2, {
       timeout: 120000,
@@ -459,6 +703,7 @@ async function main() {
     state = await page.evaluate(() => window.flux.getState());
     const zip = state.history.find((h) => h.operation === 'pack');
     assert.ok(zip);
+    await textSizes(page, 'ZIP results', ['.segmented', '.row-result']);
     await page.screenshot({ path: path.join(root, '05-zip.png') });
     await archive.getByRole('button', { name: 'Extract archive', exact: true }).click();
     assert.equal(
@@ -487,6 +732,7 @@ async function main() {
       .first()
       .click();
     await currentPage(page, 'All formats');
+    await textSizes(page, 'All formats', ['.format-card', '.format-tags button']);
     const formatCount = state.families.reduce((n, family) => n + family.formats.length, 0);
     assert.equal(
       await page
@@ -513,42 +759,19 @@ async function main() {
         true,
       );
     }
-    const contrasts = await page.evaluate(() => {
-      const luminance = (color) => {
-        const values = color
-          .match(/[\d.]+/g)
-          .slice(0, 3)
-          .map(Number)
-          .map((value) => {
-            value /= 255;
-            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-          });
-        return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
-      };
-      return [
-        '.format-modal > p',
-        '.modal-details',
-        '.modal-formats > span',
-        '.modal-formats b',
-      ].map((selector) => {
-        const element = document.querySelector(selector);
-        let parent = element,
-          background;
-        while (parent) {
-          background = getComputedStyle(parent).backgroundColor;
-          if (background !== 'rgba(0, 0, 0, 0)') break;
-          parent = parent.parentElement;
-        }
-        const a = luminance(getComputedStyle(element).color),
-          b = luminance(background);
-        return { selector, ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
-      });
-    });
-    for (const result of contrasts) assert(result.ratio >= 4.5, JSON.stringify(result));
+    await textSizes(page, 'Format dialog', ['.modal-formats b', '.modal-details']);
+    await textContrast(page, [
+      '.format-modal > p',
+      '.modal-details',
+      '.modal-formats > span',
+      '.modal-formats b',
+    ]);
     await page.keyboard.press('Escape');
     assert.equal(await formatTrigger.evaluate((el) => el === document.activeElement), true);
     await page.getByRole('button', { name: /Settings/ }).click();
     await currentPage(page, 'Settings');
+    await textSizes(page, 'Settings', ['.engine-row', '.settings-folder']);
+    await textContrast(page, ['.engine-status:not(.unavailable)']);
     await page.screenshot({ path: path.join(root, '06-settings.png') });
     assert.equal(await page.locator('.engine-status.unavailable').count(), 0);
     await page.getByRole('button', { name: /Recent files/ }).click();
@@ -557,6 +780,7 @@ async function main() {
       await page.getByRole('button', { name: 'Recent files 10 files', exact: true }).count(),
       1,
     );
+    await textSizes(page, 'Recent files', ['.history-row', '.history-date', '.history-size']);
     await page.screenshot({ path: path.join(root, '07-history.png') });
     assert.equal(await page.locator('.history-row').count(), 10);
     const precise = path.join(root, 'Precise identifiers.json');
