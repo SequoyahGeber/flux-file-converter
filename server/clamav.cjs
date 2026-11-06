@@ -45,7 +45,7 @@ async function scanStream(
   // Attach a rejection handler immediately, including while streaming the file.
   result.catch(() => {});
   try {
-    await once(socket, 'connect');
+    await once(socket, 'connect').catch(() => result);
     socket.write('zINSTREAM\0');
     let total = 0;
     for await (const chunk of fs.createReadStream(file, { start, end })) {

@@ -1,4 +1,4 @@
-const { receive, execute } = require('./worker-io.cjs');
+const { receive, execute, checkResult } = require('./worker-io.cjs');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const fss = require('node:fs');
@@ -86,14 +86,7 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify(result));
     } else {
-      filename(result.name);
-      if (!Number.isSafeInteger(result.size) || result.size > LIMITS.output)
-        throw fail('Invalid result.', 422);
-      const out = await fs.realpath(path.resolve(root, result.path));
-      if (!out.startsWith(root + '/')) throw fail('Invalid result path.', 422);
-      const stat = await fs.lstat(out);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== result.size)
-        throw fail('Invalid output.', 422);
+      const out = await checkResult(root, result);
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Length', result.size);
       res.setHeader(

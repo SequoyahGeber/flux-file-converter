@@ -2,7 +2,7 @@ const { writeAll } = require('../electron/io.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { LIMITS, fail } = require('./security.cjs');
+const { LIMITS, fail, filename } = require('./security.cjs');
 async function receive(req, files, root) {
   await fs.mkdir(path.join(root, 'input'));
   let index = 0,
@@ -108,4 +108,15 @@ async function execute(root, signal, spawnProcess = spawn) {
     });
   });
 }
-module.exports = { receive, execute };
+async function checkResult(root, result) {
+  filename(result.name);
+  if (!Number.isSafeInteger(result.size) || result.size > LIMITS.output)
+    throw fail('Invalid result.', 422);
+  const out = await fs.realpath(path.resolve(root, result.path));
+  if (!out.startsWith(root + '/')) throw fail('Invalid result path.', 422);
+  const stat = await fs.lstat(out);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== result.size)
+    throw fail('Invalid output.', 422);
+  return out;
+}
+module.exports = { receive, execute, checkResult };

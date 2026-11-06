@@ -5,7 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { createAuth } = require('../server/auth.cjs');
 const { createApp } = require('../server/app.cjs');
-const { filename, RateLimit, Queue, LIMITS } = require('../server/security.cjs');
+const { filename, RateLimit, Queue, LIMITS, sameSecret } = require('../server/security.cjs');
+const { scan } = require('../server/clamav.cjs');
 test('Cloudflare login verifies signatures, issuer, audience, expiry and request origin', async () => {
   const { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } = await import('jose');
   const keys = await generateKeyPair('RS256'),
@@ -506,4 +507,175 @@ test('the single container retains hard limits, gVisor and no published ports', 
   assert.ok(!s.volumes.some((v) => v.includes('/var/run/docker') || v.startsWith('/mnt/')));
   assert.equal(LIMITS.file, 5_000_000_000);
   assert.equal(LIMITS.job, 600000);
+});
+
+test('the worker bearer check needs a matching secret of at least 32 characters', () => {
+  const secret = 's'.repeat(32);
+  assert.equal(sameSecret(undefined, secret), false);
+  assert.equal(sameSecret('', ''), false);
+  assert.equal(sameSecret('a'.repeat(31), 'a'.repeat(31)), false);
+  assert.equal(sameSecret('a'.repeat(32), 'a'.repeat(33)), false);
+  assert.equal(sameSecret('a'.repeat(31) + 'x', 'a'.repeat(31) + 'y'), false);
+  assert.equal(sameSecret(secret, secret), true);
+});
+
+// A fake clamd that decodes zINSTREAM\0, the 4-byte big-endian chunk lengths and
+// the zero terminator, then hands the decoded bytes to reply(socket, bytes).
+async function fakeClamd(t, reply) {
+  const net = require('node:net');
+  const seen = { streams: [], frames: [], errors: [] };
+  const sockets = new Set();
+  const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('error', () => {});
+    let buffer = Buffer.alloc(0),
+      started = false;
+    const parts = [];
+    socket.on('data', (data) => {
+      buffer = Buffer.concat([buffer, data]);
+      if (!started) {
+        if (buffer.length < 10) return;
+        if (buffer.subarray(0, 10).toString('latin1') !== 'zINSTREAM\0') {
+          seen.errors.push('bad command');
+          socket.destroy();
+          return;
+        }
+        buffer = buffer.subarray(10);
+        started = true;
+      }
+      while (buffer.length >= 4) {
+        const length = buffer.readUInt32BE(0);
+        if (length === 0) {
+          seen.streams.push(Buffer.concat(parts));
+          buffer = Buffer.alloc(0);
+          reply(socket, seen.streams.at(-1));
+          return;
+        }
+        if (buffer.length < 4 + length) return;
+        parts.push(buffer.subarray(4, 4 + length));
+        seen.frames.push(length);
+        buffer = buffer.subarray(4 + length);
+      }
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    for (const socket of sockets) socket.destroy();
+    server.close();
+  });
+  return { port: server.address().port, seen };
+}
+
+async function scratchFile(t, bytes) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-clamd-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'sample.bin');
+  await fs.writeFile(file, bytes);
+  return file;
+}
+
+test('the scanner client speaks INSTREAM and accepts only an exact "stream: OK" verdict', async (t) => {
+  const data = require('node:crypto').randomBytes(200 * 1024);
+  const file = await scratchFile(t, data);
+  const ok = await fakeClamd(t, (socket) => socket.end('stream: OK\0'));
+  assert.equal(await scan(file, { host: '127.0.0.1', port: ok.port, timeout: 5000 }), 'full');
+  assert.deepEqual(ok.seen.errors, []);
+  assert.equal(ok.seen.streams.length, 1);
+  assert.ok(ok.seen.frames.length > 1, 'the file should span several frames');
+  assert.ok(ok.seen.streams[0].equals(data), 'clamd must receive the file bytes unchanged');
+
+  const found = await fakeClamd(t, (socket) => socket.end('stream: Eicar-Test-Signature FOUND\0'));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: found.port, timeout: 5000 }), {
+    status: 422,
+    message: /rejected by the malware scanner/,
+  });
+  const junk = await fakeClamd(t, (socket) => socket.end('INSTREAM size limit exceeded. ERROR\0'));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: junk.port, timeout: 5000 }), {
+    status: 422,
+    message: /could not complete/,
+  });
+  // A "FOUND" prefix or a trailing suffix must not pass for a clean verdict.
+  const padded = await fakeClamd(t, (socket) => socket.end('stream: OK FOUND\0'));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: padded.port, timeout: 5000 }), {
+    status: 422,
+  });
+});
+
+test('the scanner client fails closed on truncated, oversized, silent or unreachable scanners', async (t) => {
+  const net = require('node:net');
+  const file = await scratchFile(t, Buffer.from('hello'));
+  const truncated = await fakeClamd(t, (socket) => socket.end('stream: OK'));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: truncated.port, timeout: 5000 }), {
+    status: 503,
+    message: /Incomplete/,
+  });
+  // No NUL and the socket stays open, so only the 4096-byte cap can stop this.
+  const oversized = await fakeClamd(t, (socket) => socket.write('x'.repeat(5000)));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: oversized.port, timeout: 30000 }), {
+    status: 503,
+    message: /unavailable/,
+  });
+  const silent = await fakeClamd(t, () => {});
+  await assert.rejects(scan(file, { host: '127.0.0.1', port: silent.port, timeout: 50 }), {
+    status: 503,
+    message: /timed out/,
+  });
+  const closed = net.createServer();
+  await new Promise((resolve) => closed.listen(0, '127.0.0.1', resolve));
+  const { port } = closed.address();
+  await new Promise((resolve) => closed.close(resolve));
+  await assert.rejects(scan(file, { host: '127.0.0.1', port, timeout: 5000 }), {
+    status: 503,
+    message: /unavailable/,
+  });
+});
+
+test('files over the full-scan limit are scanned in overlapping windows that cover every byte', async (t) => {
+  const file = await scratchFile(t, Buffer.from('x'));
+  const size = LIMITS.scanFull + 1,
+    window = 64 * 1024 ** 2,
+    overlap = 1024 ** 2,
+    step = window - overlap;
+  const clamd = await fakeClamd(t, (socket) => socket.end('stream: OK\0'));
+  const nodeFs = require('node:fs');
+  const { Readable } = require('node:stream');
+  const realStat = nodeFs.promises.stat,
+    realCreateReadStream = nodeFs.createReadStream;
+  const windows = [];
+  nodeFs.promises.stat = async (target, ...rest) => {
+    const stat = await realStat.call(nodeFs.promises, target, ...rest);
+    return target === file ? { size } : stat;
+  };
+  nodeFs.createReadStream = (target, options, ...rest) => {
+    if (target !== file) return realCreateReadStream.call(nodeFs, target, options, ...rest);
+    windows.push({ start: options.start, end: options.end });
+    return Readable.from([Buffer.from('x')]);
+  };
+  try {
+    const config = { host: '127.0.0.1', port: clamd.port, timeout: 5000 };
+    assert.equal(await scan(file, config), 'chunked');
+    assert.equal(windows.length, Math.ceil(size / step));
+    assert.equal(windows[0].start, 0);
+    windows.forEach((w, i) => {
+      assert.equal(w.end, Math.min(size - 1, w.start + window - 1));
+      if (i) {
+        assert.equal(w.start, windows[i - 1].start + step);
+        assert.equal(windows[i - 1].end - w.start + 1, overlap);
+      }
+    });
+    assert.equal(windows.at(-1).end, size - 1);
+
+    windows.length = 0;
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(scan(file, { ...config, signal: controller.signal }), {
+      status: 422,
+      message: 'Scan cancelled.',
+    });
+    assert.equal(windows.length, 0);
+  } finally {
+    nodeFs.promises.stat = realStat;
+    nodeFs.createReadStream = realCreateReadStream;
+  }
 });

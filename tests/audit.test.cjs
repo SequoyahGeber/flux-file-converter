@@ -410,3 +410,52 @@ test('a worker job cancelled before execution never starts a process', async () 
   );
   assert.equal(spawned, false);
 });
+
+test('the worker serves a result only when it is a regular file inside the job folder', async (t) => {
+  const { checkResult } = require('../server/worker-io.cjs');
+  const { LIMITS } = require('../server/security.cjs');
+  // The macOS temp folder sits behind a symlink; the prefix check needs the real path.
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flux-result-')));
+  const root = path.join(base, 'job'),
+    evil = root + '-evil';
+  t.after(() => fs.rm(base, { recursive: true, force: true }));
+  await fs.mkdir(root);
+  await fs.mkdir(evil);
+  const bytes = Buffer.from('converted');
+  await fs.writeFile(path.join(root, 'out.bin'), bytes);
+  await fs.writeFile(path.join(base, 'outside.bin'), bytes);
+  await fs.writeFile(path.join(evil, 'out.bin'), bytes);
+  await fs.symlink(path.join(base, 'outside.bin'), path.join(root, 'link.bin'));
+  await fs.mkdir(path.join(root, 'folder'));
+  const good = { name: 'out.bin', path: 'out.bin', size: bytes.length };
+
+  assert.equal(await checkResult(root, good), path.join(root, 'out.bin'));
+  await assert.rejects(checkResult(root, { ...good, name: '../x' }), { status: 400 });
+  await assert.rejects(checkResult(root, { ...good, name: '.hidden' }), { status: 400 });
+  await assert.rejects(checkResult(root, { ...good, size: LIMITS.output + 1 }), {
+    status: 422,
+    message: 'Invalid result.',
+  });
+  await assert.rejects(checkResult(root, { ...good, size: 1.5 }), { message: 'Invalid result.' });
+  const escapes = [
+    path.join(evil, 'out.bin'), // sibling whose name starts with the job folder's name
+    path.join(base, 'outside.bin'),
+    '../outside.bin',
+    'link.bin', // symlink inside the job folder pointing outside
+  ];
+  for (const escape of escapes)
+    await assert.rejects(checkResult(root, { ...good, path: escape }), {
+      status: 422,
+      message: 'Invalid result path.',
+    });
+  // The size matches the folder's own, so only the regular-file check can reject it.
+  const folderSize = (await fs.lstat(path.join(root, 'folder'))).size;
+  await assert.rejects(checkResult(root, { ...good, path: 'folder', size: folderSize }), {
+    status: 422,
+    message: 'Invalid output.',
+  });
+  await assert.rejects(checkResult(root, { ...good, size: bytes.length + 1 }), {
+    status: 422,
+    message: 'Invalid output.',
+  });
+});
