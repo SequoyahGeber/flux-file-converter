@@ -43,25 +43,32 @@ struct LocalView: View {
                                 ForEach(ReviewResources.samples, id: \.id) { sample in
                                     Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier("sample-" + sample.id)
                                 }
-                            } label: { Label("Try a sample", systemImage: "sparkles") }
+                            } label: {
+                                Label("Try a sample", systemImage: "sparkles")
+                                    .frame(minHeight: 44).contentShape(Rectangle())
+                            }
                                 .accessibilityIdentifier("try-sample").disabled(model.busy || saving)
                             Text("Fictional files included with Flux. Uses the same conversion and save flow.")
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(model.inputs.prefix(5).enumerated()), id: \.offset) { _, url in
-                                Label(url.lastPathComponent, systemImage: "doc").font(.callout).lineLimit(2)
+                                Label(url.lastPathComponent, systemImage: "doc").font(.callout).lineLimit(2).truncationMode(.middle)
                             }
                             if model.inputs.count > 5 { Text("and \(model.inputs.count - 5) more files").font(.caption).foregroundStyle(.secondary) }
                         }
                     }.padding(18).background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
                     if !model.inputs.isEmpty {
                         VStack(alignment: .leading, spacing: 16) {
-                            Picker("Convert to", selection: $model.target) {
-                                ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract ZIP to folder" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
-                            }.pickerStyle(.menu).accessibilityIdentifier("output-format")
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(.secondary)
+                                Text("Convert to").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
+                                Picker("Convert to", selection: $model.target) {
+                                    ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract archive" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
+                                }.pickerStyle(.menu).accessibilityIdentifier("output-format")
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier("output-name")
+                                    .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
                             }
                             if model.media && model.target != "zip" {
                                 Toggle("Lossless / preserve quality", isOn: $model.options.lossless)
@@ -80,9 +87,14 @@ struct LocalView: View {
                             Text(LocalFormats.note(source: model.source, target: model.target, lossless: model.options.lossless)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }.disabled(model.busy || saving).padding(18).background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
                         if model.busy {
-                            HStack { ProgressView(); Text(model.message); Spacer(); Button("Cancel", role: .cancel) { model.cancel() } }
+                            HStack {
+                                ProgressView(); Text(model.message); Spacer()
+                                Button(role: .cancel) { model.cancel() } label: {
+                                    Text("Cancel").frame(minHeight: 44).contentShape(Rectangle())
+                                }
+                            }
                         } else {
-                            Button { model.convert() } label: { Label("Convert locally", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity).padding(.vertical, 10) }
+                            Button { model.convert() } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(.purple).disabled(saving).accessibilityIdentifier("convert-local")
                         }
                     }
@@ -90,26 +102,32 @@ struct LocalView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Label(model.message, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
-                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save to…", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity).padding(.vertical, 10) }
+                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(.purple).disabled(saving || model.busy).accessibilityIdentifier("save-output")
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(.secondary)
                         }.padding(18).background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
                     }
                     if !model.error.isEmpty { Label(model.error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout).textSelection(.enabled) }
-                    HStack {
-                        Button("Supported conversions") { showingFormats = true }
-                        Spacer()
-                        if !model.inputs.isEmpty { Button("Clear", role: .destructive) { model.clear() }.disabled(model.busy || saving).accessibilityIdentifier("clear-job") }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button { showingFormats = true } label: {
+                            Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
+                        }
+                        if !model.inputs.isEmpty {
+                            Button(role: .destructive) { model.clear() } label: {
+                                Text("Clear").frame(minHeight: 44).contentShape(Rectangle())
+                            }.disabled(model.busy || saving).accessibilityIdentifier("clear-job")
+                        }
+                        Button { showingPrivacy = true } label: {
+                            Text("Privacy & support").frame(minHeight: 44).contentShape(Rectangle())
+                        }.accessibilityIdentifier("privacy-support")
                     }.font(.callout)
-                    HStack {
-                        Button("Privacy & support") { showingPrivacy = true }.accessibilityIdentifier("privacy-support")
-                        Spacer()
-                    }.font(.callout)
-                    Text("5 GB media · 512 MB other files · One conversion at a time\nKeep Flux open while converting. Temporary working files are cleared when you clear the job or reopen Flux.")
-                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("5 GB media · 512 MB other files · One conversion at a time")
+                        Text("Keep Flux open while converting. Temporary working files are cleared when you clear the job or reopen Flux.")
+                    }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(24).frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
-            }.accessibilityIdentifier("converter-workspace").navigationTitle("Flux Local")
+            }.accessibilityIdentifier("converter-workspace").navigationTitle("Flux")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
