@@ -53,9 +53,46 @@ async function persist() {
   await fs.rename(temp, userState());
 }
 let saving = Promise.resolve();
+let historyRevision = 0,
+  savedHistoryRevision = 0,
+  historyTimer,
+  historyFlush,
+  savingBatchHistory = false;
 function save() {
-  saving = saving.catch(() => {}).then(persist);
+  saving = saving.catch(() => {}).then(async () => {
+    const revision = historyRevision;
+    await persist();
+    savedHistoryRevision = revision;
+  });
   return saving;
+}
+function scheduleHistorySave() {
+  if (
+    !savingBatchHistory ||
+    historyTimer ||
+    historyFlush ||
+    historyRevision === savedHistoryRevision
+  )
+    return;
+  // Under normal writable-storage operation a crash can lose up to two seconds
+  // of recent history. Published outputs are already durable and remain intact.
+  historyTimer = setTimeout(() => {
+    historyTimer = undefined;
+    historyFlush = save()
+      .catch(() => {})
+      .finally(() => {
+        historyFlush = undefined;
+        scheduleHistorySave();
+      });
+  }, 2000);
+}
+async function finishHistorySave() {
+  savingBatchHistory = false;
+  clearTimeout(historyTimer);
+  historyTimer = undefined;
+  // Serialized behind any periodic/explicit save, including a failed one.
+  // Storage failure must never turn a published output into a failed job.
+  await save().catch(() => {});
 }
 function state() {
   return {
@@ -86,27 +123,49 @@ async function addPaths(paths) {
     throw new Error('Remove files before adding more than 300.');
   inspecting = true;
   try {
+    const inputs = [...new Set(paths)];
+    const inspections = new Array(inputs.length);
+    let next = 0;
+    async function worker() {
+      while (next < inputs.length) {
+        const index = next++;
+        const input = inputs[index];
+        try {
+          const existing = files.get(filesByPath.get(input));
+          if (existing) {
+            inspections[index] = { existing };
+            continue;
+          }
+          const stat = await fs.stat(input);
+          const info = stat.isDirectory()
+            ? {
+                path: input,
+                name: path.basename(input),
+                ext: '',
+                family: 'folder',
+                size: 0,
+                targets: [],
+                details: 'Folder',
+                warning: '',
+              }
+            : await inspectFile(input, engines, resources);
+          inspections[index] = { info };
+        } catch (error) {
+          inspections[index] = { error };
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: 3 }, worker));
     const result = [];
-    for (const input of [...new Set(paths)]) {
+    // Publish records in input order after every worker has drained.
+    for (const [index, input] of inputs.entries()) {
       try {
-        const existing = files.get(filesByPath.get(input));
+        const { existing, info, error } = inspections[index];
+        if (error) throw error;
         if (existing) {
           result.push(existing);
           continue;
         }
-        const stat = await fs.stat(input);
-        const info = stat.isDirectory()
-          ? {
-              path: input,
-              name: path.basename(input),
-              ext: '',
-              family: 'folder',
-              size: 0,
-              targets: [],
-              details: 'Folder',
-              warning: '',
-            }
-          : await inspectFile(input, engines, resources);
         const id = randomUUID();
         const file = {
           ...info,
@@ -384,6 +443,7 @@ else {
       });
       handler('clear-history', async () => {
         history = [];
+        historyRevision++;
         await save();
         return history;
       });
@@ -431,6 +491,7 @@ else {
           throw new Error('A file can only appear once per batch.');
         const destination = outputDir;
         running = true;
+        savingBatchHistory = true;
         controller = new AbortController();
         jobs.clear();
         batch.forEach(emit);
@@ -486,9 +547,8 @@ else {
                 result.originalSize ??= job.file.size;
                 history.unshift(result);
                 history = history.slice(0, 100);
-                // The output is already published; a history write failure (for
-                // example a full disk) must not report it as a failed conversion.
-                await save().catch(() => {});
+                historyRevision++;
+                scheduleHistorySave();
                 emit({ ...job, status: 'done', progress: 100, result });
               } catch (error) {
                 emit({
@@ -499,7 +559,12 @@ else {
                 });
               }
             }
+          } catch (error) {
+            for (const job of batch)
+              if (jobs.get(job.id)?.status === 'queued')
+                emit({ ...job, status: 'error', progress: 0, error: error.message });
           } finally {
+            await finishHistorySave();
             running = false;
             if (win && !win.isDestroyed())
               win.webContents.send('job-update', { batchComplete: true, history });

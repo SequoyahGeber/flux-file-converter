@@ -5,9 +5,12 @@ const fs = require('node:fs/promises');
 const sharp = require('sharp');
 const { PDFDocument, StandardFonts } = require('pdf-lib');
 const { detectEngines, run } = require('../electron/engine.cjs');
-const root = path.resolve('.test-output/desktop');
+const { desktopPerformance } = require('./fixtures/desktop-performance.cjs');
+let root;
 async function main() {
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.mkdir(path.resolve('.test-output'), { recursive: true });
+  root = await fs.mkdtemp(path.resolve('.test-output/flux-bl-023-desktop-'));
+  console.log('Desktop evidence:', root);
   await fs.mkdir(path.join(root, 'state'), { recursive: true });
   await fs.mkdir(path.join(root, 'results'), { recursive: true });
   const engines = await detectEngines(path.resolve('resources'));
@@ -33,6 +36,7 @@ async function main() {
     'yuv420p',
     video,
   ]);
+  await desktopPerformance(root, video);
   const md = path.join(root, 'Project notes.md');
   await fs.writeFile(md, '# Project notes\n\nA real conversion through the desktop interface.');
   const word = path.join(root, 'Project notes.docx');

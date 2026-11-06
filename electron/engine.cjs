@@ -226,24 +226,28 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
   const name = path.basename(filePath),
     ext = catalog.extension(name);
   let group = catalog.family(ext);
-  let detected;
+  let detected,
+    imageMetadata,
+    mediaMetadata;
   if (!group) {
     try {
-      const meta = await sharp(filePath).metadata();
+      imageMetadata = await sharp(filePath).metadata();
       group = { id: 'image' };
-      detected = meta.format;
+      detected = imageMetadata.format;
     } catch {}
     if (!group && engines.ffprobe)
       try {
-        const probe = JSON.parse(
+        mediaMetadata = JSON.parse(
           (
-            await run(engines.ffprobe, ['-v', 'error', '-show_streams', '-of', 'json', filePath], {
-              timeout: 8000,
-            })
+            await run(
+              engines.ffprobe,
+              ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', filePath],
+              { signal, timeout: 8000 },
+            )
           ).stdout,
         );
-        if (probe.streams.some((s) => s.codec_type === 'video')) group = { id: 'video' };
-        else if (probe.streams.some((s) => s.codec_type === 'audio')) group = { id: 'audio' };
+        if (mediaMetadata.streams.some((s) => s.codec_type === 'video')) group = { id: 'video' };
+        else if (mediaMetadata.streams.some((s) => s.codec_type === 'audio')) group = { id: 'audio' };
       } catch {}
     if (!group)
       try {
@@ -257,6 +261,7 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
         }
       } catch {}
   }
+  if (signal?.aborted) throw cancelled();
   const info = {
     path: filePath,
     name,
@@ -277,7 +282,7 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
     if (group.id === 'image') {
       if (!['heic', 'heif', 'bmp', 'ico'].includes(ext)) {
         try {
-          const meta = await sharp(filePath).metadata();
+          const meta = imageMetadata || (await sharp(filePath).metadata());
           info.details = `${meta.width} × ${meta.height}`;
         } catch (error) {
           if (!engines.magick) throw error;
@@ -293,12 +298,17 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
       if (stat.size < 1) throw new Error('This file is empty.');
     }
     if (['audio', 'video'].includes(group.id) && engines.ffprobe) {
-      const result = await run(
-        engines.ffprobe,
-        ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', filePath],
-        { signal, timeout: 15000 },
-      );
-      const meta = JSON.parse(result.stdout);
+      const meta =
+        mediaMetadata ||
+        JSON.parse(
+          (
+            await run(
+              engines.ffprobe,
+              ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', filePath],
+              { signal, timeout: 15000 },
+            )
+          ).stdout,
+        );
       // Playlists and manifests read other local media files named inside them.
       if (
         /(^|,)(hls|applehttp|concat|ffconcat|dash|webm_dash_manifest)(,|$)/.test(
