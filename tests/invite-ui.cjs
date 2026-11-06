@@ -29,7 +29,10 @@ async function main() {
     const admin = await ownerContext.newPage(),
       visitor = await guestContext.newPage();
     await admin.goto(base);
-    await admin.getByRole('button', { name: '＋ Invite people' }).click();
+    await admin.getByRole('button', { name: 'Invite people', exact: true }).click();
+    assert.equal(await admin.locator('#access-nav').getAttribute('aria-current'), 'page');
+    assert.equal(await admin.locator('[data-mode="convert"]').getAttribute('aria-current'), null);
+    assert.equal(await admin.locator('nav [aria-current="page"]').count(), 1);
     await admin.getByRole('button', { name: 'Create invite link', exact: true }).click();
     await admin.locator('#new-invite').waitFor();
     const link = await admin.locator('#invite-link').inputValue(),
@@ -44,7 +47,7 @@ async function main() {
     assert.equal(visitor.url(), base + '/');
     assert.equal(await visitor.locator('#access-nav').isVisible(), false);
     await admin.reload();
-    await admin.getByRole('button', { name: '＋ Invite people' }).click();
+    await admin.getByRole('button', { name: 'Invite people', exact: true }).click();
     const revoked = admin.waitForResponse(
       (response) =>
         response.request().method() === 'DELETE' && response.url().includes('/api/members/'),

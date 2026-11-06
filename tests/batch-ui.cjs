@@ -8,7 +8,11 @@ const { createApp } = require('../server/app.cjs');
 async function main() {
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-batch-ui-'));
   let now = 0,
-    failOnce = true;
+    failOnce = true,
+    releaseFocus;
+  const focusHold = new Promise((resolve) => {
+    releaseFocus = resolve;
+  });
   const app = await createApp(
     { storage },
     {
@@ -25,6 +29,7 @@ async function main() {
             targets: ['jpg', 'png'],
             notes: { jpg: 'JPEG loses transparency.', png: 'PNG preserves pixels.' },
           };
+        if (files[0].name === 'focus-1.png') await focusHold;
         if (files[0].name === 'file-7.png' && failOnce) {
           failOnce = false;
           throw new Error('Synthetic conversion failure.');
@@ -83,6 +88,136 @@ async function main() {
         buffer: Buffer.from('synthetic file ' + index),
       }));
     const status = async () => (await page.request.get(base + '/api/status')).json();
+    // Finish the first result while a later conversion remains deterministically
+    // held. A third job submitted through the real API stays queued behind it.
+    await page.locator('#files').setInputFiles(inputs(3, 'focus-'));
+    await drive(
+      () =>
+        document.querySelectorAll('#rows .row').length === 3 &&
+        !document.querySelector('#run').disabled,
+    );
+    assert.equal(await page.locator('#rows .job-state').first().innerText(), 'Ready');
+    await page.getByRole('button', { name: 'Convert', exact: true }).click();
+    await drive(
+      () =>
+        document.querySelector('#rows .download') &&
+        document.querySelectorAll('#rows .row')[1].querySelector('.job-state')?.textContent ===
+          'Converting…',
+    );
+    const focusState = await status(),
+      laterJob = focusState.jobs.find(
+        (job) => job.operation === 'convert' && job.status === 'running',
+      );
+    assert(laterJob);
+    const queued = await page.request.post(base + '/api/jobs', {
+      headers: { 'X-Flux-Request': '1' },
+      data: {
+        operation: 'convert',
+        id: focusState.files[2].id,
+        target: 'jpg',
+        options: { quality: 'balanced', width: 0 },
+      },
+    });
+    assert.equal(queued.status(), 202);
+    const queuedJob = await queued.json();
+    await drive(
+      () =>
+        document.querySelectorAll('#rows .row')[2].querySelector('.job-state')?.textContent ===
+        'Waiting',
+    );
+    async function poll() {
+      const previous = await page.locator('#rows .row').first().elementHandle();
+      const refreshed = page.waitForResponse(
+        (response) =>
+          response.url() === base + '/api/status' && response.request().method() === 'GET',
+        { timeout: 10000 },
+      );
+      now += 1600;
+      await page.clock.runFor(1600);
+      const response = await refreshed;
+      assert.equal(response.status(), 200);
+      const snapshot = await response.json();
+      assert.equal(snapshot.jobs.find((job) => job.id === laterJob.id)?.status, 'running');
+      // A response alone is not proof that render has rebuilt the controls.
+      await page.waitForFunction((el) => !el.isConnected, previous, { timeout: 10000 });
+      await previous.dispose();
+    }
+    async function focusedFilename(field, value, start, end, direction) {
+      assert.deepEqual(
+        await field.evaluate((el) => ({
+          focused: el === document.activeElement,
+          value: el.value,
+          start: el.selectionStart,
+          end: el.selectionEnd,
+          direction: el.selectionDirection,
+        })),
+        { focused: true, value, start, end, direction },
+      );
+    }
+    const filename = page.locator('#rows .save-control input'),
+      save = page.locator('#rows').getByRole('button', { name: 'Save as…', exact: true });
+    await filename.fill('Edited output.jpg');
+    await filename.evaluate((el) => el.setSelectionRange(2, 8, 'backward'));
+    const filenameKey = await filename.getAttribute('data-focus-key');
+    for (let i = 0; i < 2; i++) {
+      await poll();
+      assert.equal(await filename.getAttribute('data-focus-key'), filenameKey);
+      await focusedFilename(filename, 'Edited output.jpg', 2, 8, 'backward');
+    }
+    await filename.fill('');
+    const emptyDirection = await filename.evaluate((el) => el.selectionDirection);
+    await poll();
+    await focusedFilename(filename, '', 0, 0, emptyDirection);
+    await filename.fill('Edited output.jpg');
+    await page.keyboard.press('Tab');
+    assert.equal(await save.evaluate((el) => el === document.activeElement), true);
+    await poll();
+    assert.equal(await save.evaluate((el) => el === document.activeElement), true);
+
+    await page.getByRole('button', { name: 'Recent files', exact: true }).click();
+    const historyName = page.locator('#result-list .save-control input'),
+      historySave = page.locator('#result-list').getByRole('button', {
+        name: 'Save as…',
+        exact: true,
+      });
+    assert.equal(await historyName.inputValue(), 'Edited output.jpg');
+    await historyName.fill('History output.jpg');
+    await historyName.evaluate((el) => el.setSelectionRange(1, 5, 'forward'));
+    await poll();
+    await focusedFilename(historyName, 'History output.jpg', 1, 5, 'forward');
+    await page.keyboard.press('Tab');
+    await poll();
+    assert.equal(await historySave.evaluate((el) => el === document.activeElement), true);
+    assert.equal(await save.evaluate((el) => el === document.activeElement), false);
+
+    const formatsNav = page.getByRole('button', { name: 'All formats', exact: true });
+    await formatsNav.click();
+    await poll();
+    assert.equal(await formatsNav.evaluate((el) => el === document.activeElement), true);
+    const search = page.getByRole('searchbox', { name: 'Search formats', exact: true });
+    await search.fill('png');
+    await poll();
+    assert.equal(await search.evaluate((el) => el === document.activeElement), true);
+    await page.getByRole('button', { name: 'Convert files', exact: true }).click();
+    assert.equal(await filename.inputValue(), 'History output.jpg');
+    await Promise.all([
+      ...[laterJob.id, queuedJob.id].map((id) =>
+        page.waitForResponse(
+          (response) =>
+            response.url() === base + '/api/cancel' &&
+            response.request().postDataJSON()?.id === id,
+          { timeout: 10000 },
+        ),
+      ),
+      page.getByRole('button', { name: 'Cancel', exact: true }).click(),
+    ]);
+    releaseFocus();
+    await drive(() => document.querySelector('#cancel').hidden);
+    assert.equal(await page.locator('#rows .job-state').nth(0).innerText(), 'Cancelled');
+    assert.equal(await page.locator('#rows .job-state').nth(1).innerText(), 'Cancelled');
+    await page.getByRole('button', { name: 'Delete all my files', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#dropzone').hidden);
+    now += 3600000;
     await page.locator('#files').setInputFiles(inputs(20));
     await drive(
       () =>
@@ -129,6 +264,7 @@ async function main() {
       state.jobs.filter((job) => job.operation === 'convert' && job.status === 'error').length,
       1,
     );
+    await page.getByText('Failed', { exact: true }).waitFor();
     await page.locator('#run').click();
     await drive(() => !document.querySelector('#run').disabled);
     state = await status();
@@ -167,9 +303,10 @@ async function main() {
     await fs.mkdir('.test-output', { recursive: true });
     await page.screenshot({ path: '.test-output/batch-resume.png' });
     console.log(
-      'Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes and preserved focus passed (controlled clocks; stub codecs/scanner).',
+      'Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes, polling focus/selection/draft preservation in queue and history, keyboard saves and status labels passed (controlled clocks; stub codecs/scanner).',
     );
   } finally {
+    releaseFocus();
     await browser.close();
     await app.close();
     await fs.rm(storage, { recursive: true, force: true });

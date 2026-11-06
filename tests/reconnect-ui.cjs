@@ -61,7 +61,7 @@ async function main() {
     await page.locator('#quality').selectOption('high');
     await page.locator('#run').click();
     await page.waitForFunction(
-      () => document.querySelector('#rows .job-state')?.textContent === 'running',
+      () => document.querySelector('#rows .job-state')?.textContent === 'Converting…',
     );
     await page.reload();
     await page.getByText('reconnect@example.com').waitFor();

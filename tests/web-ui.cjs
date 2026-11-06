@@ -56,6 +56,30 @@ async function main() {
     });
     await page.goto('http://127.0.0.1:' + app.server.address().port);
     await page.getByText('demo@example.com').waitFor();
+    const convertNav = page.getByRole('button', { name: 'Convert files', exact: true });
+    assert.equal(await convertNav.getAttribute('aria-current'), 'page');
+    assert.equal(await page.locator('nav [aria-current="page"]').count(), 1);
+    async function navigate(name) {
+      const previous = page.locator('nav [aria-current="page"]'),
+        previousMode = await previous.getAttribute('data-mode'),
+        next = page.locator('nav').getByRole('button', { name, exact: true });
+      await next.click();
+      assert.equal(await next.getAttribute('aria-current'), 'page');
+      assert.equal(await page.locator('nav [aria-current="page"]').count(), 1);
+      if (previousMode !== (await next.getAttribute('data-mode')))
+        assert.equal(
+          await page.locator(`nav [data-mode="${previousMode}"]`).getAttribute('aria-current'),
+          null,
+        );
+    }
+    assert(await page.getByRole('link', { name: 'flux.', exact: true }).isVisible());
+    assert(await page.getByRole('button', { name: 'Choose files', exact: true }).isVisible());
+    assert(await page.getByRole('link', { name: 'Sign out', exact: true }).isVisible());
+    const privacy = await page.locator('.privacy').ariaSnapshot(),
+      badge = await page.locator('.badge').ariaSnapshot();
+    assert(privacy.includes('Login protected'));
+    assert(badge.includes('Private server'));
+    assert.doesNotMatch(privacy + badge, /●/);
     const image = path.join(dir, 'sample.png');
     await sharp({ create: { width: 40, height: 30, channels: 4, background: '#9372c8' } })
       .png()
@@ -68,12 +92,17 @@ async function main() {
         console.error(await page.locator('body').innerText());
         throw e;
       });
-    await page.locator('#run').click();
-    await page.locator('#rows button.download').waitFor();
+    assert(await page.getByRole('button', { name: 'Add files', exact: true }).isVisible());
+    assert(
+      await page.getByRole('button', { name: 'Delete all my files', exact: true }).isVisible(),
+    );
+    assert.equal(await page.locator('#rows .job-state').innerText(), 'Ready');
+    await page.getByRole('button', { name: 'Convert', exact: true }).click();
+    await page.locator('#rows').getByRole('button', { name: 'Save as…', exact: true }).waitFor();
     await page.locator('#rows .save-control input').fill('My converted image.jpg');
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      page.locator('#rows button.download').click(),
+      page.locator('#rows').getByRole('button', { name: 'Save as…', exact: true }).click(),
     ]);
     assert.equal(download.suggestedFilename(), 'My converted image.jpg');
     await download.saveAs(path.join(dir, 'download.jpg'));
@@ -95,13 +124,25 @@ async function main() {
     assert(compactBounds.saveBottom <= compactBounds.noteTop, JSON.stringify(compactBounds));
     assert(compactBounds.saveRight <= compactBounds.rowRight, JSON.stringify(compactBounds));
     await page.screenshot({ path: '.test-output/web-compact.png', fullPage: true });
-    await page.getByRole('button', { name: '▦ All formats' }).click();
-    await page.locator('#search').fill('jpg');
+    await navigate('Compress files');
+    assert.equal(
+      await page.getByRole('button', { name: 'Compress files', exact: true }).count(),
+      2,
+    );
+    await navigate('ZIP & Unzip');
+    assert(await page.getByRole('button', { name: 'Create ZIP', exact: true }).isVisible());
+    await page.locator('#archive').selectOption('extract');
+    assert(await page.getByRole('button', { name: 'Extract archives', exact: true }).isVisible());
+    await page.locator('#archive').selectOption('pack');
+    await navigate('All formats');
+    const search = page.getByRole('searchbox', { name: 'Search formats', exact: true });
+    await search.fill('jpg');
+    assert.equal(await search.inputValue(), 'jpg');
     await page.locator('.format-row').waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
-    assert(await page.getByRole('link', { name: 'Sign out ↗' }).isVisible());
-    await page.getByRole('button', { name: '⇄ Convert files' }).click();
-    await page.locator('#rows button.download').waitFor();
+    assert(await page.getByRole('link', { name: 'Sign out', exact: true }).isVisible());
+    await navigate('Convert files');
+    await page.locator('#rows').getByRole('button', { name: 'Save as…', exact: true }).waitFor();
     const mobileBounds = await page.evaluate(() => ({
       width: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
@@ -110,13 +151,20 @@ async function main() {
     assert(mobileBounds.content <= mobileBounds.width, JSON.stringify(mobileBounds));
     assert(mobileBounds.save >= 44, 'Mobile save controls need a usable touch target.');
     await page.screenshot({ path: '.test-output/web-mobile.png', fullPage: true });
-    await page.getByRole('button', { name: '◷ Recent results' }).click();
-    await page.locator('#result-list button.download').waitFor();
-    await page.locator('#delete-results').click();
+    await navigate('Recent files');
+    assert.equal(await page.locator('#breadcrumb').innerText(), 'Workspace / Recent files');
+    assert(
+      await page.getByRole('heading', { name: 'Your recent files.', exact: true }).isVisible(),
+    );
+    await page
+      .locator('#result-list')
+      .getByRole('button', { name: 'Save as…', exact: true })
+      .waitFor();
+    await page.getByRole('button', { name: 'Delete all my files', exact: true }).click();
     await page.getByText('Your completed downloads will appear here.').waitFor();
     // Cancellation while the reservation response is delayed must stop the
     // upload before any file bytes or inspection request are sent.
-    await page.getByRole('button', { name: '⇄ Convert files' }).click();
+    await navigate('Convert files');
     let releaseReservation, reservationCreated;
     const held = new Promise((resolve) => {
       releaseReservation = resolve;
@@ -141,7 +189,7 @@ async function main() {
         buffer: Buffer.from('synthetic test input'),
       });
       assert.equal(await created, 201);
-      await page.locator('#cancel').click();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       const cleanup = page.waitForResponse(
         (response) =>
           response.request().method() === 'DELETE' && response.url().includes('/api/uploads/'),

@@ -191,13 +191,55 @@ function node(tag, text, className) {
   if (className) el.className = className;
   return el;
 }
-function download(result) {
+function actionLabel(button, text, glyph) {
+  const decoration = node('span', glyph);
+  decoration.setAttribute('aria-hidden', 'true');
+  button.replaceChildren(document.createTextNode(text + ' '), decoration);
+}
+function captureRowFocus() {
+  const control = document.activeElement;
+  const container = ['rows', 'result-list'].find((id) => $(id).contains(control));
+  if (!container || !control.dataset.focusKey || !control.getClientRects().length) return;
+  return {
+    container,
+    key: control.dataset.focusKey,
+    start: control.selectionStart,
+    end: control.selectionEnd,
+    direction: control.selectionDirection,
+  };
+}
+function restoreRowFocus(focus) {
+  if (!focus) return;
+  const control = [...$(focus.container).querySelectorAll('[data-focus-key]')].find(
+    (el) => el.dataset.focusKey === focus.key,
+  );
+  if (
+    !control ||
+    control.disabled ||
+    !control.getClientRects().length ||
+    getComputedStyle(control).visibility !== 'visible'
+  )
+    return;
+  control.focus({ preventScroll: true });
+  if (focus.start !== null && focus.start !== undefined)
+    control.setSelectionRange(focus.start, focus.end, focus.direction);
+}
+const jobLabels = {
+  queued: 'Waiting',
+  running: 'Converting…',
+  error: 'Failed',
+  cancelled: 'Cancelled',
+};
+function download(result, identity) {
   const wrap = node('div', undefined, 'save-control'),
     name = node('input');
-  name.value = names.get(result.id) || result.name;
+  name.value = names.get(result.id) ?? result.name;
+  name.dataset.focusKey = JSON.stringify([identity, 'filename']);
   name.setAttribute('aria-label', 'Save filename for ' + result.name);
   name.oninput = () => names.set(result.id, name.value);
-  const button = node('button', 'Save as ↗', 'download');
+  const button = node('button', undefined, 'download');
+  button.dataset.focusKey = JSON.stringify([identity, 'save']);
+  actionLabel(button, 'Save as…', '↗');
   button.onclick = async () => {
     try {
       const saveName = name.value.trim();
@@ -246,6 +288,7 @@ function choice(f) {
   );
 }
 function render() {
+  const focus = captureRowFocus();
   // The status/cancel controls live in the queue, including the first upload
   // before inspection has added any file rows.
   $('queue').hidden = !state.files.length && !loading;
@@ -270,14 +313,17 @@ function render() {
   $('clear').disabled = loading || active;
   for (const id of ['quality', 'width', 'archive', 'compression'])
     $(id).disabled = loading || active;
-  $('run').textContent =
+  actionLabel(
+    $('run'),
     mode === 'compress'
-      ? 'Compress files →'
+      ? 'Compress files'
       : mode === 'pack'
         ? $('archive').value === 'pack'
-          ? 'Create ZIP →'
-          : 'Extract archives →'
-        : 'Convert files →';
+          ? 'Create ZIP'
+          : 'Extract archives'
+        : 'Convert',
+    '→',
+  );
   $('rows').replaceChildren();
   for (const f of state.files) {
     const row = node('div', undefined, 'row');
@@ -293,6 +339,7 @@ function render() {
     if (mode === 'convert' && f.targets?.length) {
       const select = node('select');
       select.setAttribute('aria-label', 'Output for ' + f.name);
+      select.dataset.focusKey = JSON.stringify([f.id, 'output']);
       for (const target of f.targets) {
         const option = node('option', target.toUpperCase());
         option.value = target;
@@ -318,6 +365,7 @@ function render() {
     } else if (mode === 'compress' && choice(f)) {
       const select = node('select');
       select.setAttribute('aria-label', 'Compression for ' + f.name);
+      select.dataset.focusKey = JSON.stringify([f.id, 'compression']);
       const choices = (f.compressionOptions || []).filter((c) =>
         $('compression').value === 'lossy' ? c.id === 'lossy' : c.id !== 'lossy',
       );
@@ -347,12 +395,12 @@ function render() {
       );
     row.append(
       job?.status === 'done'
-        ? download(job.result)
+        ? download(job.result, [f.id, job.result.id])
         : node(
             'span',
             connectionLost && ['queued', 'running'].includes(job?.status)
               ? 'Status unavailable'
-              : job?.status || 'Ready',
+              : jobLabels[job?.status] || 'Ready',
             'job-state' + (job?.status === 'error' ? ' failed' : ''),
           ),
     );
@@ -376,11 +424,12 @@ function render() {
     text.append(
       node('small', bytes(result.size) + ' · ' + new Date(result.completedAt).toLocaleTimeString()),
     );
-    row.append(text, download(result));
+    row.append(text, download(result, [result.id]));
     $('result-list').append(row);
   }
   if (!state.history.length)
     $('result-list').append(node('p', 'Your completed downloads will appear here.', 'intro'));
+  restoreRowFocus(focus);
   rememberChoices();
 }
 function setMode(next) {
@@ -393,9 +442,12 @@ function setMode(next) {
   $('access').hidden = mode !== 'access' || !state.canManageAccess;
   $('invitation-required').hidden = permitted;
   $('access-nav').hidden = !state.canManageAccess;
-  document
-    .querySelectorAll('[data-mode]')
-    .forEach((b) => b.classList.toggle('selected', b.dataset.mode === mode));
+  document.querySelectorAll('[data-mode]').forEach((b) => {
+    const selected = b.dataset.mode === mode;
+    b.classList.toggle('selected', selected);
+    if (selected) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   $('breadcrumb').textContent =
     'Workspace / ' +
     {
@@ -403,7 +455,7 @@ function setMode(next) {
       compress: 'Compress files',
       pack: 'ZIP & Unzip',
       formats: 'All formats',
-      history: 'Recent results',
+      history: 'Recent files',
       access: 'Invite people',
     }[mode];
   $('compression-label').hidden = mode !== 'compress';
