@@ -103,6 +103,27 @@ async function tempDir(t, prefix) {
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   return dir;
 }
+test('malformed access JSON is refused without exposing its contents or changing files', async (t) => {
+  const storage = await tempDir(t, 'flux-invalid-json-'),
+    file = path.join(storage, 'access.json'),
+    email = ['sec08', 'example.invalid'].join('@'),
+    malformed = '{"email":' + JSON.stringify(email) + '!}',
+    bytes = Buffer.from(malformed);
+  await fs.writeFile(file, bytes);
+  const listing = (await fs.readdir(storage)).sort();
+  await assert.rejects(
+    createAccess({ storage, ownerEmail: owner.email, origin: 'https://flux.example.com' }),
+    (error) => {
+      assert.equal(error.message, 'Invalid access database.');
+      assert.equal(String(error).includes(email), false);
+      assert.equal(String(error).includes(malformed), false);
+      assert.equal(error.cause, undefined);
+      return true;
+    },
+  );
+  assert.deepEqual(await fs.readFile(file), bytes);
+  assert.deepEqual((await fs.readdir(storage)).sort(), listing);
+});
 test('a damaged access database is refused without being changed', async (t) => {
   const valid = { version: 1, members: [validMember(one.id)], invites: [validInvite()] };
   const refuse = async (name, prepare) => {

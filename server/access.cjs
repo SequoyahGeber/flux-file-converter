@@ -14,7 +14,12 @@ async function createAccess({ storage, ownerEmail, origin, now = Date.now }) {
     const stat = await fs.lstat(file);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1_000_000)
       throw new Error('Invalid access database.');
-    state = JSON.parse(await fs.readFile(file, 'utf8'));
+    const data = await fs.readFile(file, 'utf8');
+    try {
+      state = JSON.parse(data);
+    } catch {
+      throw new Error('Invalid access database.');
+    }
     if (
       state.version !== 1 ||
       !Array.isArray(state.members) ||
