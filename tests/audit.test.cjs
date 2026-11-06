@@ -7,7 +7,8 @@ const http = require('node:http');
 const { createApp } = require('../server/app.cjs');
 const { readBounded, outputStem } = require('../electron/io.cjs');
 const { structured, sanitizeOptions, run } = require('../electron/engine.cjs');
-const { options } = require('../server/security.cjs');
+const { LIMITS, options } = require('../server/security.cjs');
+const { rpc } = require('../server/transport.cjs');
 
 function gate() {
   let resolve;
@@ -137,6 +138,139 @@ const scratch = async (dir) =>
     dir,
     (await fs.readdir(dir)).find((name) => name.startsWith('flux-api-')),
   );
+
+async function until(read, ready, message) {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const value = await read();
+    if (ready(value)) return value;
+    assert.ok(Date.now() < deadline, message);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test('G10: invalid chunks and premature completion preserve the confirmed upload state', async (t) => {
+  const f = await fixture(t);
+  const created = await f.request('uploads', 'POST', { name: 'partial.txt', size: 4 });
+  assert.equal(created.status, 201);
+  const url = 'uploads/' + created.body.id;
+  const put = async (body, offset, type = 'application/octet-stream') => {
+    const res = await fetch(f.base + '/api/' + url, {
+      method: 'PUT',
+      body,
+      headers: { 'content-type': type, 'x-flux-offset': String(offset) },
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  for (const [body, type] of [
+    ['12345', 'application/octet-stream'],
+    ['test', 'text/plain'],
+  ]) {
+    assert.equal((await put(body, 0, type)).status, 409);
+    const state = await f.request(url);
+    assert.equal(state.status, 200);
+    assert.deepEqual(state.body, { offset: 0, size: 4, busy: false });
+  }
+  const first = await put('te', 0);
+  assert.equal(first.status, 200);
+  assert.deepEqual(first.body, { offset: 2 });
+  assert.equal((await f.request(url + '/complete', 'POST')).status, 409);
+  const partial = await f.request(url);
+  assert.equal(partial.status, 200);
+  assert.deepEqual(partial.body, { offset: 2, size: 4, busy: false });
+  assert.equal((await put('st', 2)).status, 200);
+  assert.deepEqual((await f.request(url)).body, { offset: 4, size: 4, busy: false });
+  const completed = await f.request(url + '/complete', 'POST');
+  assert.equal(completed.status, 202);
+  assert.equal((await f.wait(completed.body.id)).job.status, 'done');
+});
+
+test('G10: an interrupted chunk clears busy without advancing the offset and can be retried', async (t) => {
+  const f = await fixture(t);
+  const created = await f.request('uploads', 'POST', { name: 'interrupted.bin', size: 1024 });
+  assert.equal(created.status, 201);
+  const url = 'uploads/' + created.body.id;
+  const headers = {
+    'content-type': 'application/octet-stream',
+    'content-length': '1024',
+    'x-flux-offset': '0',
+  };
+  const req = http.request(f.base + '/api/' + url, { method: 'PUT', headers });
+  req.on('error', () => {}); // Destroying an unfinished request may report ECONNRESET.
+  req.on('response', (res) => res.resume());
+  t.after(() => req.destroy());
+  try {
+    req.write('x');
+    const read = async () => {
+      const state = await f.request(url);
+      assert.equal(state.status, 200);
+      return state.body;
+    };
+    const busy = await until(
+      read,
+      (state) => state.busy,
+      'Chunk never entered the streaming state.',
+    );
+    assert.deepEqual(busy, { offset: 0, size: 1024, busy: true });
+    req.destroy();
+    const stopped = await until(read, (state) => !state.busy, 'Interrupted chunk stayed busy.');
+    assert.deepEqual(stopped, { offset: 0, size: 1024, busy: false });
+    const bytes = Buffer.alloc(1024, 'r');
+    const retry = await fetch(f.base + '/api/' + url, { method: 'PUT', headers, body: bytes });
+    assert.equal(retry.status, 200);
+    assert.deepEqual(await retry.json(), { offset: 1024 });
+    assert.deepEqual(await read(), { offset: 1024, size: 1024, busy: false });
+    const stored = path.join(await scratch(f.dir), 'audit', created.body.id);
+    assert.deepEqual(await fs.readFile(stored), bytes);
+  } finally {
+    req.destroy();
+  }
+});
+
+test('G11: inspection failure becomes visible only after cleanup frees the deletion slot', async (t) => {
+  let inspected = false;
+  const f = await fixture(t, {
+    rpc: async (spec) => {
+      assert.equal(spec.operation, 'inspect');
+      inspected = true;
+      throw Object.assign(new Error('Synthetic inspection failure.'), { status: 422 });
+    },
+  });
+  const id = await f.upload('failed.txt');
+  const target = path.join(await scratch(f.dir), 'audit', id);
+  const release = gate();
+  const originalRm = fs.rm;
+  let cleaning = false;
+  // Top-level tests run sequentially; intercept only this upload's actual removal.
+  fs.rm = async (file, ...args) => {
+    if (file === target) {
+      cleaning = true;
+      await release.promise;
+    }
+    return originalRm(file, ...args);
+  };
+  try {
+    const completed = await f.request('uploads/' + id + '/complete', 'POST');
+    assert.equal(completed.status, 202);
+    await until(async () => cleaning, Boolean, 'Failed inspection never reached upload cleanup.');
+    assert.equal(inspected, true);
+    const pending = await f.request('status');
+    assert.equal(pending.status, 200);
+    const job = pending.body.jobs.find((job) => job.id === completed.body.id);
+    assert.ok(job);
+    assert.equal(job.status, 'running');
+    assert.equal(job.error, undefined);
+    release.resolve();
+    const failed = await f.wait(completed.body.id);
+    assert.equal(failed.job.status, 'error');
+    assert.equal(failed.job.error, 'Synthetic inspection failure.');
+    assert.equal((await f.request('files', 'DELETE')).status, 200);
+    assert.ok(await f.upload('after-failure.txt'));
+  } finally {
+    release.resolve();
+    fs.rm = originalRm;
+  }
+});
 
 test('a full server queue refuses completion with 429 and keeps the upload resumable', async (t) => {
   const hold = gate();
@@ -367,6 +501,173 @@ test('output stems fit multibyte filesystems and bounded ZIP paths retain empty 
     "import zipfile,sys; assert 'empty/' in zipfile.ZipFile(sys.argv[1]).namelist()",
     compatibilityZip,
   ]);
+});
+
+test('G8: real rpc validates worker replies and sends the authenticated job and input', async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-rpc-audit-'));
+  const sockets = new Set();
+  const controllers = new Set();
+  const requests = [];
+  const serverErrors = [];
+  let response;
+  const server = http.createServer((req, res) => {
+    const respond = async () => {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      requests.push({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: Buffer.concat(chunks),
+      });
+      // Drain the entire input before replying, including intentionally invalid replies.
+      res.writeHead(response.status || 200, response.headers || {});
+      res.end(response.body);
+    };
+    respond().catch((error) => {
+      serverErrors.push(error);
+      res.destroy();
+    });
+  });
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  t.after(async () => {
+    for (const controller of controllers) controller.abort();
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const config = {
+    worker: 'http://127.0.0.1:' + server.address().port,
+    secret: 'synthetic-worker-secret-for-audit-tests',
+  };
+  const files = [
+    { path: path.join(dir, 'first.txt'), name: 'first.txt', size: 4 },
+    { path: path.join(dir, 'second.txt'), name: 'second.txt', size: 5 },
+  ];
+  await fs.writeFile(files[0].path, 'test');
+  await fs.writeFile(files[1].path, 'input');
+  let sequence = 0;
+  const invoke = async (spec, reply, out = path.join(dir, 'output-' + sequence++)) => {
+    response = reply;
+    const before = requests.length;
+    const controller = new AbortController();
+    controllers.add(controller);
+    const timer = setTimeout(() => controller.abort(), 5000);
+    timer.unref();
+    try {
+      return await rpc(spec, files, out, config, controller.signal);
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+      controllers.delete(controller);
+      assert.deepEqual(serverErrors, []);
+      assert.equal(
+        requests.length,
+        before + 1,
+        'The fake worker must receive the complete request.',
+      );
+    }
+  };
+  const result = (info, body = 'converted') => ({
+    headers: {
+      'x-flux-result': Buffer.from(JSON.stringify(info)).toString('base64url'),
+      'content-length': String(Buffer.byteLength(body)),
+    },
+    body,
+  });
+  const info = { name: 'result.html', size: 9, target: 'html', originalSize: 12, savedBytes: 3 };
+  const spec = { operation: 'convert', target: 'html' };
+  const assertRequest = (spec) => {
+    const request = requests.at(-1);
+    assert.equal(request.method, 'POST');
+    assert.equal(request.url, '/run');
+    assert.equal(request.headers.authorization, 'Bearer ' + config.secret);
+    assert.equal(request.headers['content-type'], 'application/octet-stream');
+    assert.equal(request.headers['content-length'], '9');
+    assert.deepEqual(
+      JSON.parse(Buffer.from(request.headers['x-flux-job'], 'base64url').toString()),
+      { ...spec, files: files.map(({ name, size }) => ({ name, size })) },
+    );
+    assert.deepEqual(request.body, Buffer.from('testinput'));
+  };
+
+  await t.test('valid inspection at exactly 64000 ASCII bytes succeeds', async () => {
+    const inspected = {
+      padding: 'x'.repeat(64000 - Buffer.byteLength(JSON.stringify({ padding: '' }))),
+    };
+    const body = JSON.stringify(inspected);
+    assert.equal(Buffer.byteLength(body), 64000);
+    assert.deepEqual(await invoke({ operation: 'inspect' }, { body }), inspected);
+    assertRequest({ operation: 'inspect' });
+  });
+  await t.test('valid conversion returns metadata and exact output bytes', async () => {
+    const out = path.join(dir, 'valid-output');
+    const reply = await invoke(spec, result(info), out);
+    const { completedAt, ...metadata } = reply;
+    assert.deepEqual(metadata, info);
+    assert.ok(Number.isSafeInteger(completedAt));
+    assert.deepEqual(await fs.readFile(out), Buffer.from('converted'));
+    assertRequest(spec);
+  });
+  for (const [workerStatus, status] of [
+    [422, 422],
+    [500, 503],
+  ])
+    await t.test('worker status ' + workerStatus + ' maps to ' + status, async () => {
+      await assert.rejects(invoke(spec, { status: workerStatus, body: 'worker error' }), {
+        status,
+      });
+    });
+  await t.test('inspection metadata at 64001 ASCII bytes is refused', async () => {
+    const body = JSON.stringify({
+      padding: 'x'.repeat(64001 - Buffer.byteLength(JSON.stringify({ padding: '' }))),
+    });
+    assert.equal(Buffer.byteLength(body), 64001);
+    await assert.rejects(invoke({ operation: 'inspect' }, { body }), {
+      status: 502,
+      message: 'Worker metadata exceeds its limit.',
+    });
+  });
+  for (const [name, headers] of [
+    ['missing', {}],
+    ['garbled', { 'x-flux-result': Buffer.from('{invalid JSON').toString('base64url') }],
+  ])
+    await t.test(name + ' result metadata is refused by the JSON parser', async () => {
+      await assert.rejects(invoke(spec, { headers, body: 'converted' }), SyntaxError);
+    });
+  for (const name of ['../escape.html', '.hidden'])
+    await t.test('invalid result name ' + name + ' is refused independently', async () => {
+      await assert.rejects(invoke(spec, result({ ...info, name })), {
+        status: 400,
+        message: 'Use an ordinary filename without paths or control characters.',
+      });
+    });
+  for (const size of [-1, 1.5, LIMITS.output + 1])
+    await t.test('invalid result size ' + size + ' is refused independently', async () => {
+      await assert.rejects(invoke(spec, result({ ...info, size })), {
+        status: 413,
+        message: 'Output exceeds the download limit.',
+      });
+    });
+  for (const [body, message] of [
+    ['short', 'Worker output was incomplete.'],
+    ['longer than nine', 'Worker returned an invalid output.'],
+  ])
+    await t.test(message, async () => {
+      // res.end sends a complete HTTP body; only the declared result size is wrong.
+      await assert.rejects(invoke(spec, result(info, body)), { status: 502, message });
+    });
+  await t.test('exclusive output creation preserves an existing file', async () => {
+    const out = path.join(dir, 'existing-output');
+    const sentinel = Buffer.from('keep these bytes');
+    await fs.writeFile(out, sentinel);
+    await assert.rejects(invoke(spec, result(info), out), { code: 'EEXIST' });
+    assert.deepEqual(await fs.readFile(out), sentinel);
+  });
 });
 
 test('worker transport preserves all empty files and rejects truncated input', async (t) => {
