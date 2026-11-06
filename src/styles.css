@@ -35,7 +35,7 @@ button:disabled {
 button:focus-visible,
 select:focus-visible,
 input:focus-visible {
-  outline: 3px solid #b7a9f0;
+  outline: 3px solid var(--purple);
   outline-offset: 3px;
 }
 button,
@@ -1130,6 +1130,10 @@ select {
   margin-bottom: 24px;
   color: #b19bc2;
 }
+.format-search:focus-within {
+  outline: 3px solid var(--purple);
+  outline-offset: 3px;
+}
 .format-search input {
   outline: none !important;
   flex: 1;
@@ -1470,6 +1474,16 @@ select {
 }
 .spin {
   animation: spin 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
 }
 @keyframes spin {
   to {

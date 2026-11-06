@@ -144,12 +144,38 @@ function Logo({ small = false }) {
     </div>
   );
 }
+function batchMessage(batch) {
+  if (!batch?.size) return 'Batch finished.';
+  const counts = { done: 0, error: 0, cancelled: 0, unfinished: 0 };
+  for (const { ids, status } of batch.values())
+    counts[Object.hasOwn(counts, status) ? status : 'unfinished'] += ids.length;
+  if (!counts.error && !counts.cancelled && !counts.unfinished)
+    return 'Batch finished. Your results are ready.';
+  const outcomes = [
+    ['done', 'ready'],
+    ['error', 'failed'],
+    ['cancelled', 'cancelled'],
+    ['unfinished', 'did not finish'],
+  ]
+    .filter(([status]) => counts[status])
+    .map(
+      ([status, label]) =>
+        `${counts[status]} ${counts[status] === 1 ? 'file' : 'files'} ${label}.`,
+    );
+  return `Batch finished. ${outcomes.join(' ')}`;
+}
 function SideButton({ id, icon: Icon, children, count, active, onNavigate }) {
   return (
-    <button className={`side-button ${active ? 'active' : ''}`} onClick={() => onNavigate(id)}>
+    <button
+      className={`side-button ${active ? 'active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onNavigate(id)}
+    >
       <Icon size={18} />
       <span>{children}</span>
-      {count > 0 && <b>{count}</b>}
+      {count > 0 && (
+        <b aria-label={`${count} ${count === 1 ? 'file' : 'files'}`}>{count}</b>
+      )}
     </button>
   );
 }
@@ -181,6 +207,7 @@ function App() {
     [formatTargets, setFormatTargets] = useState([]),
     [showOptions, setShowOptions] = useState(false),
     [bulkTarget, setBulkTarget] = useState('');
+  const batchRef = useRef(null);
   const searchRef = useRef();
   const dragTracker = useRef();
   dragTracker.current ||= createDragTracker(setDragging);
@@ -244,9 +271,13 @@ function App() {
       if (job.batchComplete) {
         setRunning(false);
         setHistory(job.history);
-        setToast('Batch finished. Your results are ready.');
+        setToast(batchMessage(batchRef.current));
+        batchRef.current = null;
         return;
       }
+      // Update synchronously: batchComplete can arrive before React renders the last job.
+      const tracked = batchRef.current?.get(job.id);
+      if (tracked && job.status) tracked.status = job.status;
       setQueue((q) => mergeJob(q, job));
     });
     const offFiles = api.onFiles(add);
@@ -384,11 +415,22 @@ function App() {
         options,
       }));
     if (!requests.length || !requests[0].id) return;
+    batchRef.current = new Map(
+      requests.map((request) => [
+        request.id,
+        {
+          ids: [...new Set(request.operation === 'pack' ? request.includeIds : [request.id])],
+          status: 'queued',
+        },
+      ]),
+    );
+    setToast('');
     setError('');
     setRunning(true);
     try {
       await api.start(requests);
     } catch (e) {
+      batchRef.current = null;
       setRunning(false);
       setError(e.message);
     }
@@ -481,7 +523,13 @@ function App() {
             id="formats"
             icon={Grid2X2}
           >
-            All formats<span className="nav-mini">{formatCount}</span>
+            All formats
+            <span
+              className="nav-mini"
+              aria-label={`${formatCount} ${formatCount === 1 ? 'format' : 'formats'}`}
+            >
+              {formatCount}
+            </span>
           </SideButton>
         </nav>
         <div className="sidebar-bottom">
@@ -608,9 +656,10 @@ function App() {
                 </div>
               </div>
               {mode === 'compress' && (
-                <div className="mode-options">
+                <div className="mode-options" role="group" aria-label="Compression mode">
                   <button
                     className={compressionMode === 'lossless' ? 'selected' : ''}
+                    aria-pressed={compressionMode === 'lossless'}
                     disabled={running}
                     onClick={() => {
                       setCompressionMode('lossless');
@@ -633,6 +682,7 @@ function App() {
                   </button>
                   <button
                     className={compressionMode === 'lossy' ? 'selected' : ''}
+                    aria-pressed={compressionMode === 'lossy'}
                     disabled={running}
                     onClick={() => {
                       setCompressionMode('lossy');
@@ -656,9 +706,10 @@ function App() {
                 </div>
               )}
               {mode === 'archive' && (
-                <div className="segmented">
+                <div className="segmented" role="group" aria-label="Archive mode">
                   <button
                     className={archiveMode === 'pack' ? 'selected' : ''}
+                    aria-pressed={archiveMode === 'pack'}
                     disabled={running}
                     onClick={() => {
                       setArchiveMode('pack');
@@ -677,6 +728,7 @@ function App() {
                   </button>
                   <button
                     className={archiveMode === 'extract' ? 'selected' : ''}
+                    aria-pressed={archiveMode === 'extract'}
                     disabled={running}
                     onClick={() => {
                       setArchiveMode('extract');
@@ -743,7 +795,10 @@ function App() {
                       onClick={selectFiles}
                     >
                       {adding ? <Loader2 className="spin" size={17} /> : <Plus size={18} />}Choose
-                      files<span className="button-shortcut">⌘ O</span>
+                      files
+                      <span className="button-shortcut" aria-hidden="true">
+                        ⌘ O
+                      </span>
                     </button>
                     {!nativeLocal && mode === 'archive' && archiveMode === 'pack' && (
                       <button
@@ -868,6 +923,7 @@ function App() {
                   </div>
                   <div className="queue-rows">
                     {queue.map((f) => {
+                      const progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
                       const choice = mode === 'compress' ? compatibleCompression(f) : null;
                       const note =
                         mode === 'compress'
@@ -908,7 +964,7 @@ function App() {
                               ) : f.status === 'running' ? (
                                 <span className="file-progress">
                                   <Loader2 className="spin" size={16} />
-                                  {f.progress}%
+                                  {progress}%
                                 </span>
                               ) : mode === 'convert' && f.targets.length > 0 ? (
                                 <>
@@ -1003,7 +1059,7 @@ function App() {
                           {(f.error ||
                             f.status === 'cancelled' ||
                             (f.warning && mode === 'convert')) && (
-                            <div className="row-warning">
+                            <div className="row-warning" role="status">
                               <CircleAlert size={13} />
                               {f.error ||
                                 (f.status === 'cancelled'
@@ -1034,8 +1090,15 @@ function App() {
                           )}
                           {note && f.status !== 'done' && <div className="row-note">{note}</div>}
                           {f.status === 'running' && (
-                            <div className="row-progress-track">
-                              <div style={{ width: `${f.progress}%` }} />
+                            <div
+                              className="row-progress-track"
+                              role="progressbar"
+                              aria-label={`Progress for ${f.name}`}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={progress}
+                            >
+                              <div style={{ width: `${progress}%` }} />
                             </div>
                           )}
                         </div>
@@ -1088,6 +1151,7 @@ function App() {
                   <button
                     disabled={running}
                     title={output}
+                    aria-label={`Save to ${output}`}
                     onClick={() => action(async () => setOutput(await api.selectOutput()))}
                   >
                     {output.split('/').slice(-2).join(' / ')}
@@ -1096,6 +1160,7 @@ function App() {
                 </div>
                 <button
                   className={`text-button ${showOptions ? 'purple-text' : ''}`}
+                  aria-expanded={showOptions}
                   onClick={() => setShowOptions((v) => !v)}
                 >
                   <SlidersHorizontal size={15} />
@@ -1335,6 +1400,7 @@ function App() {
                 <Search size={19} />
                 <input
                   ref={searchRef}
+                  aria-label="Search formats"
                   placeholder="Search a format or category…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -1607,15 +1673,20 @@ function App() {
           <p>They’ll stay on your Mac.</p>
         </div>
       )}
-      {toast && (
-        <div className="toast" role="status">
-          <CheckCircle2 size={17} />
-          {toast}
+      <div
+        className={`notification${toast ? ' toast' : ''}`}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {toast && <CheckCircle2 size={17} aria-hidden="true" />}
+        <span>{toast}</span>
+        {toast && (
           <button aria-label="Dismiss notification" onClick={() => setToast('')}>
             <X size={14} />
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {showPrivacy && nativeLocal && (
         <Modal
           className="policy-modal"

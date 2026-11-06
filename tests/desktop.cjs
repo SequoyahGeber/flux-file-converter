@@ -7,6 +7,270 @@ const { PDFDocument, StandardFonts } = require('pdf-lib');
 const { detectEngines, run } = require('../electron/engine.cjs');
 const { desktopPerformance } = require('./fixtures/desktop-performance.cjs');
 let root;
+async function currentPage(page, name) {
+  const current = page.locator('.side-button[aria-current="page"]');
+  await current.filter({ hasText: name }).waitFor();
+  assert.equal(await current.count(), 1);
+  assert.equal(await page.locator('.side-button[aria-current]').count(), 1);
+}
+async function notification(page, node, text) {
+  await page.waitForFunction(
+    (expected) => document.querySelector('.notification > span')?.textContent === expected,
+    text,
+  );
+  assert.equal(await node.evaluate((el) => el === document.querySelector('.notification')), true);
+  assert.equal(await page.locator('.notification[role="status"]').count(), 1);
+}
+async function focusContrast(page, control, wrapper) {
+  await page.keyboard.press('Tab');
+  await control.focus();
+  assert.equal(await control.evaluate((el) => el === document.activeElement), true);
+  const result = await control.evaluate((input, selector) => {
+    const element = selector ? input.closest(selector) : input;
+    const style = getComputedStyle(element);
+    let parent = element.parentElement;
+    while (parent && getComputedStyle(parent).backgroundColor === 'rgba(0, 0, 0, 0)')
+      parent = parent.parentElement;
+    const luminance = (color) => {
+      const [r, g, b] = color
+        .match(/[\d.]+/g)
+        .slice(0, 3)
+        .map(Number)
+        .map((value) => {
+          value /= 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+      return r * 0.2126 + g * 0.7152 + b * 0.0722;
+    };
+    const a = luminance(style.outlineColor),
+      b = luminance(getComputedStyle(parent).backgroundColor);
+    return {
+      style: style.outlineStyle,
+      width: parseFloat(style.outlineWidth),
+      ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+    };
+  }, wrapper);
+  assert.notEqual(result.style, 'none');
+  assert.ok(result.width >= 3, JSON.stringify(result));
+  assert.ok(result.ratio >= 3, JSON.stringify(result));
+}
+async function progressValues(bar) {
+  await bar.waitFor();
+  const values = await bar.evaluate((el) => ({
+    min: el.getAttribute('aria-valuemin'),
+    max: el.getAttribute('aria-valuemax'),
+    now: el.getAttribute('aria-valuenow'),
+    name: el.getAttribute('aria-label'),
+  }));
+  checkProgress(values);
+}
+function checkProgress(values) {
+  assert.equal(values.min, '0');
+  assert.equal(values.max, '100');
+  assert.match(values.now, /^\d+(\.\d+)?$/);
+  assert.ok(Number(values.now) >= 0 && Number(values.now) <= 100);
+  assert.match(values.name, /^Progress for .+/);
+}
+// A separate window has no preload. Its test-local bridge drives the real renderer
+// subscription without adding capabilities to either production bridge.
+async function announcementFixtures(electronApp, url) {
+  const opened = electronApp.waitForEvent('window');
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    const window = new BrowserWindow({
+      show: false,
+      width: 1200,
+      height: 900,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    void window.loadURL('about:blank');
+  });
+  const page = await opened;
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await page.addInitScript(() => {
+      let update;
+      const files = ['One', 'Two', 'Three', 'Unsupported'].map((name, i) => ({
+        id: String(i),
+        name: name + '.json',
+        path: '/fixture/' + name + '.json',
+        ext: 'json',
+        family: 'data',
+        size: 100,
+        targets: i === 3 ? [] : ['csv'],
+      }));
+      window.a11yFixture = {
+        requests: [],
+        reject: false,
+        emit: (event) => update(event),
+        complete: () => update({ batchComplete: true, history: [] }),
+      };
+      window.flux = {
+        getState: async () => ({
+          engines: {},
+          enginePaths: {},
+          outputDir: '/fixture/results',
+          families: [{ id: 'data', name: 'Data', formats: ['json'] }],
+          history: [],
+          files,
+          running: false,
+        }),
+        onUpdate: (callback) => {
+          update = callback;
+          return () => {};
+        },
+        onFiles: () => () => {},
+        start: async (requests) => {
+          window.a11yFixture.requests = requests;
+          if (window.a11yFixture.reject) throw new Error('Fixture start rejected.');
+        },
+        cancel: async () => {
+          for (const request of window.a11yFixture.requests)
+            update({ ...request, status: 'cancelled', progress: 0 });
+          window.a11yFixture.complete();
+        },
+      };
+    });
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Convert files 4 files', exact: true }).waitFor();
+    assert.equal(
+      await page.getByRole('button', { name: 'All formats 1 format', exact: true }).count(),
+      1,
+    );
+    const node = await page.locator('.notification').elementHandle();
+    await notification(page, node, '');
+    const start = async () => {
+      await page.locator('.queue-bottom .primary-button').click();
+      await page.getByRole('button', { name: 'Cancel batch', exact: true }).waitFor();
+      await notification(page, node, '');
+    };
+    await start();
+    assert.deepEqual(
+      await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)),
+      ['0', '1', '2'],
+    );
+    await page.evaluate(() => {
+      window.a11yFixture.emit({ id: '0', status: 'running', progress: 150 });
+    });
+    const bar = page.getByRole('progressbar', { name: 'Progress for One.json', exact: true });
+    await progressValues(bar);
+    assert.equal(await bar.getAttribute('aria-valuenow'), '100');
+    await page.evaluate(() => {
+      window.a11yFixture.emit({ id: '0', status: 'running', progress: -5 });
+    });
+    await page.waitForFunction(
+      () => document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow') === '0',
+    );
+    await page.locator('.spin').waitFor();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.waitForFunction(
+      () => getComputedStyle(document.querySelector('.spin')).animationName === 'none',
+    );
+    const transitions = await page.evaluate(() =>
+      [...document.querySelectorAll('.spin, .row-progress-track > div, button, select')].flatMap(
+        (el) =>
+          [null, '::before', '::after'].map(
+            (pseudo) => getComputedStyle(el, pseudo).transitionDuration,
+          ),
+      ),
+    );
+    for (const duration of transitions) assert.match(duration, /^0s(, 0s)*$/);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.waitForFunction(
+      () => getComputedStyle(document.querySelector('.spin')).animationName === 'spin',
+    );
+    assert.equal(
+      await page
+        .locator('.row-progress-track > div')
+        .evaluate((el) => getComputedStyle(el).transitionDuration),
+      '0.2s',
+    );
+    // Deliver terminal events and completion in one turn to catch stale queue reads.
+    await page.evaluate(() => {
+      const f = window.a11yFixture;
+      f.emit({
+        id: '0',
+        status: 'done',
+        progress: 100,
+        result: { id: 'result', name: 'One.csv', size: 100, target: 'csv' },
+      });
+      f.emit({ id: '1', status: 'error', error: 'Fixture failure.' });
+      f.emit({ id: '2', status: 'cancelled' });
+      f.complete();
+    });
+    await notification(
+      page,
+      node,
+      'Batch finished. 1 file ready. 1 file failed. 1 file cancelled.',
+    );
+    assert.equal(await page.locator('.row-warning[role="status"]').count(), 2);
+    await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click();
+    await notification(page, node, '');
+    // Only failed/cancelled files are retried; old successes and unsupported files stay out.
+    for (let repeat = 0; repeat < 2; repeat++) {
+      await start();
+      assert.deepEqual(
+        await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)),
+        ['1', '2'],
+      );
+      await page.evaluate(() => {
+        for (const r of window.a11yFixture.requests)
+          window.a11yFixture.emit({ ...r, status: 'error', error: 'Fixture failure.' });
+        window.a11yFixture.complete();
+      });
+      await notification(page, node, 'Batch finished. 2 files failed.');
+    }
+    await start();
+    await page.getByRole('button', { name: 'Cancel batch', exact: true }).click();
+    await notification(page, node, 'Batch finished. 2 files cancelled.');
+    // A rejected start must discard tracking; a subsequent completion has no claimed outcomes.
+    await page.evaluate(() => {
+      window.a11yFixture.reject = true;
+    });
+    await page.locator('.queue-bottom .primary-button').click();
+    await page.getByRole('alert').getByText('Fixture start rejected.', { exact: true }).waitFor();
+    await page.evaluate(() => window.a11yFixture.complete());
+    await notification(page, node, 'Batch finished.');
+    await page.evaluate(() => {
+      window.a11yFixture.reject = false;
+    });
+    await start();
+    await page.evaluate(() => {
+      for (const r of window.a11yFixture.requests)
+        window.a11yFixture.emit({
+          ...r,
+          status: 'done',
+          progress: 100,
+          result: { id: r.id, name: r.id + '.csv', size: 100, target: 'csv' },
+        });
+      window.a11yFixture.complete();
+    });
+    await notification(page, node, 'Batch finished. Your results are ready.');
+    // Allow the production timeout to clear it; the live region must remain mounted.
+    await notification(page, node, '');
+    await page.getByRole('button', { name: 'ZIP & Unzip', exact: true }).click();
+    await start();
+    const archiveMode = page.getByRole('group', { name: 'Archive mode', exact: true });
+    assert.equal(await archiveMode.getByRole('button', { pressed: true }).isDisabled(), true);
+    assert.equal(await archiveMode.getByRole('button', { pressed: false }).isDisabled(), true);
+    assert.deepEqual(
+      await page.evaluate(() => window.a11yFixture.requests[0].includeIds),
+      ['0', '1', '2', '3'],
+    );
+    await page.evaluate(() => {
+      const r = window.a11yFixture.requests[0];
+      window.a11yFixture.emit({ ...r, status: 'error', error: 'Pack failed.' });
+      window.a11yFixture.complete();
+    });
+    await notification(page, node, 'Batch finished. 4 files failed.');
+    await start();
+    await page.getByRole('button', { name: 'Cancel batch', exact: true }).click();
+    await notification(page, node, 'Batch finished. 4 files cancelled.');
+    assert.deepEqual(errors, []);
+  } finally {
+    await page.close();
+  }
+}
 async function main() {
   await fs.mkdir(path.resolve('.test-output'), { recursive: true });
   root = await fs.mkdtemp(path.resolve('.test-output/flux-bl-023-desktop-'));
@@ -56,6 +320,19 @@ async function main() {
   page.on('pageerror', (error) => errors.push(error.message));
   try {
     await page.waitForSelector('h1');
+    await currentPage(page, 'Convert files');
+    const notice = await page.locator('.notification').elementHandle();
+    await notification(page, notice, '');
+    assert.equal(await page.getByRole('button', { name: 'Convert files', exact: true }).count(), 1);
+    const choose = page.getByRole('button', { name: 'Choose files', exact: true });
+    await focusContrast(page, choose);
+    const options = page.getByRole('button', { name: 'Options', exact: true });
+    assert.equal(await options.getAttribute('aria-expanded'), 'false');
+    await options.click();
+    assert.equal(await options.getAttribute('aria-expanded'), 'true');
+    await focusContrast(page, page.getByLabel('Quality / file size'));
+    await options.click();
+    assert.equal(await options.getAttribute('aria-expanded'), 'false');
     await page.screenshot({ path: path.join(root, '01-home.png') });
     await electronApp.evaluate(
       ({ dialog }, paths) => {
@@ -68,22 +345,74 @@ async function main() {
       },
       { files: [image, video, word, pdf], output: path.join(root, 'results') },
     );
-    await page.locator('.output-location button').click();
-    await page.getByRole('button', { name: /Choose files/ }).click();
+    const initialOutput = (await page.evaluate(() => window.flux.getState())).outputDir;
+    await page.getByRole('button', { name: `Save to ${initialOutput}`, exact: true }).click();
+    assert.equal(
+      await page
+        .getByRole('button', { name: `Save to ${path.join(root, 'results')}`, exact: true })
+        .count(),
+      1,
+    );
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await page.getByLabel('Output format for Holiday photo.png').selectOption('jpg');
     await page.getByLabel('Output format for Weekend clip.mp4').selectOption('mkv');
     await page.getByLabel('Output format for Project notes.docx').selectOption('pdf');
     await page.getByLabel('Output format for Reading list.pdf').selectOption('png');
+    assert.equal(
+      await page.getByRole('button', { name: 'Convert files 4 files', exact: true }).count(),
+      1,
+    );
+    await focusContrast(page, page.getByLabel('Output format for Holiday photo.png'));
     await page.screenshot({ path: path.join(root, '02-batch.png') });
+    // Capture a real running row when it renders, even if it finishes before the next assertion.
+    await page.evaluate(() => {
+      const observer = new MutationObserver(() => {
+        const el = document.querySelector('[role="progressbar"]');
+        if (!el) return;
+        window.a11yObservedProgress = {
+          min: el.getAttribute('aria-valuemin'),
+          max: el.getAttribute('aria-valuemax'),
+          now: el.getAttribute('aria-valuenow'),
+          name: el.getAttribute('aria-label'),
+        };
+        observer.disconnect();
+      });
+      observer.observe(document.querySelector('.queue-rows'), {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
+    });
     await page.getByRole('button', { name: /Convert 4 files/ }).click();
+    await page.waitForFunction(() => Boolean(window.a11yObservedProgress));
+    const observed = await page.evaluate(() => window.a11yObservedProgress);
+    checkProgress(observed);
+    const progressNames = [
+      'Holiday photo.png',
+      'Weekend clip.mp4',
+      'Project notes.docx',
+      'Reading list.pdf',
+    ];
+    assert.ok(progressNames.some((name) => observed.name === `Progress for ${name}`));
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 4, {
       timeout: 120000,
     });
+    await notification(page, notice, 'Batch finished. Your results are ready.');
     let state = await page.evaluate(() => window.flux.getState());
     assert.equal(state.history.length, 4);
     for (const result of state.history) assert.ok((await fs.stat(result.path)).size > 0);
     await page.screenshot({ path: path.join(root, '03-results.png') });
     await page.getByRole('button', { name: /Compress files/ }).click();
+    await currentPage(page, 'Compress files');
+    const compression = page.getByRole('group', { name: 'Compression mode', exact: true });
+    assert.equal(
+      await compression.getByRole('button', { name: /Lossless/, pressed: true }).count(),
+      1,
+    );
+    assert.equal(
+      await compression.getByRole('button', { name: /Smaller file/, pressed: false }).count(),
+      1,
+    );
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await electronApp.evaluate(
       ({ dialog }, files) => {
@@ -91,13 +420,21 @@ async function main() {
       },
       [image, pdf],
     );
-    await page.getByRole('button', { name: /Choose files/ }).click();
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await page.getByRole('button', { name: /Compress 2 files/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2, {
       timeout: 120000,
     });
     await page.screenshot({ path: path.join(root, '04-lossless.png') });
-    await page.getByRole('button', { name: /Smaller file/ }).click();
+    await page.getByRole('button', { name: /Smaller file/, pressed: false }).click();
+    assert.equal(
+      await compression.getByRole('button', { name: /Smaller file/, pressed: true }).count(),
+      1,
+    );
+    assert.equal(
+      await compression.getByRole('button', { name: /Lossless/, pressed: false }).count(),
+      1,
+    );
     await page.getByRole('button', { name: /Compress 2 files/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2, {
       timeout: 120000,
@@ -105,20 +442,38 @@ async function main() {
     state = await page.evaluate(() => window.flux.getState());
     assert.equal(state.history.filter((h) => h.operation === 'compress').length, 4);
     await page.getByRole('button', { name: /ZIP & Unzip/ }).click();
+    await currentPage(page, 'ZIP & Unzip');
+    const archive = page.getByRole('group', { name: 'Archive mode', exact: true });
+    assert.equal(
+      await archive.getByRole('button', { name: 'Create ZIP', pressed: true }).count(),
+      1,
+    );
+    assert.equal(
+      await archive.getByRole('button', { name: 'Extract archive', pressed: false }).count(),
+      1,
+    );
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
-    await page.getByRole('button', { name: /Choose files/ }).click();
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await page.locator('.queue-bottom .primary-button').click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2);
     state = await page.evaluate(() => window.flux.getState());
     const zip = state.history.find((h) => h.operation === 'pack');
     assert.ok(zip);
     await page.screenshot({ path: path.join(root, '05-zip.png') });
-    await page.getByRole('button', { name: 'Extract archive', exact: true }).click();
+    await archive.getByRole('button', { name: 'Extract archive', exact: true }).click();
+    assert.equal(
+      await archive.getByRole('button', { name: 'Extract archive', pressed: true }).count(),
+      1,
+    );
+    assert.equal(
+      await archive.getByRole('button', { name: 'Create ZIP', pressed: false }).count(),
+      1,
+    );
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await electronApp.evaluate(({ dialog }, archive) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [archive] });
     }, zip.path);
-    await page.getByRole('button', { name: /Choose files/ }).click();
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
     await page.getByRole('button', { name: 'Extract archives', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 1);
     state = await page.evaluate(() => window.flux.getState());
@@ -131,7 +486,17 @@ async function main() {
       .getByRole('button', { name: /All formats/ })
       .first()
       .click();
-    await page.getByPlaceholder('Search a format or category…').fill('png');
+    await currentPage(page, 'All formats');
+    const formatCount = state.families.reduce((n, family) => n + family.formats.length, 0);
+    assert.equal(
+      await page
+        .getByRole('button', { name: `All formats ${formatCount} formats`, exact: true })
+        .count(),
+      1,
+    );
+    const search = page.getByRole('textbox', { name: 'Search formats', exact: true });
+    await focusContrast(page, search, '.format-search');
+    await search.fill('png');
     assert.ok((await page.locator('.format-tags button').count()) >= 1);
     const formatTrigger = page.getByRole('button', { name: 'PNG', exact: true });
     await formatTrigger.focus();
@@ -183,9 +548,15 @@ async function main() {
     await page.keyboard.press('Escape');
     assert.equal(await formatTrigger.evaluate((el) => el === document.activeElement), true);
     await page.getByRole('button', { name: /Settings/ }).click();
+    await currentPage(page, 'Settings');
     await page.screenshot({ path: path.join(root, '06-settings.png') });
     assert.equal(await page.locator('.engine-status.unavailable').count(), 0);
     await page.getByRole('button', { name: /Recent files/ }).click();
+    await currentPage(page, 'Recent files');
+    assert.equal(
+      await page.getByRole('button', { name: 'Recent files 10 files', exact: true }).count(),
+      1,
+    );
     await page.screenshot({ path: path.join(root, '07-history.png') });
     assert.equal(await page.locator('.history-row').count(), 10);
     const precise = path.join(root, 'Precise identifiers.json');
@@ -199,13 +570,23 @@ async function main() {
     await electronApp.evaluate(({ dialog }, file) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
     }, precise);
-    await page.getByRole('button', { name: /Choose files/ }).click();
+    await page.getByRole('button', { name: 'Choose files', exact: true }).click();
+    await currentPage(page, 'Convert files');
+    assert.equal(
+      await page.getByRole('button', { name: 'Convert files 1 file', exact: true }).count(),
+      1,
+    );
     await page.getByLabel('Output format for Precise identifiers.json').selectOption('csv');
     await page.getByRole('button', { name: 'Convert file', exact: true }).click();
     await page
       .getByText(/cannot be converted without losing precision/)
       .first()
       .waitFor();
+    await page
+      .locator('.row-warning[role="status"]')
+      .getByText(/cannot be converted without losing precision/)
+      .waitFor();
+    await notification(page, notice, 'Batch finished. 1 file failed.');
     assert.equal((await page.evaluate(() => window.flux.getState())).history.length, 10);
     assert.equal(await fs.readFile(precise, 'utf8'), originalJSON);
     const bridge = await page.evaluate(async () => ({
@@ -224,6 +605,7 @@ async function main() {
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     assert.equal((await page.evaluate(() => window.flux.getState())).files.length, 0);
     assert.deepEqual(errors, []);
+    await announcementFixtures(electronApp, page.url());
     console.log(
       'Desktop acceptance passed: batch conversion, lossless/lossy compression, ZIP creation, extraction, format search, settings, and history.',
     );
