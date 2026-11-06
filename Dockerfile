@@ -37,10 +37,14 @@ RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r res
     && install -m755 server/compat.py /usr/bin/sips \
     && ln -s /usr/bin/7z /usr/local/bin/7zz
 COPY server ./server
-COPY tests/container-smoke.cjs ./tests/container-smoke.cjs
+COPY tests/container-smoke.cjs tests/sandbox-probe.c ./tests/
+RUN gcc -O2 -Wall -Wextra tests/sandbox-probe.c -o /usr/local/bin/flux-sandbox-probe
 COPY tests/fixtures/powerpoint-regression.pptx ./tests/fixtures/powerpoint-regression.pptx
 # The policy is copied separately so it cannot be silently omitted from a build.
 COPY deploy/imagemagick-policy.xml /etc/ImageMagick-6/policy.xml
+COPY deploy/imagemagick-policy.xml /etc/ImageMagick-7/policy.xml
+# Check the real conversion executable and compatibility wrapper before catalog generation.
+RUN node server/imagemagick-policy.cjs
 COPY deploy/office-fonts.conf /etc/fonts/conf.d/69-flux-office-fonts.conf
 RUN test "$(fc-match -f '%{family}' 'Calibri Light')" = Carlito \
     && test "$(fc-match -f '%{family}' Cambria)" = Caladea
@@ -76,6 +80,7 @@ COPY --from=launcher /flux-supervisor /usr/local/bin/flux-supervisor
 COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
 COPY deploy/clamd-unified.conf /etc/clamav/clamd-unified.conf
 COPY deploy/freshclam.conf /etc/clamav/freshclam.conf
+RUN node server/imagemagick-policy.cjs
 HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/flux-supervisor", "--health"]
 ENTRYPOINT ["/usr/local/bin/flux-supervisor"]
 CMD []

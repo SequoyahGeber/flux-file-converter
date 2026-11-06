@@ -16,10 +16,16 @@ int main(int argc, char **argv) {
   scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ALLOW); if (!ctx) return 70;
   // Local Unix sockets support LibreOffice IPC. IP/raw/packet sockets are denied.
   if (seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(socket), 1, SCMP_A0(SCMP_CMP_NE, AF_UNIX)) || seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(socketpair), 1, SCMP_A0(SCMP_CMP_NE, AF_UNIX))) return 70;
-  const char *deny[] = {"ptrace", "process_vm_readv", "process_vm_writev", "bpf", "perf_event_open", "mount", "umount2", "pivot_root", "chroot", "unshare", "setns", "setsid", "setpgid", "keyctl", "add_key", "request_key", "userfaultfd", "io_uring_setup", "io_uring_enter", "io_uring_register", "reboot", "kexec_load", "init_module", "finit_module", "delete_module", "open_by_handle_at"};
+  const char *deny[] = {"ptrace", "process_vm_readv", "process_vm_writev", "pidfd_open", "pidfd_getfd", "process_madvise", "bpf", "perf_event_open", "mount", "umount2", "pivot_root", "chroot", "unshare", "setns", "setsid", "setpgid", "keyctl", "add_key", "request_key", "userfaultfd", "io_uring_setup", "io_uring_enter", "io_uring_register", "reboot", "kexec_load", "init_module", "finit_module", "delete_module", "open_by_handle_at"};
   for (unsigned i = 0; i < sizeof(deny)/sizeof(deny[0]); i++) {
     int number = seccomp_syscall_resolve_name(deny[i]);
-    if (number != __NR_SCMP_ERROR && seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), number, 0)) return 70;
+    if (number == __NR_SCMP_ERROR) {
+      fprintf(stderr, "sandbox: cannot resolve required syscall %s\n", deny[i]);
+      seccomp_release(ctx); return 70;
+    }
+    if (seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), number, 0)) {
+      seccomp_release(ctx); return 70;
+    }
   }
   if (seccomp_load(ctx)) { perror("sandbox"); return 70; } seccomp_release(ctx);
   execvp(argv[1], argv + 1); perror("exec"); return 70;

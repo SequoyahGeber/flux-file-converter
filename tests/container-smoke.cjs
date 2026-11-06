@@ -3,11 +3,35 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const sharp = require('sharp');
+const { execFileSync } = require('node:child_process');
+const { readFileSync } = require('node:fs');
+const { verifyExecutables } = require('../server/imagemagick-policy.cjs');
 const { rpc } = require('../server/transport.cjs');
 const { PDFDocument } = require('pdf-lib');
 async function main() {
   if (process.env.FLUX_VERIFY_PRIVILEGES === '1') {
     assert.equal(process.getuid(), 10001);
+    assert.equal(process.env.FLUX_VERIFY_PROBE_FD, '3');
+    const proof = JSON.parse(readFileSync(3, 'utf8'));
+    require('node:fs').closeSync(3);
+    assert.equal(proof.uid, 10002);
+    assert.equal(proof.worker, Number(process.env.FLUX_VERIFY_WORKER_PID));
+    assert.ok(Number.isInteger(proof.worker) && proof.worker > 1);
+    assert.equal(proof.sandbox, true);
+    for (const syscall of [
+      'pidfd_open',
+      'pidfd_getfd',
+      'process_madvise',
+      'invalid_pidfd_getfd',
+      'ip_socket',
+    ])
+      assert.equal(proof[syscall], os.constants.errno.EPERM, syscall + ' must fail with EPERM');
+    assert.ok(
+      [os.constants.errno.EACCES, os.constants.errno.EPERM].includes(proof.memory_open),
+      'SEC-02 unresolved: same-UID worker memory open must fail with a permission error; errno=' +
+        proof.memory_open,
+    );
+    console.log('Passed sandboxed UID 10002 live-worker pidfd and process-memory checks.');
     const status = await fs.readFile('/proc/self/status', 'utf8');
     for (const field of ['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'])
       assert.match(status, new RegExp(field + ':\\s+0+\\b'));
@@ -30,6 +54,7 @@ async function main() {
       'Passed non-root UID, zero capability sets and private worker directory/environment checks.',
     );
   }
+  verifyExecutables();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-container-test-'));
   const config = {
     worker: process.env.WORKER_URL || 'http://127.0.0.1:8090',
@@ -40,6 +65,16 @@ async function main() {
     await sharp({ create: { width: 40, height: 30, channels: 4, background: '#9474c8' } })
       .png()
       .toFile(image);
+    // Exercise ImageMagick itself; the RPC PNG-to-JPEG route uses sharp.
+    const ppm = path.join(dir, 'magick.ppm');
+    const roundtrip = path.join(dir, 'magick.png');
+    const options = { timeout: 15000, maxBuffer: 1024 * 1024 };
+    execFileSync('/usr/local/bin/magick', [image, ppm], options);
+    execFileSync('/usr/bin/convert', [ppm, roundtrip], options);
+    const metadata = await sharp(roundtrip).metadata();
+    assert.equal(metadata.width, 40);
+    assert.equal(metadata.height, 30);
+    console.log('Passed legitimate ImageMagick conversion through the compatibility wrapper.');
     const file = { path: image, name: 'sample.png', size: (await fs.stat(image)).size };
     const info = await rpc({ operation: 'inspect' }, [file], null, config);
     assert.equal(info.family, 'image');

@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <grp.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 
 static volatile sig_atomic_t stopping;
 static pid_t service_pids[7];
+static int verification_fd = -1;
 static void stop(int sig) { (void)sig; stopping = 1; }
 static void die(const char *message) { fprintf(stderr, "Flux startup: %s\n", message); exit(70); }
 static void directory(const char *path, uid_t uid, gid_t gid, mode_t mode) {
@@ -81,6 +83,13 @@ static pid_t launch(uid_t uid, gid_t gid, const char *home, char *const argv[], 
   if (role == 6) {
     literal("WORKER_URL=http://127.0.0.1:8090");
     literal("FLUX_VERIFY_PRIVILEGES=1");
+    literal("FLUX_VERIFY_PROBE_FD=3");
+    char *worker_pid;
+    if (asprintf(&worker_pid, "FLUX_VERIFY_WORKER_PID=%ld", (long)service_pids[2]) < 0)
+      die("allocation failed");
+    literal(worker_pid);
+    if (verification_fd < 0 || dup2(verification_fd, 3) < 0) die("missing sandbox proof");
+    if (verification_fd != 3) close(verification_fd);
   }
   env[env_count] = NULL;
   umask(0027); unprivileged(uid, gid);
@@ -121,6 +130,41 @@ static void wait_database(void) {
   }
   die("antivirus definitions are unavailable");
 }
+// Called only by --verify after the recorded worker has become ready.
+// The pidfd never reaches a production service or the API-UID smoke process.
+static int sandbox_proof(void) {
+  int output[2];
+  if (pipe(output)) die("cannot create sandbox proof pipe");
+  pid_t child = fork();
+  if (child < 0) die("cannot start sandbox probe");
+  if (!child) {
+    close(output[0]);
+    if (dup2(output[1], STDOUT_FILENO) < 0) die("cannot redirect sandbox proof");
+    close(output[1]);
+    reset_env("/tmp/worker"); env[env_count] = NULL;
+    umask(0027); unprivileged(10002, 10002);
+    // Obtain a real worker pidfd before flux-sandbox installs its deny list.
+    // ENOSYS/unsupported runtimes fail verification rather than passing a skip.
+    int pidfd = (int)syscall(SYS_pidfd_open, service_pids[2], 0);
+    if (pidfd < 0) {
+      fprintf(stderr, "Sandbox verification: worker pidfd_open unavailable (errno=%d)\n", errno);
+      _exit(1);
+    }
+    if (fcntl(pidfd, F_SETFD, 0)) die("cannot pass verification pidfd");
+    char pid_text[32], fd_text[32];
+    snprintf(pid_text, sizeof(pid_text), "%ld", (long)service_pids[2]);
+    snprintf(fd_text, sizeof(fd_text), "%d", pidfd);
+    char *probe[] = {"/usr/local/bin/flux-sandbox", "/usr/local/bin/flux-sandbox-probe",
+                     pid_text, fd_text, NULL};
+    execve(probe[0], probe, env); die("cannot execute sandbox probe");
+  }
+  close(output[1]);
+  int status;
+  while (waitpid(child, &status, 0) < 0)
+    if (errno != EINTR) die("cannot wait for sandbox probe");
+  if (!WIFEXITED(status) || WEXITSTATUS(status)) die("sandbox probe failed or unsupported");
+  return output[0];
+}
 int main(int argc, char **argv) {
   if (geteuid() != 0) die("the trusted privilege-dropping launcher must start as root");
   if (argc == 2 && !strcmp(argv[1],"--health")) {
@@ -138,8 +182,10 @@ int main(int argc, char **argv) {
   char *worker[] = {"/usr/local/bin/node","/app/server/worker.cjs",NULL};
   launch(10002,10002,"/tmp/worker",worker,2); wait_port(8090);
   if (argc == 2 && !strcmp(argv[1],"--verify")) {
+    verification_fd = sandbox_proof();
     char *test[] = {"/usr/local/bin/node","/app/tests/container-smoke.cjs",NULL};
     pid_t test_pid = launch(10001,10001,"/tmp/api",test,6); int status;
+    close(verification_fd); verification_fd = -1;
     while (waitpid(test_pid,&status,0)<0) if(errno!=EINTR) die("verification failed");
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
   }

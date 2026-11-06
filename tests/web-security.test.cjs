@@ -679,3 +679,79 @@ test('files over the full-scan limit are scanned in overlapping windows that cov
     nodeFs.createReadStream = realCreateReadStream;
   }
 });
+
+test('container installs both ImageMagick policies and verifies active executables before catalog generation', async () => {
+  const docker = await fs.readFile(path.join(__dirname, '../Dockerfile'), 'utf8');
+  for (const major of [6, 7])
+    assert.ok(
+      docker.includes(
+        'COPY deploy/imagemagick-policy.xml /etc/ImageMagick-' + major + '/policy.xml',
+      ),
+    );
+  const verify = docker.indexOf('RUN node server/imagemagick-policy.cjs');
+  assert.ok(verify > docker.indexOf('/etc/ImageMagick-7/policy.xml'));
+  assert.ok(verify < docker.indexOf('RUN node server/build-catalog.cjs'));
+  const compat = await fs.readFile(path.join(__dirname, '../server/compat.py'), 'utf8');
+  assert.ok(compat.includes("else '/usr/bin/convert'"));
+  const verifier = await fs.readFile(path.join(__dirname, '../server/imagemagick-policy.cjs'), 'utf8');
+  assert.ok(verifier.includes("['/usr/bin/convert', '/usr/local/bin/magick']"));
+  assert.ok(verifier.includes("['-list', 'policy']"));
+});
+
+test('active ImageMagick policy verifier rejects missing, permissive and unrelated policy entries', async () => {
+  const { XMLParser } = require('fast-xml-parser');
+  const { verifyPolicy } = require('../server/imagemagick-policy.cjs');
+  const xml = await fs.readFile(path.join(__dirname, '../deploy/imagemagick-policy.xml'), 'utf8');
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '' });
+  const entries = parser.parse(xml).policymap.policy;
+  const listing = (policies, major = 7) => {
+    const body = policies.map(({ domain, ...fields }) => {
+      const attributes = Object.entries(fields).map(([name, value]) => '    ' + name + ': ' + value);
+      return '  Policy: ' + domain + '\n' + attributes.join('\n') + '\n';
+    });
+    return 'Path: /etc/ImageMagick-' + major + '/policy.xml\n' + body.join('');
+  };
+  const rejects = (policies, message) =>
+    assert.throws(() => verifyPolicy(listing(policies)), message);
+  for (const major of [6, 7]) assert.doesNotThrow(() => verifyPolicy(listing(entries, major)));
+  assert.throws(() => verifyPolicy(''), /No active policies/);
+  assert.throws(() => verifyPolicy(listing(entries).replace('/etc/ImageMagick-7/', '/unused/')));
+  assert.doesNotThrow(() =>
+    verifyPolicy(listing(entries) + 'Path: [built-in]\n  Policy: Undefined\n    rights: None\n'),
+  );
+  for (const coder of ['MSL', 'TEXT', 'URL']) {
+    const changed = entries.map((p) =>
+      p.domain === 'coder' ? { ...p, pattern: p.pattern.replace(coder + ',', '') } : p,
+    );
+    rejects(changed, /Missing coder denial/);
+  }
+  for (const domain of ['coder', 'module', 'path', 'delegate', 'filter']) {
+    rejects(entries.filter((p) => p.domain !== domain));
+    const granting = entries.map((p) => (p.domain === domain ? { ...p, rights: 'Read Write' } : p));
+    rejects(granting, /granting/);
+    rejects(entries.concat({ domain, rights: 'Write', pattern: '*' }), /granting/);
+  }
+  const wrongPath = entries.map((p) =>
+    p.domain === 'path' ? { ...p, pattern: '@unrelated' } : p,
+  );
+  rejects(wrongPath, /Missing path denial/);
+  for (const name of ['memory', 'map', 'disk', 'area', 'width', 'height', 'time', 'thread']) {
+    rejects(entries.filter((p) => p.name !== name));
+    const excessive = entries.map((p) => (p.name === name ? { ...p, value: '999GiB' } : p));
+    rejects(excessive, /Excessive resource/);
+  }
+  rejects(entries.map((p) => (p.domain === 'coder' ? { ...p, domain: 'unrelated' } : p)));
+  assert.throws(
+    () => verifyPolicy(listing(entries) + '  Policy: Coder\n    rights: None\n    rights: Write\n'),
+    /Duplicate policy field/,
+  );
+});
+
+test('sandbox requires all process-isolation syscalls to resolve and installs EPERM denials', async () => {
+  const sandbox = await fs.readFile(path.join(__dirname, '../server/sandbox.c'), 'utf8');
+  for (const name of ['pidfd_open', 'pidfd_getfd', 'process_madvise'])
+    assert.ok(sandbox.includes('"' + name + '"'));
+  assert.match(sandbox, /number == __NR_SCMP_ERROR/);
+  assert.ok(sandbox.includes('cannot resolve required syscall'));
+  assert.ok(sandbox.includes('seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), number, 0)'));
+});
