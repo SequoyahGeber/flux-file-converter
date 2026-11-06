@@ -57,6 +57,14 @@ public enum LocalPolicy {
         throw LocalError.invalid("This file is not UTF-8 or UTF-16 text.")
     }
     public static func copy(_ source: URL, to destination: URL, control: JobControl) throws {
+        try copy(source, to: destination, control: control) { descriptor, destination in
+            fclonefileat(descriptor, AT_FDCWD, destination.path, 0)
+        }
+    }
+    // Per-call seam keeps filesystem failure and file-change tests deterministic.
+    // A successful operation must create a new destination, just like fclonefileat.
+    static func copy(_ source: URL, to destination: URL, control: JobControl,
+                     clone: (Int32, URL) throws -> Int32) throws {
         let descriptor = open(source.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -66,6 +74,29 @@ public enum LocalPolicy {
             throw LocalError.invalid("Choose a regular file. Symbolic links and folders are not accepted.")
         }
         let expected = attributes.st_size
+        try control.check()
+        // Clone from the validated descriptor, never by reopening the source path.
+        // APFS snapshots the bytes independently of later edits to either file.
+        // Like streaming failures, clone validation failures leave the new file
+        // for the caller's private job-folder cleanup; never unlink by pathname.
+        if try clone(descriptor, destination) == 0 {
+            let clonedDescriptor = open(destination.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+            guard clonedDescriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            defer { close(clonedDescriptor) }
+            var cloned = stat()
+            guard fstat(clonedDescriptor, &cloned) == 0, cloned.st_mode & S_IFMT == S_IFREG else {
+                throw LocalError.invalid("The staged input is not a regular file.")
+            }
+            // Cloning inherits source metadata; staging must retain mode 0600.
+            guard fchmod(clonedDescriptor, 0o600) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            guard cloned.st_size == expected else {
+                throw LocalError.invalid("The selected file changed while it was being copied.")
+            }
+            try control.check()
+            return
+        }
+        // Unsupported, cross-volume and other clone errors all retain the
+        // exclusive streaming path. A pre-existing destination still fails O_EXCL.
         let outputDescriptor = open(destination.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard outputDescriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         let output = FileHandle(fileDescriptor: outputDescriptor, closeOnDealloc: true)

@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 import ImageIO
 import UniformTypeIdentifiers
 import PDFKit
@@ -171,6 +172,192 @@ final class ConversionTests: XCTestCase {
         let link = root.appendingPathComponent("link.txt")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
         XCTAssertThrowsError(try LocalPolicy.copy(link, to: root.appendingPathComponent("copy.txt"), control: JobControl()))
+    }
+    // Simulates a successful clone on any filesystem; only the real-clone test
+    // below depends on APFS. Production still calls fclonefileat directly.
+    private func stagedCloneFixture(_ descriptor: Int32, to destination: URL) throws -> Int32 {
+        let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+        let bytes = try input.readToEnd() ?? Data()
+        try bytes.write(to: destination, options: .withoutOverwriting)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destination.path)
+        return 0
+    }
+    private func assertPrivateStaging(_ destination: URL, file: StaticString = #filePath, line: UInt = #line) throws {
+        let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600, file: file, line: line)
+    }
+    func testCopyCloneSuccessIsPrivateAndIndependent() throws {
+        let source = try file("source.txt", "original")
+        let destination = root.appendingPathComponent("staged.txt")
+        try LocalPolicy.copy(source, to: destination, control: JobControl()) { descriptor, output in
+            try self.stagedCloneFixture(descriptor, to: output)
+        }
+        XCTAssertEqual(try Data(contentsOf: source), try Data(contentsOf: destination))
+        try assertPrivateStaging(destination)
+        // Write through open handles (no atomic replacement) to check independence.
+        let writer = try FileHandle(forWritingTo: source)
+        try writer.write(contentsOf: Data("changed!".utf8)); try writer.close()
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "original")
+        let stagedWriter = try FileHandle(forWritingTo: destination)
+        try stagedWriter.write(contentsOf: Data("staging!".utf8)); try stagedWriter.close()
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "changed!")
+    }
+    func testCopyRealCloneUsesValidatedDescriptorAndIsIndependent() throws {
+        let source = try file("source.txt", "original")
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: source.path)
+        let original = root.appendingPathComponent("opened-source.txt")
+        let destination = root.appendingPathComponent("staged.txt")
+        var cloned = false
+        try LocalPolicy.copy(source, to: destination, control: JobControl()) { descriptor, output in
+            // Replacing the pathname must not change which inode gets cloned.
+            try FileManager.default.moveItem(at: source, to: original)
+            _ = try self.file("source.txt", "replacement")
+            let status = fclonefileat(descriptor, AT_FDCWD, output.path, 0)
+            if status != 0 {
+                let code = errno
+                if code == ENOTSUP || code == EXDEV || code == ENOSYS {
+                    throw XCTSkip("Real clone unavailable on test volume (errno \(code)); forced fallback tests still run.")
+                }
+                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+            }
+            cloned = true
+            return status
+        }
+        XCTAssertTrue(cloned)
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "original")
+        try assertPrivateStaging(destination)
+        let sourcePermissions = try FileManager.default.attributesOfItem(atPath: original.path)
+        XCTAssertEqual((sourcePermissions[.posixPermissions] as? NSNumber)?.intValue, 0o444)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: original.path)
+        let writer = try FileHandle(forWritingTo: original)
+        try writer.write(contentsOf: Data("changed!".utf8)); try writer.close()
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "original")
+        let stagedWriter = try FileHandle(forWritingTo: destination)
+        try stagedWriter.write(contentsOf: Data("staging!".utf8)); try stagedWriter.close()
+        XCTAssertEqual(try String(contentsOf: original, encoding: .utf8), "changed!")
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "replacement")
+    }
+    func testCopyCloneErrorsFallBackFromSameDescriptor() throws {
+        let bytes = Data((0..<(2 * 1024 * 1024 + 37)).map { UInt8($0 % 251) })
+        for code in [ENOTSUP, EXDEV, EIO] {
+            let source = root.appendingPathComponent("source-\(code).bin")
+            try bytes.write(to: source)
+            let destination = root.appendingPathComponent("staged-\(code).bin")
+            var attempts = 0
+            try LocalPolicy.copy(source, to: destination, control: JobControl()) { descriptor, _ in
+                attempts += 1
+                XCTAssertEqual(lseek(descriptor, 0, SEEK_CUR), 0)
+                try FileManager.default.moveItem(at: source, to: self.root.appendingPathComponent("opened-\(code).bin"))
+                try Data("replacement".utf8).write(to: source)
+                errno = code
+                return -1
+            }
+            XCTAssertEqual(attempts, 1)
+            XCTAssertEqual(try Data(contentsOf: destination), bytes)
+            XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "replacement")
+            XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("opened-\(code).bin")), bytes)
+            try assertPrivateStaging(destination)
+        }
+    }
+    func testCopyPreservesDestinationLinksAndDirectories() throws {
+        let source = try file("source.txt", "source"), target = try file("target.txt", "untouched")
+        let link = root.appendingPathComponent("destination-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        let directory = root.appendingPathComponent("destination-directory")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        for destination in [target, link, directory] {
+            // Exercise both the real clone error and forced fallback.
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: JobControl())) {
+                XCTAssertEqual(($0 as? POSIXError)?.code, .EEXIST)
+            }
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: JobControl(), clone: { _, _ in
+                errno = ENOTSUP; return -1
+            })) { XCTAssertEqual(($0 as? POSIXError)?.code, .EEXIST) }
+        }
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "untouched")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: link.path), target.path)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [])
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "source")
+    }
+    func testCopyRejectsNonregularSourceBeforeCloning() throws {
+        let destination = root.appendingPathComponent("staged.txt")
+        let source = try file("source.txt", "source"), link = root.appendingPathComponent("source-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+        for input in [root!, link] {
+            XCTAssertThrowsError(try LocalPolicy.copy(input, to: destination, control: JobControl(), clone: { _, _ in
+                XCTFail("Invalid source reached clone operation"); return -1
+            }))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+    func testCopyCancellationBeforeAndDuringEitherPath() throws {
+        let source = try file("source.txt", "source")
+        for success in [true, false] {
+            let destination = root.appendingPathComponent("staged-\(success).txt")
+            let stopped = JobControl(); stopped.cancel()
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: stopped, clone: { _, _ in
+                XCTFail("Pre-cancelled copy reached clone operation"); return success ? 0 : -1
+            })) { guard case LocalError.cancelled = $0 else { return XCTFail("Unexpected error: \($0)") } }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+            let control = JobControl()
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: control, clone: { descriptor, output in
+                if success { _ = try self.stagedCloneFixture(descriptor, to: output) }
+                control.cancel()
+                errno = ENOTSUP
+                return success ? 0 : -1
+            })) { guard case LocalError.cancelled = $0 else { return XCTFail("Unexpected error: \($0)") } }
+            try assertPrivateStaging(destination)
+        }
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "source")
+    }
+    func testCopyRejectsClonedSizeMismatchWithoutFallbackOrSourceChanges() throws {
+        let source = try file("source.txt", "source")
+        for contents in ["short", "longer than source"] {
+            let destination = root.appendingPathComponent(UUID().uuidString)
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: JobControl(), clone: { _, output in
+                try Data(contents.utf8).write(to: output, options: .withoutOverwriting)
+                return 0
+            })) { XCTAssertTrue($0.localizedDescription.contains("changed while")) }
+            // Failed validation does not stream over or unlink the new object.
+            XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), contents)
+            try assertPrivateStaging(destination)
+        }
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "source")
+    }
+    func testCopyRejectsNonregularCloneResultWithoutRemovingIt() throws {
+        let source = try file("source.txt", "source"), destination = root.appendingPathComponent("staged")
+        XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: JobControl(), clone: { _, output in
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false)
+            return 0
+        })) { XCTAssertTrue($0.localizedDescription.contains("not a regular file")) }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: destination.path), [])
+        let link = root.appendingPathComponent("staged-link")
+        let permissions = try FileManager.default.attributesOfItem(atPath: source.path)[.posixPermissions] as? NSNumber
+        XCTAssertThrowsError(try LocalPolicy.copy(source, to: link, control: JobControl(), clone: { _, output in
+            try FileManager.default.createSymbolicLink(at: output, withDestinationURL: source)
+            return 0
+        }))
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: link.path), source.path)
+        let after = try FileManager.default.attributesOfItem(atPath: source.path)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(after, permissions)
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "source")
+    }
+    func testCopyFallbackDetectsSourceGrowthAndTruncation() throws {
+        for changed in ["a longer source", ""] {
+            let source = try file("source-\(changed.isEmpty).txt", "source")
+            let destination = root.appendingPathComponent("staged-\(changed.isEmpty).txt")
+            XCTAssertThrowsError(try LocalPolicy.copy(source, to: destination, control: JobControl(), clone: { _, _ in
+                // Mutate the open inode after fstat, without a timing race.
+                let writer = try FileHandle(forWritingTo: source)
+                defer { try? writer.close() }
+                try writer.truncate(atOffset: 0)
+                try writer.write(contentsOf: Data(changed.utf8))
+                errno = EXDEV
+                return -1
+            })) { XCTAssertTrue($0.localizedDescription.contains(changed.isEmpty ? "changed while" : "grew while")) }
+            XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), changed)
+            try assertPrivateStaging(destination)
+        }
     }
     func testInvalidQualityDoesNotCreateWorkingFiles() async throws {
         let input = try file("input.txt", "test")
