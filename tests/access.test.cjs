@@ -1,10 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const http = require('node:http');
 const path = require('node:path');
 const os = require('node:os');
 const { createAccess } = require('../server/access.cjs');
 const { createApp } = require('../server/app.cjs');
+const { LIMITS } = require('../server/security.cjs');
 const owner = { id: 'a'.repeat(64), email: 'owner@example.com' },
   one = { id: 'b'.repeat(64), email: 'one@example.com' },
   two = { id: 'c'.repeat(64), email: 'two@example.com' };
@@ -346,4 +348,233 @@ test('revoking a member aborts their running job and nothing is committed', asyn
   await assert.rejects(fs.lstat(path.join(storage, roots[0], one.id, job.body.id)), {
     code: 'ENOENT',
   });
+});
+
+async function admissionFixture(t) {
+  const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-revoke-admission-'));
+  const calls = { inspect: 0, convert: 0 };
+  const clients = new Set();
+  const app = await createApp(
+    { storage, ownerEmail: owner.email, origin: 'https://flux.example.com' },
+    {
+      auth: async (req) => (req.headers['x-test-owner'] === '1' ? owner : one),
+      scan: async () => 'full',
+      capabilities: { formats: [] },
+      rpc: async (spec, files, out) => {
+        calls[spec.operation]++;
+        if (spec.operation === 'inspect')
+          return { name: files[0].name, ext: 'txt', family: 'document', targets: ['html'] };
+        await fs.writeFile(out, 'converted');
+        return { name: 'result.html', size: 9, target: 'html' };
+      },
+    },
+  );
+  await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
+  t.after(async () => {
+    for (const req of clients) req.destroy();
+    await app.close();
+    await fs.rm(storage, { recursive: true, force: true });
+  });
+  const base = 'http://127.0.0.1:' + app.server.address().port;
+  const call = async (route, method = 'GET', body, admin = false, extra = {}) => {
+    const res = await fetch(base + '/api/' + route, {
+      method,
+      headers: { ...(admin ? { 'x-test-owner': '1' } : {}), ...extra },
+      body:
+        body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
+      signal: AbortSignal.timeout(5000),
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  const admit = async () => {
+    const invite = await call('invites', 'POST', {}, true);
+    assert.equal(invite.status, 201);
+    const token = new URL(invite.body.url).searchParams.get('invite');
+    assert.equal((await call('invites/claim', 'POST', { token })).status, 200);
+  };
+  const status = async (until) => {
+    for (let n = 0; n < 200; n++) {
+      const res = await call('status');
+      assert.equal(res.status, 200);
+      if (until(res.body)) return res.body;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    throw new Error('Admission test status did not settle.');
+  };
+  const roots = (await fs.readdir(storage)).filter((n) => n.startsWith('flux-api-'));
+  assert.equal(roots.length, 1);
+  const dir = path.join(storage, roots[0], one.id);
+  const listing = async () => {
+    try {
+      return (await fs.readdir(dir)).sort();
+    } catch (e) {
+      if (e.code === 'ENOENT') return [];
+      throw e;
+    }
+  };
+  await admit();
+  return { app, base, call, admit, status, calls, clients, dir, listing };
+}
+
+async function holdAdmission(f, route, body) {
+  let incoming, entered, timer;
+  const reading = new Promise((r) => (entered = r));
+  const onListener = (event) => {
+    if (event === 'readable') {
+      incoming.removeListener('newListener', onListener);
+      entered();
+    }
+  };
+  const observe = (req) => {
+    if (req.method === 'POST' && req.url === '/api/' + route) {
+      incoming = req;
+      // json(req)'s async iterator installs this listener after the initial
+      // membership gate and request accounting. Observing it does not consume
+      // bytes or start the stream flowing before the production reader.
+      req.on('newListener', onListener);
+    }
+  };
+  f.app.server.on('request', observe);
+  const bytes = JSON.stringify(body);
+  let req;
+  const response = new Promise((resolve, reject) => {
+    req = http.request(f.base + '/api/' + route, { method: 'POST' }, async (res) => {
+      try {
+        const chunks = [];
+        for await (const chunk of res) chunks.push(chunk);
+        resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString()) });
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on('error', reject);
+    req.setTimeout(5000, () => req.destroy(new Error('Held request timed out.')));
+  });
+  // A setup assertion can fail before the caller awaits the response.
+  response.catch(() => {});
+  f.clients.add(req);
+  req.once('close', () => f.clients.delete(req));
+  req.write(bytes.slice(0, -1));
+  try {
+    await Promise.race([
+      reading,
+      response.then(() => {
+        throw new Error('Held request returned before its body was finished.');
+      }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('JSON reader was not reached.')), 5000);
+      }),
+    ]);
+    // No active work exists. This also proves the pending request is counted,
+    // without risking deletion of the prepared input before its initial gate.
+    assert.equal((await f.call('files', 'DELETE')).status, 409);
+  } catch (e) {
+    req.destroy();
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    f.app.server.removeListener('request', observe);
+    incoming?.removeListener('newListener', onListener);
+  }
+  return {
+    finish: () => {
+      req.end(bytes.slice(-1));
+      return response;
+    },
+  };
+}
+
+test('revocation rejects a job whose JSON body is already in flight', async (t) => {
+  const f = await admissionFixture(t);
+  const upload = await f.call('uploads', 'POST', { name: 'ready.txt', size: 4 });
+  assert.equal(upload.status, 201);
+  assert.equal(
+    (
+      await f.call('uploads/' + upload.body.id, 'PUT', 'test', false, {
+        'content-type': 'application/octet-stream',
+        'x-flux-offset': '0',
+      })
+    ).status,
+    200,
+  );
+  const inspected = await f.call('uploads/' + upload.body.id + '/complete', 'POST');
+  assert.equal(inspected.status, 202);
+  const before = await f.status((s) =>
+    s.jobs.some((j) => j.id === inspected.body.id && j.status === 'done'),
+  );
+  assert.equal(before.files.length, 1);
+  assert.deepEqual(before.history, []);
+  assert.deepEqual(f.calls, { inspect: 1, convert: 0 });
+  const files = await f.listing();
+  const spec = { operation: 'convert', id: before.files[0].id, target: 'html' };
+  const held = await holdAdmission(f, 'jobs', spec);
+  assert.equal((await f.call('members/' + one.id, 'DELETE', undefined, true)).status, 200);
+  assert.equal((await f.call('status')).status, 403);
+  const rejected = await held.finish();
+  assert.equal(rejected.status, 403);
+  assert.deepEqual(rejected.body, { error: 'An invitation is required to use this workspace.' });
+  assert.equal(rejected.body.id, undefined);
+  await f.admit();
+  assert.deepEqual((await f.call('status')).body, before);
+  assert.deepEqual(f.calls, { inspect: 1, convert: 0 });
+  assert.deepEqual(await f.listing(), files);
+  assert.equal(await fs.readFile(path.join(f.dir, upload.body.id), 'utf8'), 'test');
+
+  // The same valid spec still succeeds when the member is authorized.
+  const control = await f.call('jobs', 'POST', spec);
+  assert.equal(control.status, 202);
+  const done = await f.status((s) =>
+    s.jobs.some((j) => j.id === control.body.id && j.status === 'done'),
+  );
+  assert.equal(done.history.length, 1);
+  assert.deepEqual(f.calls, { inspect: 1, convert: 1 });
+});
+
+test('revocation rejects an in-flight upload reservation without leaking slots or bytes', async (t) => {
+  const f = await admissionFixture(t);
+  const ownerUpload = await f.call(
+    'uploads',
+    'POST',
+    { name: 'owner.bin', size: LIMITS.storage - 2 * LIMITS.file },
+    true,
+  );
+  assert.equal(ownerUpload.status, 201);
+  const before = (await f.call('status')).body;
+  const files = await f.listing();
+  const held = await holdAdmission(f, 'uploads', { name: 'revoked.txt', size: 4 });
+  assert.equal((await f.call('members/' + one.id, 'DELETE', undefined, true)).status, 200);
+  assert.equal((await f.call('status')).status, 403);
+  const rejected = await held.finish();
+  assert.equal(rejected.status, 403);
+  assert.deepEqual(rejected.body, { error: 'An invitation is required to use this workspace.' });
+  assert.equal(rejected.body.id, undefined);
+  assert.deepEqual(await f.listing(), files);
+  await f.admit();
+  assert.deepEqual((await f.call('status')).body, before);
+  assert.deepEqual(f.calls, { inspect: 0, convert: 0 });
+
+  // Two member slots plus the owner's reservation exactly fill shared storage.
+  // Even four leaked bytes would reject the second legal reservation. These
+  // declared sizes create only empty files; no large transfer is performed.
+  const uploads = [];
+  try {
+    for (const name of ['first.bin', 'second.bin']) {
+      const created = await f.call('uploads', 'POST', { name, size: LIMITS.file });
+      assert.equal(created.status, 201, 'A rejected admission must release slots and bytes.');
+      uploads.push(created.body.id);
+      assert.equal((await fs.stat(path.join(f.dir, created.body.id))).size, 0);
+    }
+    assert.equal(
+      (await f.call('uploads', 'POST', { name: 'full.bin', size: 1 }, true)).status,
+      503,
+    );
+  } finally {
+    for (const id of uploads)
+      assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+    assert.equal(
+      (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
+      200,
+    );
+  }
+  assert.deepEqual(await f.listing(), files);
 });

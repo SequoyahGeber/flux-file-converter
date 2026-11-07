@@ -244,6 +244,9 @@ async function createApp(config, deps = {}) {
       if (req.method === 'POST' && url.pathname === '/api/uploads') {
         limits.check(user.id + ':uploads', 10, 60000);
         const body = await json(req);
+        // Membership may have been revoked while the request body was in flight.
+        if (access && !access.allowed(user))
+          throw fail('An invitation is required to use this workspace.', 403);
         const name = filename(body.name),
           size = body.size;
         if (!Number.isSafeInteger(size) || size < 1 || size > LIMITS.file)
@@ -447,6 +450,8 @@ async function createApp(config, deps = {}) {
         limits.check(user.id + ':jobs-minute', 6, 60000);
         limits.check(user.id + ':jobs-hour', 30, 3600000);
         const spec = await json(req);
+        if (access && !access.allowed(user))
+          throw fail('An invitation is required to use this workspace.', 403);
         if (s.active >= 2) throw fail('You already have two uploads or jobs in progress.', 429);
         const op = spec.operation;
         if (!['convert', 'compress', 'pack', 'extract'].includes(op))
