@@ -127,6 +127,16 @@ async function optionsContrast(page) {
     2,
     '.options-panel label, .options-panel select',
   );
+  await textContrastStates(
+    page,
+    '.options-panel p',
+    1,
+    '.options-panel label, .options-panel select',
+  );
+  assert.equal(
+    (await page.locator('.options-panel p').innerText()).replace(/\s+/g, ' ').trim(),
+    'Lossless optimization preserves quality. Already compressed files may have little room to shrink.',
+  );
 }
 async function compressionContrast(page) {
   assert.equal(await page.locator('.mode-options > button').count(), 2);
