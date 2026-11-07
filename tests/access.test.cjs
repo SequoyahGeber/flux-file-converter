@@ -350,7 +350,7 @@ test('revoking a member aborts their running job and nothing is committed', asyn
   });
 });
 
-async function admissionFixture(t) {
+async function admissionFixture(t, deps = {}) {
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-revoke-admission-'));
   const calls = { inspect: 0, convert: 0 };
   const clients = new Set();
@@ -367,6 +367,7 @@ async function admissionFixture(t) {
         await fs.writeFile(out, 'converted');
         return { name: 'result.html', size: 9, target: 'html' };
       },
+      ...deps,
     },
   );
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
@@ -578,3 +579,282 @@ test('revocation rejects an in-flight upload reservation without leaking slots o
   }
   assert.deepEqual(await f.listing(), files);
 });
+
+async function waitFor(read, message) {
+  const deadline = Date.now() + 5000;
+  while (!(await read())) {
+    assert.ok(Date.now() < deadline, message);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+test('A1: revocation during output lstat cancels publication and releases capacity', async (t) => {
+  let release, releaseControls;
+  const released = new Promise((resolve) => (release = resolve)),
+    controls = new Promise((resolve) => (releaseControls = resolve));
+  let output,
+    signal,
+    entered = false,
+    scanned = false;
+  const f = await admissionFixture(t, {
+    scan: async (file) => {
+      if (file === output) scanned = true;
+      return 'full';
+    },
+    rpc: async (spec, files, out, _, abortSignal) => {
+      if (spec.operation === 'inspect')
+        return { name: files[0].name, ext: 'txt', family: 'document', targets: ['html'] };
+      if (!output) {
+        output = out;
+        signal = abortSignal;
+      } else {
+        await controls;
+      }
+      await fs.writeFile(out, 'converted');
+      return { name: 'result.html', size: 9, target: 'html' };
+    },
+  });
+  const originalLstat = fs.lstat;
+  fs.lstat = async (file, ...args) => {
+    const stat = await originalLstat(file, ...args);
+    if (file === output && !entered) {
+      assert.equal(scanned, true);
+      assert.equal(signal.aborted, false);
+      entered = true;
+      await released;
+    }
+    return stat;
+  };
+  try {
+    const upload = await f.call('uploads', 'POST', { name: 'ready.txt', size: 4 });
+    assert.equal(upload.status, 201);
+    assert.equal(
+      (
+        await f.call('uploads/' + upload.body.id, 'PUT', 'test', false, {
+          'content-type': 'application/octet-stream',
+          'x-flux-offset': '0',
+        })
+      ).status,
+      200,
+    );
+    const inspection = await f.call('uploads/' + upload.body.id + '/complete', 'POST');
+    assert.equal(inspection.status, 202);
+    await f.status((s) => s.jobs.some((j) => j.id === inspection.body.id && j.status === 'done'));
+    const spec = { operation: 'convert', id: upload.body.id, target: 'html' };
+    const submitted = await f.call('jobs', 'POST', spec);
+    assert.equal(submitted.status, 202);
+    await waitFor(async () => entered, 'Output lstat was not reached.');
+    assert.equal(await fs.readFile(output, 'utf8'), 'converted');
+    assert.equal((await f.call('members/' + one.id, 'DELETE', undefined, true)).status, 200);
+    assert.equal(signal.aborted, true);
+    assert.equal((await f.call('status')).status, 403);
+    assert.equal((await f.call('download/' + submitted.body.id)).status, 403);
+    release();
+    await f.admit();
+    const state = await f.status((s) =>
+      s.jobs.some((j) => j.id === submitted.body.id && !['queued', 'running'].includes(j.status)),
+    );
+    const job = state.jobs.find((j) => j.id === submitted.body.id);
+    assert.equal(job.status, 'cancelled');
+    assert.equal(job.result, undefined);
+    assert.deepEqual(state.history, []);
+    await assert.rejects(originalLstat(output), { code: 'ENOENT' });
+    assert.equal((await f.call('download/' + job.id)).status, 404);
+
+    // Both job slots and the exact shared byte budget must be available again.
+    const ballast = await f.call(
+      'uploads',
+      'POST',
+      { name: 'capacity.bin', size: LIMITS.storage - 2 * LIMITS.output - 4 },
+      true,
+    );
+    assert.equal(ballast.status, 201);
+    const first = await f.call('jobs', 'POST', spec);
+    assert.equal(first.status, 202);
+    const second = await f.call('jobs', 'POST', spec);
+    assert.equal(second.status, 202);
+    assert.equal(
+      (await f.call('uploads', 'POST', { name: 'full.bin', size: 1 }, true)).status,
+      503,
+    );
+    releaseControls();
+    const done = await f.status((s) =>
+      [first.body.id, second.body.id].every((id) =>
+        s.jobs.some((j) => j.id === id && j.status === 'done' && j.result),
+      ),
+    );
+    assert.equal(done.history.length, 2);
+    const download = await fetch(f.base + '/api/download/' + first.body.id, {
+      signal: AbortSignal.timeout(5000),
+    });
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), 'converted');
+    assert.equal(
+      (await f.call('uploads/' + ballast.body.id, 'DELETE', undefined, true)).status,
+      200,
+    );
+  } finally {
+    release();
+    releaseControls();
+    fs.lstat = originalLstat;
+  }
+});
+
+test('A4: revocation during upload creation removes the file and restores slots and bytes', async (t) => {
+  const f = await admissionFixture(t);
+  const ownerUpload = await f.call(
+    'uploads',
+    'POST',
+    { name: 'owner.bin', size: LIMITS.storage - 2 * LIMITS.file },
+    true,
+  );
+  assert.equal(ownerUpload.status, 201);
+  const before = (await f.call('status')).body;
+  const files = await f.listing();
+  let release,
+    target,
+    entered = false;
+  const released = new Promise((resolve) => (release = resolve));
+  const originalWriteFile = fs.writeFile;
+  fs.writeFile = async (file, data, options) => {
+    if (!target && path.dirname(file) === f.dir && data === '' && options?.flag === 'wx') {
+      target = file;
+      entered = true;
+      await released;
+    }
+    return originalWriteFile(file, data, options);
+  };
+  let pending;
+  try {
+    pending = f.call('uploads', 'POST', { name: 'revoked.txt', size: 4 });
+    pending.catch(() => {});
+    await waitFor(async () => entered, 'Exclusive upload creation was not reached.');
+    // The request has already reserved storage and entered filesystem creation.
+    assert.equal((await f.call('files', 'DELETE')).status, 409);
+    assert.equal((await f.call('members/' + one.id, 'DELETE', undefined, true)).status, 200);
+    assert.equal((await f.call('status')).status, 403);
+    release();
+    const rejected = await pending;
+    assert.equal(rejected.status, 403);
+    assert.deepEqual(rejected.body, { error: 'An invitation is required to use this workspace.' });
+    assert.equal(rejected.body.id, undefined);
+    await assert.rejects(fs.lstat(target), { code: 'ENOENT' });
+    assert.deepEqual(await f.listing(), files);
+    await f.admit();
+    assert.equal((await f.call('uploads/' + path.basename(target))).status, 404);
+    assert.deepEqual((await f.call('status')).body, before);
+    assert.deepEqual(f.calls, { inspect: 0, convert: 0 });
+
+    // Empty files with declared sizes exercise both upload slots and all bytes.
+    const uploads = [];
+    try {
+      for (const name of ['first.bin', 'second.bin']) {
+        const created = await f.call('uploads', 'POST', { name, size: LIMITS.file });
+        assert.equal(created.status, 201, 'Revoked creation must release slots and bytes.');
+        uploads.push(created.body.id);
+        assert.equal((await fs.stat(path.join(f.dir, created.body.id))).size, 0);
+        assert.deepEqual((await f.call('uploads/' + created.body.id)).body, {
+          offset: 0,
+          size: LIMITS.file,
+          busy: false,
+        });
+      }
+      assert.equal(
+        (await f.call('uploads', 'POST', { name: 'full.bin', size: 1 }, true)).status,
+        503,
+      );
+    } finally {
+      for (const id of uploads)
+        assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+      assert.equal(
+        (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
+        200,
+      );
+    }
+    assert.deepEqual(await f.listing(), files);
+    assert.deepEqual((await f.call('status')).body, before);
+  } finally {
+    release();
+    fs.writeFile = originalWriteFile;
+    await pending?.catch(() => {});
+  }
+});
+
+for (const failure of ['exclusive collision', 'cleanup failure']) {
+  test('A4: ' + failure + ' preserves file ownership and rolls back capacity', async (t) => {
+    const f = await admissionFixture(t);
+    const ownerUpload = await f.call(
+      'uploads',
+      'POST',
+      { name: 'owner.bin', size: LIMITS.storage - 2 * LIMITS.file },
+      true,
+    );
+    assert.equal(ownerUpload.status, 201);
+    const before = (await f.call('status')).body;
+    const files = await f.listing();
+    const originalWriteFile = fs.writeFile,
+      originalRm = fs.rm;
+    let target,
+      removals = 0;
+    fs.writeFile = async (file, data, options) => {
+      if (!target && path.dirname(file) === f.dir && data === '' && options?.flag === 'wx') {
+        target = file;
+        await originalWriteFile(file, 'sentinel', { flag: 'wx', mode: 0o600 });
+        if (failure === 'cleanup failure') {
+          assert.equal(
+            (await f.call('members/' + one.id, 'DELETE', undefined, true)).status,
+            200,
+          );
+          return;
+        }
+        // Exercise the real exclusive-create error against an existing file.
+      }
+      return originalWriteFile(file, data, options);
+    };
+    fs.rm = async (file, ...args) => {
+      if (file === target) {
+        removals++;
+        if (failure === 'cleanup failure')
+          throw Object.assign(new Error('Synthetic cleanup failure.'), { code: 'EIO' });
+      }
+      return originalRm(file, ...args);
+    };
+    const uploads = [];
+    try {
+      const rejected = await f.call('uploads', 'POST', { name: 'failed.txt', size: 4 });
+      assert.equal(rejected.status, 500);
+      assert.equal(rejected.body.id, undefined);
+      assert.equal(removals, failure === 'cleanup failure' ? 1 : 0);
+      assert.equal(await fs.readFile(target, 'utf8'), 'sentinel');
+      if (failure === 'cleanup failure') {
+        assert.equal((await f.call('status')).status, 403);
+        await f.admit();
+      }
+      assert.equal((await f.call('uploads/' + path.basename(target))).status, 404);
+      assert.deepEqual((await f.call('status')).body, before);
+      assert.deepEqual(f.calls, { inspect: 0, convert: 0 });
+      // The sentinel is test-owned; remove it using the real function after
+      // proving production did not delete an unowned file or hide the failure.
+      await originalRm(target);
+      assert.deepEqual(await f.listing(), files);
+      for (const name of ['first.bin', 'second.bin']) {
+        const created = await f.call('uploads', 'POST', { name, size: LIMITS.file });
+        assert.equal(created.status, 201, 'Failure must release both slots and bytes.');
+        uploads.push(created.body.id);
+      }
+      assert.equal(
+        (await f.call('uploads', 'POST', { name: 'full.bin', size: 1 }, true)).status,
+        503,
+      );
+    } finally {
+      fs.writeFile = originalWriteFile;
+      fs.rm = originalRm;
+      for (const id of uploads)
+        assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+      assert.equal(
+        (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
+        200,
+      );
+    }
+  });
+}

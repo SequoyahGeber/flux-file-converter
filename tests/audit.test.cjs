@@ -48,6 +48,7 @@ async function fixture(t, deps = {}) {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
       headers: as(user),
+      signal: AbortSignal.timeout(5000),
     });
     return { status: res.status, headers: res.headers, body: await res.json() };
   };
@@ -63,6 +64,7 @@ async function fixture(t, deps = {}) {
         'x-flux-offset': '0',
         ...as(user),
       },
+      signal: AbortSignal.timeout(5000),
     });
     assert.equal(written.status, 200);
     return id;
@@ -147,6 +149,113 @@ async function until(read, ready, message) {
     assert.ok(Date.now() < deadline, message);
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+}
+
+for (const trigger of ['cancel', 'timeout']) {
+  test('A1: output lstat publication race: ' + trigger, async (t) => {
+    const release = gate(),
+      controls = gate();
+    let output,
+      signal,
+      entered = false,
+      scanned = false;
+    const f = await fixture(t, {
+      ...(trigger === 'timeout' ? { jobTimeout: 2000 } : {}),
+      scan: async (file) => {
+        if (file === output) scanned = true;
+        return 'full';
+      },
+      rpc: async (spec, files, out, _, abortSignal) => {
+        if (spec.operation === 'inspect')
+          return { name: files[0].name, ext: 'txt', family: 'document', targets: ['html'] };
+        if (!output) {
+          output = out;
+          signal = abortSignal;
+        } else {
+          await controls.promise;
+        }
+        await fs.writeFile(out, 'converted');
+        return { name: 'result.html', size: 9, target: 'html' };
+      },
+    });
+    const originalLstat = fs.lstat;
+    fs.lstat = async (file, ...args) => {
+      const stat = await originalLstat(file, ...args);
+      if (file === output && !entered) {
+        assert.equal(scanned, true);
+        assert.equal(signal.aborted, false);
+        entered = true;
+        await release.promise;
+      }
+      return stat;
+    };
+    try {
+      const input = await f.upload('ready.txt');
+      const inspection = await f.request('uploads/' + input + '/complete', 'POST');
+      assert.equal(inspection.status, 202);
+      assert.equal((await f.wait(inspection.body.id)).job.status, 'done');
+      const spec = { operation: 'convert', id: input, target: 'html' };
+      const submitted = await f.request('jobs', 'POST', spec);
+      assert.equal(submitted.status, 202);
+      await until(async () => entered, Boolean, 'Output lstat was not reached.');
+      assert.equal(signal.aborted, false);
+      assert.equal(await fs.readFile(output, 'utf8'), 'converted');
+      if (trigger === 'cancel')
+        assert.equal((await f.request('cancel', 'POST', { id: submitted.body.id })).status, 200);
+      await until(async () => signal.aborted, Boolean, 'Job signal was not aborted.');
+      // The filesystem result is still held when the cancellation is acknowledged.
+      release.resolve();
+      const { state, job } = await f.wait(submitted.body.id);
+      assert.equal(job.status, trigger === 'timeout' ? 'error' : 'cancelled');
+      assert.equal(
+        job.error,
+        trigger === 'timeout' ? 'Job exceeded the ten-minute limit.' : 'Cancelled.',
+      );
+      assert.equal(job.result, undefined);
+      assert.deepEqual(state.history, []);
+      await assert.rejects(originalLstat(output), { code: 'ENOENT' });
+      assert.equal((await f.request('download/' + job.id)).status, 404);
+
+      // Keep both subsequent jobs active together. Together with this other
+      // user's empty reservation they fill the byte pool exactly. A leaked
+      // output reservation or active slot prevents their admission.
+      const ballast = await f.request(
+        'uploads',
+        'POST',
+        { name: 'capacity.bin', size: LIMITS.storage - 2 * LIMITS.output - 4 },
+        'other',
+      );
+      assert.equal(ballast.status, 201);
+      const first = await f.request('jobs', 'POST', spec);
+      assert.equal(first.status, 202);
+      const second = await f.request('jobs', 'POST', spec);
+      assert.equal(second.status, 202);
+      assert.equal(
+        (await f.request('uploads', 'POST', { name: 'full.bin', size: 1 }, 'other')).status,
+        503,
+      );
+      controls.resolve();
+      for (const id of [first.body.id, second.body.id]) {
+        const done = await f.wait(id);
+        assert.equal(done.job.status, 'done');
+        assert.ok(done.job.result);
+      }
+      assert.equal((await f.request('status')).body.history.length, 2);
+      assert.equal(
+        (await f.request('uploads/' + ballast.body.id, 'DELETE', undefined, 'other')).status,
+        200,
+      );
+      const download = await fetch(f.base + '/api/download/' + first.body.id, {
+        signal: AbortSignal.timeout(5000),
+      });
+      assert.equal(download.status, 200);
+      assert.equal(await download.text(), 'converted');
+    } finally {
+      release.resolve();
+      controls.resolve();
+      fs.lstat = originalLstat;
+    }
+  });
 }
 
 test('G10: invalid chunks and premature completion preserve the confirmed upload state', async (t) => {

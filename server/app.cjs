@@ -261,13 +261,21 @@ async function createApp(config, deps = {}) {
           target = path.join(s.dir, id);
         reserved += size;
         s.uploads.set(id, { id, path: target, name, size, offset: 0, busy: true });
+        let created = false;
         try {
           await fs.mkdir(s.dir, { recursive: true, mode: 0o700 });
           await fs.writeFile(target, '', { flag: 'wx', mode: 0o600 });
+          created = true;
+          if (access && !access.allowed(user))
+            throw fail('An invitation is required to use this workspace.', 403);
           s.uploads.get(id).busy = false;
         } catch (e) {
-          reserved -= size;
-          s.uploads.delete(id);
+          try {
+            if (created) await fs.rm(target, { force: true });
+          } finally {
+            reserved -= size;
+            s.uploads.delete(id);
+          }
           throw e;
         }
         send(res, { id, chunkSize: LIMITS.chunk }, 201);
@@ -559,6 +567,7 @@ async function createApp(config, deps = {}) {
                   const stat = await fs.lstat(output);
                   if (!stat.isFile() || stat.size > LIMITS.output)
                     throw fail('Invalid output.', 502);
+                  if (controller.signal.aborted) throw fail('Cancelled.');
                   const result = {
                     id,
                     ...info,
