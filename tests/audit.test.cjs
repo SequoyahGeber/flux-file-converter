@@ -522,7 +522,11 @@ test('G8: real rpc validates worker replies and sends the authenticated job and 
       });
       // Drain the entire input before replying, including intentionally invalid replies.
       res.writeHead(response.status || 200, response.headers || {});
-      res.end(response.body);
+      if (response.firstConsumed) {
+        res.write(response.body.subarray(0, response.split));
+        await response.firstConsumed.promise;
+        res.end(response.body.subarray(response.split));
+      } else res.end(response.body);
     };
     respond().catch((error) => {
       serverErrors.push(error);
@@ -604,6 +608,68 @@ test('G8: real rpc validates worker replies and sends the authenticated job and 
     assert.deepEqual(await invoke({ operation: 'inspect' }, { body }), inspected);
     assertRequest({ operation: 'inspect' });
   });
+  const inspected = {
+    name: 'mixed-日本.txt',
+    notes: ['ASCII and adjacent 語文 end'],
+    warnings: ['emoji 😀🚀 end'],
+  };
+  const inspectionBody = Buffer.from(JSON.stringify(inspected));
+  let offset = 0;
+  for (const character of inspectionBody.toString('utf8')) {
+    const width = Buffer.byteLength(character);
+    for (let internal = 1; internal < width; internal++) {
+      const split = offset + internal;
+      await t.test('inspection preserves UTF-8 split at byte ' + split, async (t) => {
+        const firstConsumed = gate();
+        const request = http.request;
+        // Observe raw parser input and acknowledge only after rpc consumes the
+        // first iterator value. The worker cannot send the remainder earlier.
+        t.mock.method(http, 'request', function (...args) {
+          const req = request.apply(this, args);
+          req.prependOnceListener('response', (res) => {
+            const received = [];
+            const push = res.push;
+            t.mock.method(res, 'push', function (chunk, ...args) {
+              if (Buffer.isBuffer(chunk)) received.push(Buffer.from(chunk));
+              return push.call(this, chunk, ...args);
+            });
+            const iterate = res[Symbol.asyncIterator];
+            t.mock.method(res, Symbol.asyncIterator, async function* () {
+              let first = true;
+              for await (const chunk of iterate.call(this)) {
+                if (first) {
+                  first = false;
+                  assert.deepEqual(
+                    Buffer.concat(received),
+                    inspectionBody.subarray(0, split),
+                    'The consumer must receive exactly the prefix ending inside UTF-8.',
+                  );
+                  yield chunk;
+                  firstConsumed.resolve();
+                } else yield chunk;
+              }
+            });
+          });
+          return req;
+        });
+        try {
+          const reply = await invoke(
+            { operation: 'inspect' },
+            { body: inspectionBody, split, firstConsumed },
+          );
+          assert.equal(reply.name, inspected.name);
+          assert.deepEqual(reply.notes, inspected.notes);
+          assert.deepEqual(reply.warnings, inspected.warnings);
+          assert.deepEqual(reply, inspected);
+          assertRequest({ operation: 'inspect' });
+        } finally {
+          // Also release the worker on assertion failures or the invoke deadline.
+          firstConsumed.resolve();
+        }
+      });
+    }
+    offset += width;
+  }
   await t.test('valid conversion returns metadata and exact output bytes', async () => {
     const out = path.join(dir, 'valid-output');
     const reply = await invoke(spec, result(info), out);
@@ -612,6 +678,22 @@ test('G8: real rpc validates worker replies and sends the authenticated job and 
     assert.ok(Number.isSafeInteger(completedAt));
     assert.deepEqual(await fs.readFile(out), Buffer.from('converted'));
     assertRequest(spec);
+  });
+  await t.test('binary conversion preserves non-UTF-8 bytes and metadata', async () => {
+    const body = Buffer.from([0x00, 0xff, 0x80, 0xc3, 0x28, 0xe6, 0x97, 0xf0, 0x9f]);
+    const binaryInfo = { ...info, name: 'result.bin', size: body.length, target: 'bin' };
+    const binarySpec = { operation: 'convert', target: 'bin' };
+    const out = path.join(dir, 'binary-output');
+    const { completedAt, ...metadata } = await invoke(
+      binarySpec,
+      result(binaryInfo, body),
+      out,
+    );
+    assert.deepEqual(metadata, binaryInfo);
+    assert.ok(Number.isSafeInteger(completedAt));
+    assert.equal((await fs.stat(out)).size, body.length);
+    assert.deepEqual(await fs.readFile(out), body);
+    assertRequest(binarySpec);
   });
   for (const [workerStatus, status] of [
     [422, 422],

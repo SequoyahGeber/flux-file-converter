@@ -52,6 +52,7 @@ async function rpc(spec, files, output, config, signal) {
       );
     }
     if (spec.operation === 'inspect') {
+      res.setEncoding('utf8');
       let body = '';
       for await (const c of res) {
         body += c;
