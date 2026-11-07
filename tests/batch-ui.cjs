@@ -4,6 +4,14 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { createApp } = require('../server/app.cjs');
+const { compressionOptions } = require('../electron/compression.cjs');
+
+const inspectionFixtures = new Map([
+  ['eligibility-unsupported.flux', { family: 'unsupported', ext: 'flux', targets: [] }],
+  ['eligibility-image.png', { family: 'image', ext: 'png', targets: ['jpg', 'png'] }],
+  ['eligibility-print.png', { family: 'image', ext: 'png', targets: ['jpg', 'pdf'] }],
+  ['eligibility-archive.zip', { family: 'archive', ext: 'zip', targets: ['tar', '7z'] }],
+]);
 
 async function main() {
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-batch-ui-'));
@@ -21,6 +29,18 @@ async function main() {
       scan: async () => 'full',
       capabilities: { formats: [], families: [] },
       rpc: async (spec, files, output) => {
+        if (spec.operation === 'inspect' && inspectionFixtures.has(files[0].name)) {
+          const fixture = inspectionFixtures.get(files[0].name);
+          return {
+            ...fixture,
+            size: files[0].size,
+            compressionOptions: compressionOptions(fixture, {
+              oxipng: true,
+              qpdf: true,
+              ghostscript: true,
+            }),
+          };
+        }
         if (spec.operation === 'inspect')
           return {
             family: 'image',
@@ -35,9 +55,15 @@ async function main() {
           throw new Error('Synthetic conversion failure.');
         }
         await fs.writeFile(output, 'synthetic result');
+        const target =
+          spec.operation === 'pack' || spec.operation === 'extract'
+            ? 'zip'
+            : spec.operation === 'compress'
+              ? files[0].compressionOptions.find((option) => option.id === spec.compression).target
+              : spec.target;
         return {
-          name: files[0].name + '.' + spec.target,
-          target: spec.target,
+          name: files[0].name + '.' + target,
+          target,
           completedAt: Date.now(),
         };
       },
@@ -50,8 +76,14 @@ async function main() {
       base = 'http://127.0.0.1:' + app.server.address().port;
     const retries = [],
       observed = [],
+      submitted = [],
       errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // Rejected submissions never appear in status, so observe every browser POST.
+    page.on('request', (request) => {
+      if (request.url() === base + '/api/jobs' && request.method() === 'POST')
+        submitted.push(request.postDataJSON());
+    });
     page.on('response', (response) => {
       if (response.status() === 429) {
         const seconds = Number(response.headers()['retry-after']);
@@ -302,8 +334,180 @@ async function main() {
     assert.deepEqual(errors, []);
     await fs.mkdir('.test-output', { recursive: true });
     await page.screenshot({ path: '.test-output/batch-resume.png' });
+
+    // A2: keep every queued row, but submit only files supported by the operation.
+    async function resetEligibility() {
+      await page.locator('#clear').click();
+      await page.waitForFunction(
+        () =>
+          !document.querySelector('#dropzone').hidden &&
+          document.querySelectorAll('#rows .row').length === 0,
+      );
+      now += 3600001;
+      retries.length = 0;
+    }
+    async function uploadFixtures(filenames) {
+      await page.locator('#files').setInputFiles(
+        filenames.map((name) => ({
+          name,
+          mimeType: 'application/octet-stream',
+          buffer: Buffer.from('synthetic eligibility input'),
+        })),
+      );
+      await drive(
+        () =>
+          document.querySelectorAll('#rows .row').length > 0 &&
+          document.querySelector('#cancel').hidden &&
+          !document.querySelector('#choose').disabled,
+      );
+      const snapshot = await status();
+      assert.deepEqual(
+        snapshot.files.map((file) => file.name),
+        filenames,
+      );
+      assert.equal(await page.locator('#rows .row').count(), filenames.length);
+      return snapshot.files;
+    }
+    async function noEligibleWork() {
+      const before = submitted.length;
+      assert.equal(await page.locator('#run').isDisabled(), true);
+      // Exercise the handler's guard independently of the disabled button.
+      await page.evaluate(() => start());
+      assert.equal(submitted.length, before, 'Ineligible work must emit no job request.');
+      assert.equal(await page.locator('#cancel').isHidden(), true);
+    }
+    async function finishEligible(expected) {
+      const before = submitted.length;
+      await page.locator('#run').click();
+      await drive(
+        () =>
+          document.querySelector('#cancel').hidden && !document.querySelector('#run').disabled,
+      );
+      const requests = submitted.slice(before);
+      assert.equal(requests.length, expected.length, 'No invalid job may be submitted.');
+      for (let i = 0; i < expected.length; i++)
+        for (const [key, value] of Object.entries(expected[i]))
+          assert.deepEqual(requests[i][key], value, 'Submitted ' + key);
+      const snapshot = await status();
+      const jobs = snapshot.jobs.filter((job) => job.operation !== 'upload');
+      assert.equal(jobs.length, expected.length);
+      for (let i = 0; i < jobs.length; i++) {
+        assert.equal(jobs[i].status, 'done');
+        assert.deepEqual(jobs[i].fileIds, expected[i].ids || [expected[i].id]);
+        assert(jobs[i].result?.id, 'Eligible work must have a result.');
+        assert(
+          snapshot.history.some((result) => result.id === jobs[i].result.id),
+          'The completed result must be retained.',
+        );
+      }
+      assert.equal(await page.locator('#error').isHidden(), true);
+      assert.equal(await page.locator('#rows .row').count(), snapshot.files.length);
+    }
+
+    await resetEligibility();
+    await noEligibleWork();
+    await page.locator('[data-mode="compress"]').click();
+    await noEligibleWork();
+    await page.locator('#compression').selectOption('lossy');
+    await noEligibleWork();
+    await page.locator('[data-mode="pack"]').click();
+    await page.locator('#archive').selectOption('pack');
+    await noEligibleWork(); // Direct start must not submit an empty ZIP.
+    await page.locator('#archive').selectOption('extract');
+    await noEligibleWork();
+
+    await page.locator('[data-mode="convert"]').click();
+    await uploadFixtures(['eligibility-unsupported.flux']);
+    await noEligibleWork();
+    await page.locator('[data-mode="compress"]').click();
+    await page.locator('#compression').selectOption('lossless');
+    assert.equal(await page.locator('#run').isDisabled(), false);
+    assert.equal(await page.locator('#rows select').inputValue(), 'archive');
+    await page.locator('#compression').selectOption('lossy');
+    await noEligibleWork(); // Lossy must not fall back to ZIP.
+    await page.locator('#compression').selectOption('lossless');
+    assert.equal(await page.locator('#run').isDisabled(), false);
+    await page.locator('[data-mode="pack"]').click();
+    await page.locator('#archive').selectOption('extract');
+    await noEligibleWork();
+    await page.locator('#archive').selectOption('pack');
+    assert.equal(await page.locator('#run').isDisabled(), false);
+    await page.locator('[data-mode="convert"]').click();
+    await noEligibleWork();
+
+    await resetEligibility();
+    const conversionFiles = await uploadFixtures([
+      'eligibility-unsupported.flux',
+      'eligibility-image.png',
+      'eligibility-print.png',
+    ]);
+    assert.deepEqual(
+      await page.locator('#rows select').evaluateAll((els) => els.map((el) => el.value)),
+      ['jpg', 'pdf'],
+    );
+    // A stale selected target is not a valid conversion, even if other targets exist.
+    await page.evaluate(() => {
+      for (const file of state.files)
+        if (file.targets.length) targets.set(file.id, 'unavailable');
+      render();
+    });
+    await noEligibleWork();
+    await page
+      .getByRole('combobox', { name: 'Output for eligibility-image.png' })
+      .selectOption('jpg');
+    assert.equal(await page.locator('#run').isDisabled(), false);
+    await page
+      .getByRole('combobox', { name: 'Output for eligibility-print.png' })
+      .selectOption('pdf');
+    await finishEligible([
+      { operation: 'convert', id: conversionFiles[1].id, target: 'jpg' },
+      { operation: 'convert', id: conversionFiles[2].id, target: 'pdf' },
+    ]);
+
+    await resetEligibility();
+    await page.locator('[data-mode="compress"]').click();
+    await page.locator('#compression').selectOption('lossless');
+    const compressionFiles = await uploadFixtures([
+      'eligibility-unsupported.flux',
+      'eligibility-image.png',
+    ]);
+    const imageCompression = page.getByRole('combobox', {
+      name: 'Compression for eligibility-image.png',
+      exact: true,
+    });
+    assert.equal(await imageCompression.inputValue(), 'lossless');
+    await imageCompression.selectOption('archive');
+    await page.locator('#compression').selectOption('lossy');
+    await finishEligible([
+      { operation: 'compress', id: compressionFiles[1].id, compression: 'lossy' },
+    ]);
+    await page.locator('#compression').selectOption('lossless');
+    assert.equal(
+      await imageCompression.inputValue(),
+      'archive',
+      'Keep the stored non-lossy choice.',
+    );
+    assert.equal(await page.locator('#rows select').first().inputValue(), 'archive');
+
+    await resetEligibility();
+    await page.locator('[data-mode="pack"]').click();
+    await page.locator('#archive').selectOption('extract');
+    const extractionFiles = await uploadFixtures([
+      'eligibility-image.png',
+      'eligibility-archive.zip',
+    ]);
+    await finishEligible([{ operation: 'extract', id: extractionFiles[1].id }]);
+
+    await resetEligibility();
+    await page.locator('#archive').selectOption('pack');
+    const packFiles = await uploadFixtures([
+      'eligibility-unsupported.flux',
+      'eligibility-image.png',
+    ]);
+    await finishEligible([{ operation: 'pack', ids: packFiles.map((file) => file.id) }]);
+    assert.deepEqual(errors, []);
     console.log(
-      'Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes, polling focus/selection/draft preservation in queue and history, keyboard saves and status labels passed (controlled clocks; stub codecs/scanner).',
+      'Real API quotas: 20-file upload/conversion, waiting cancellation, reload, failed-job retry without duplicate successes, 8-file batch, immediate format notes, polling focus/selection/draft preservation in queue and history, keyboard saves, status labels, mixed-operation eligibility, disabled empty/ineligible runs and ZIP inclusion passed (controlled clocks; stub codecs/scanner).',
     );
   } finally {
     releaseFocus();

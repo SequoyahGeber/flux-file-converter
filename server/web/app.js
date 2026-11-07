@@ -287,6 +287,19 @@ function choice(f) {
     values.find((c) => c.id === 'archive')
   );
 }
+function eligibleFiles() {
+  // Initialize defaults before checking Run availability or building submissions.
+  if (mode === 'convert')
+    for (const file of state.files)
+      if (!targets.has(file.id) && file.targets?.length)
+        targets.set(file.id, file.targets.includes('pdf') ? 'pdf' : file.targets[0]);
+  return state.files.filter((file) => {
+    if (mode === 'convert') return file.targets?.includes(targets.get(file.id));
+    if (mode === 'compress') return Boolean(choice(file));
+    if (mode === 'pack') return $('archive').value === 'pack' || file.family === 'archive';
+    return false;
+  });
+}
 function render() {
   const focus = captureRowFocus();
   // The status/cancel controls live in the queue, including the first upload
@@ -298,7 +311,8 @@ function render() {
     (state.files.length === 1 ? ' file · ' : ' files · ') +
     bytes(state.files.reduce((n, f) => n + f.size, 0));
   const active = connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status));
-  $('run').disabled = active || loading || !state.files.length;
+  const files = eligibleFiles();
+  $('run').disabled = active || loading || !files.length;
   $('cancel').hidden = !active && !loading;
   $('status').textContent = loading
     ? loadingText || 'Working on your server…'
@@ -345,11 +359,11 @@ function render() {
         option.value = target;
         select.append(option);
       }
-      select.value = targets.get(f.id) || (f.targets.includes('pdf') ? 'pdf' : f.targets[0]);
-      targets.set(f.id, select.value);
+      select.value = targets.get(f.id);
       select.disabled = active || loading;
       select.onchange = () => {
         targets.set(f.id, select.value);
+        $('run').disabled = active || loading || !eligibleFiles().length;
         rememberChoices();
         const warning = job?.error || f.warning || f.notes?.[select.value];
         let note = row.querySelector('.note');
@@ -707,6 +721,8 @@ async function upload(files) {
 async function start() {
   if (loading || connectionLost || state.jobs.some((j) => ['queued', 'running'].includes(j.status)))
     return;
+  const files = eligibleFiles();
+  if (!files.length) return;
   $('error').hidden = true;
   loading = true;
   cancelled = false;
@@ -716,8 +732,8 @@ async function start() {
   try {
     const specs =
       mode === 'pack' && $('archive').value === 'pack'
-        ? [{ operation: 'pack', ids: state.files.map((f) => f.id) }]
-        : state.files.map((f) => ({
+        ? [{ operation: 'pack', ids: files.map((f) => f.id) }]
+        : files.map((f) => ({
             operation: mode === 'pack' ? 'extract' : mode,
             id: f.id,
             target: targets.get(f.id),
