@@ -18,6 +18,12 @@ async function main() {
     assert.equal(proof.worker, Number(process.env.FLUX_VERIFY_WORKER_PID));
     assert.ok(Number.isInteger(proof.worker) && proof.worker > 1);
     assert.equal(proof.sandbox, true);
+    assert.equal(proof.environment_control, true);
+    assert.equal(
+      proof.credential_exposed,
+      false,
+      'Sandboxed UID 10002 must not find credentials in the live worker environment.',
+    );
     for (const syscall of [
       'pidfd_open',
       'pidfd_getfd',
@@ -31,7 +37,7 @@ async function main() {
       'SEC-02 unresolved: same-UID worker memory open must fail with a permission error; errno=' +
         proof.memory_open,
     );
-    console.log('Passed sandboxed UID 10002 live-worker pidfd and process-memory checks.');
+    console.log('Passed sandboxed UID 10002 live-worker environment, pidfd and process-memory checks.');
     const status = await fs.readFile('/proc/self/status', 'utf8');
     for (const field of ['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'])
       assert.match(status, new RegExp(field + ':\\s+0+\\b'));

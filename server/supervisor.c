@@ -16,6 +16,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <time.h>
+#include <poll.h>
+
+// --verify is isolated and always uses a public synthetic value.
+#define VERIFY_SECRET "flux-procfs-synthetic-sentinel-040-only"
 
 static volatile sig_atomic_t stopping;
 static pid_t service_pids[7];
@@ -61,12 +67,98 @@ static void variable(const char *name, const char *fallback) {
   env[env_count++] = entry;
 }
 static void literal(char *entry) { if (env_count >= 30) die("environment limit"); env[env_count++] = entry; }
+// A nonblocking, close-on-exec pipe exists only during worker startup. The
+// four-byte network-order length and payload must be followed by EOF.
+static int64_t milliseconds(void) {
+  struct timespec now;
+  if (clock_gettime(CLOCK_MONOTONIC, &now)) return -1;
+  return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+}
+static int credential_write(int fd, const char *secret, int timeout) {
+  unsigned char frame[4100] = {0};
+  size_t length = secret ? strlen(secret) : 0;
+  if (length < 32 || length > 4096) { errno = EINVAL; return -1; }
+  uint32_t header = htonl((uint32_t)length);
+  memcpy(frame, &header, 4); memcpy(frame + 4, secret, length);
+  struct sigaction ignore = {.sa_handler = SIG_IGN}, previous;
+  sigemptyset(&ignore.sa_mask);
+  if (sigaction(SIGPIPE, &ignore, &previous)) {
+    explicit_bzero(frame, sizeof(frame)); return -1;
+  }
+  int result = -1, saved = 0;
+  int64_t now = milliseconds(), deadline = now + timeout;
+  size_t offset = 0;
+  if (now < 0) goto done;
+  while (offset < length + 4) {
+    now = milliseconds();
+    if (now < 0) goto done;
+    if (now >= deadline || stopping) { errno = ETIMEDOUT; goto done; }
+    ssize_t size = write(fd, frame + offset, length + 4 - offset);
+    if (size > 0) { offset += (size_t)size; continue; }
+    if (size < 0 && errno == EINTR) continue;
+    if (size < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      struct pollfd wait = {.fd = fd, .events = POLLOUT};
+      int ready = poll(&wait, 1, (int)(deadline - now));
+      if (ready < 0 && errno == EINTR) continue;
+      if (ready == 0) errno = ETIMEDOUT;
+      if (ready <= 0) goto done;
+      if (wait.revents & (POLLERR | POLLHUP | POLLNVAL)) { errno = EPIPE; goto done; }
+      continue;
+    }
+    if (!size) errno = EIO;
+    goto done;
+  }
+  result = 0;
+done:
+  saved = errno;
+  explicit_bzero(frame, sizeof(frame));
+  if (sigaction(SIGPIPE, &previous, NULL)) return -1;
+  errno = saved;
+  return result;
+}
+static void credential_descriptor(int fd) {
+  if (fd != 3) {
+    if (dup2(fd, 3) < 0) die("cannot install worker startup pipe");
+    close(fd);
+  }
+  // dup2 clears CLOEXEC, but the fd == 3 case needs this explicitly.
+  if (fcntl(3, F_SETFD, 0)) die("cannot install worker startup pipe");
+}
 static pid_t launch(uid_t uid, gid_t gid, const char *home, char *const argv[], int role) {
-  pid_t pid = fork(); if (pid < 0) die("cannot start service");
-  if (pid) { if (role >= 1 && role <= 5) service_pids[role] = pid; return pid; }
+  int startup[2] = {-1, -1};
+  if (role == 2 && pipe2(startup, O_CLOEXEC | O_NONBLOCK)) die("cannot create worker startup pipe");
+  pid_t pid = fork();
+  if (pid < 0) {
+    if (role == 2) { close(startup[0]); close(startup[1]); }
+    die("cannot start service");
+  }
+  if (pid) {
+    if (role == 2) {
+      close(startup[0]);
+      int delivered = credential_write(startup[1], getenv("WORKER_SECRET"), 5000);
+      close(startup[1]);
+      if (delivered) {
+        kill(pid, SIGKILL);
+        // Do not let reaping a failed child extend startup indefinitely. PID 1
+        // exits below, which also ends the remaining container processes.
+        for (int attempt = 0; attempt < 100; attempt++) {
+          pid_t reaped = waitpid(pid, NULL, WNOHANG);
+          if (reaped == pid || (reaped < 0 && errno != EINTR)) break;
+          poll(NULL, 0, 10);
+        }
+        die("cannot deliver worker startup credential");
+      }
+    }
+    if (role >= 1 && role <= 5) service_pids[role] = pid;
+    return pid;
+  }
+  if (role == 2) {
+    close(startup[1]);
+    credential_descriptor(startup[0]);
+  }
   reset_env(home);
   literal("FLUX_BIND=127.0.0.1");
-  if (role == 1 || role == 2 || role == 6) variable("WORKER_SECRET", NULL);
+  if (role == 1 || role == 6) variable("WORKER_SECRET", NULL);
   if (role == 1) {
     variable("ACCESS_ISSUER", NULL); variable("ACCESS_AUD", NULL);
     variable("FLUX_OWNER_EMAIL", NULL);
@@ -141,7 +233,8 @@ static int sandbox_proof(void) {
     close(output[0]);
     if (dup2(output[1], STDOUT_FILENO) < 0) die("cannot redirect sandbox proof");
     close(output[1]);
-    reset_env("/tmp/worker"); env[env_count] = NULL;
+    reset_env("/tmp/worker");
+    literal("WORKER_SECRET=" VERIFY_SECRET); env[env_count] = NULL;
     umask(0027); unprivileged(10002, 10002);
     // Obtain a real worker pidfd before flux-sandbox installs its deny list.
     // ENOSYS/unsupported runtimes fail verification rather than passing a skip.
@@ -171,8 +264,10 @@ int main(int argc, char **argv) {
     unprivileged(10006,10006);
     return port_ready(8080) && port_ready(8090) && port_ready(3310) ? 0 : 1;
   }
+  if (argc == 2 && !strcmp(argv[1], "--verify") &&
+      setenv("WORKER_SECRET", VERIFY_SECRET, 1)) die("cannot configure verification");
   const char *secret = getenv("WORKER_SECRET");
-  if (!secret || strlen(secret)<32) die("worker configuration missing");
+  if (!secret || strlen(secret)<32 || strlen(secret)>4096) die("worker configuration missing");
   signal(SIGTERM, stop); signal(SIGINT, stop);
   directory("/work/api",10001,10001,0700); directory("/work/worker",10002,10002,0700);
   directory("/work/scanner",10003,10003,0700);

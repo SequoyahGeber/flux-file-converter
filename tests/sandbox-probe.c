@@ -16,6 +16,47 @@ static void fail(const char *message) {
   fprintf(stderr, "Sandbox verification: %s (errno=%d)\n", message, errno);
   exit(1);
 }
+#define VERIFY_SENTINEL "flux-procfs-synthetic-sentinel-040-only"
+struct environment { int credential; int sentinel; int denied; };
+// Bound the read, require NUL-terminated entries and a real EOF. An empty,
+// truncated or broken reader is never accepted as proof of absence.
+static struct environment environment(pid_t pid, int allow_denial) {
+  char path[80], data[65537];
+  struct environment result = {0};
+  snprintf(path, sizeof(path), "/proc/%ld/environ", (long)pid);
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) {
+    if (allow_denial && (errno == EACCES || errno == EPERM)) {
+      result.denied = 1; return result;
+    }
+    fail("environment evidence unavailable");
+  }
+  size_t used = 0;
+  for (;;) {
+    ssize_t size = read(fd, data + used, sizeof(data) - used);
+    if (size < 0 && errno == EINTR) continue;
+    if (size < 0) { close(fd); fail("environment read failed"); }
+    if (!size) break;
+    used += (size_t)size;
+    if (used == sizeof(data)) { close(fd); fail("environment evidence truncated"); }
+  }
+  close(fd);
+  if (!used || data[used - 1]) fail("environment evidence incomplete");
+  for (size_t offset = 0; offset < used;) {
+    char *entry = data + offset;
+    char *end = memchr(entry, 0, used - offset);
+    if (!end || end == entry) fail("environment evidence malformed");
+    char *equals = memchr(entry, '=', (size_t)(end - entry));
+    if (!equals || equals == entry) fail("environment evidence malformed");
+    size_t length = (size_t)(end - entry);
+    if (length >= sizeof("WORKER_SECRET=") - 1 &&
+        !memcmp(entry, "WORKER_SECRET=", sizeof("WORKER_SECRET=") - 1)) result.credential = 1;
+    if (memmem(entry, length, VERIFY_SENTINEL, sizeof(VERIFY_SENTINEL) - 1)) result.sentinel = 1;
+    offset += length + 1;
+  }
+  explicit_bzero(data, sizeof(data));
+  return result;
+}
 static void identity(pid_t pid, int pidfd) {
   char path[80], data[4096];
   snprintf(path, sizeof(path), "/proc/%ld/cmdline", (long)pid);
@@ -58,6 +99,13 @@ int main(int argc, char **argv) {
   if (pid <= 1 || pidfd < 3) fail("invalid target");
   alarm(10);
   identity(pid, pidfd);
+  // Only the public synthetic value is in this exposure-positive control.
+  // No environment contents reach stdout.
+  struct environment control = environment(getpid(), 0);
+  if (!control.credential || !control.sentinel) fail("environment positive control failed");
+  struct environment worker = environment(pid, 1);
+  int exposed = worker.credential || worker.sentinel;
+  identity(pid, pidfd);
   errno = 0;
   long result = syscall(SYS_pidfd_open, pid, 0);
   int open_error = result < 0 ? errno : 0;
@@ -87,8 +135,9 @@ int main(int argc, char **argv) {
   close(pidfd);
   printf("{\"uid\":%u,\"worker\":%ld,\"sandbox\":true,\"pidfd_open\":%d,"
          "\"pidfd_getfd\":%d,\"process_madvise\":%d,\"invalid_pidfd_getfd\":%d,"
-         "\"ip_socket\":%d,\"memory_open\":%d}\n",
+         "\"ip_socket\":%d,\"memory_open\":%d,\"environment_control\":true,"
+         "\"credential_exposed\":%s}\n",
          (unsigned)getuid(), (long)pid, open_error, getfd_error, advise_error,
-         invalid_error, socket_error, memory_error);
+         invalid_error, socket_error, memory_error, exposed ? "true" : "false");
   return 0;
 }
