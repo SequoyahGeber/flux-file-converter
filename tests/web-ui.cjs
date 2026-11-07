@@ -7,6 +7,7 @@ const { chromium } = require('playwright');
 const { createApp } = require('../server/app.cjs');
 async function main() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-web-ui-'));
+  const inspected = [];
   const app = await createApp(
     { storage: dir },
     {
@@ -18,7 +19,8 @@ async function main() {
         engines: { images: true },
       },
       rpc: async (spec, files, out) => {
-        if (spec.operation === 'inspect')
+        if (spec.operation === 'inspect') {
+          inspected.push({ name: files[0].name, buffer: await fs.readFile(files[0].path) });
           return {
             name: files[0].name,
             family: 'image',
@@ -32,6 +34,7 @@ async function main() {
               { id: 'archive', name: 'Lossless ZIP', target: 'zip' },
             ],
           };
+        }
         await sharp(files[0].path).jpeg().toFile(out);
         return {
           name: 'sample.jpg',
@@ -73,7 +76,24 @@ async function main() {
         );
     }
     assert(await page.getByRole('link', { name: 'flux.', exact: true }).isVisible());
-    assert(await page.getByRole('button', { name: 'Choose files', exact: true }).isVisible());
+    const choose = page.getByRole('button', { name: 'Choose files', exact: true }),
+      dropzone = page.locator('#dropzone');
+    assert(await choose.isVisible());
+    assert.equal(await choose.evaluate((el) => el.tagName), 'BUTTON');
+    assert.equal(await dropzone.getAttribute('role'), null);
+    assert.equal(await dropzone.getAttribute('tabindex'), null);
+    assert.equal(await dropzone.getAttribute('aria-label'), null);
+    const nestedControls = await page
+      .locator('button, [role="button"]')
+      .evaluateAll((containers) => {
+        const interactive =
+          'button, [role="button"], a[href], input, select, textarea, summary, ' +
+          '[tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+        return containers
+          .filter((el) => el.querySelector(interactive))
+          .map((el) => el.id || el.outerHTML);
+      });
+    assert.deepEqual(nestedControls, [], 'Button containers must not nest interactive controls.');
     assert(await page.getByRole('link', { name: 'Sign out', exact: true }).isVisible());
     const privacy = await page.locator('.privacy').ariaSnapshot(),
       badge = await page.locator('.badge').ariaSnapshot();
@@ -84,6 +104,102 @@ async function main() {
     await sharp({ create: { width: 40, height: 30, channels: 4, background: '#9372c8' } })
       .png()
       .toFile(image);
+    const buffer = await fs.readFile(image);
+    async function uploaded(name) {
+      const row = page.locator('#rows .row').filter({
+        has: page.getByText(name, { exact: true }),
+      });
+      await row.locator('.file-size').filter({ hasText: '40 × 30' }).waitFor({ timeout: 10000 });
+      await page.waitForFunction(() => !document.querySelector('#run').disabled);
+      assert.equal(await row.locator('.job-state').innerText(), 'Ready');
+      assert.equal(await page.locator('#rows .row').count(), 1);
+      assert.deepEqual(inspected, [{ name, buffer }], 'Upload bytes must reach server inspection.');
+    }
+    async function clearUpload() {
+      await page.getByRole('button', { name: 'Delete all my files', exact: true }).click();
+      await dropzone.waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#rows .row').count(), 0);
+      assert.equal(await page.locator('#files').inputValue(), '');
+      inspected.length = 0;
+    }
+    // Tab into, back out of, and past the upload area using the real focus order.
+    const width = page.locator('#width');
+    await width.focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await choose.evaluate((el) => el === document.activeElement), true);
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await width.evaluate((el) => el === document.activeElement), true);
+    await page.keyboard.press('Tab');
+    assert.equal(await choose.evaluate((el) => el === document.activeElement), true);
+    await page.keyboard.press('Tab');
+    assert.equal(
+      await page.evaluate(() => Boolean(document.activeElement.closest('#dropzone'))),
+      false,
+      'Choose files must be the only upload tab stop.',
+    );
+    for (const key of ['Enter', 'Space']) {
+      const choosers = [],
+        onChooser = (chooser) => choosers.push(chooser);
+      page.on('filechooser', onChooser);
+      await page.locator('#files').evaluate((el) => {
+        window.uploadInputClicks = 0;
+        window.countUploadInputClick = () => window.uploadInputClicks++;
+        el.addEventListener('click', window.countUploadInputClick);
+      });
+      try {
+        await width.focus();
+        await page.keyboard.press('Tab');
+        assert.equal(await choose.evaluate((el) => el === document.activeElement), true);
+        const [chooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          page.keyboard.press(key),
+        ]);
+        // Include keyup and a render turn before counting, especially for Space.
+        await page.evaluate(async () => {
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        });
+        assert.equal(choosers.length, 1, key + ': exactly one file chooser');
+        assert.equal(
+          await page.evaluate(() => window.uploadInputClicks),
+          1,
+          key + ': input clicks',
+        );
+        assert.equal(chooser.isMultiple(), true);
+        const name = key.toLowerCase() + '-upload.png';
+        await chooser.setFiles({ name, mimeType: 'image/png', buffer });
+        await uploaded(name);
+        assert.equal(choosers.length, 1, key + ': no later duplicate chooser');
+        assert.equal(await page.evaluate(() => window.uploadInputClicks), 1);
+        await clearUpload();
+      } finally {
+        page.off('filechooser', onChooser);
+        await page.locator('#files').evaluate((el) => {
+          el.removeEventListener('click', window.countUploadInputClick);
+          delete window.countUploadInputClick;
+          delete window.uploadInputClicks;
+        });
+      }
+    }
+    const transfer = await page.evaluateHandle((bytes) => {
+      const data = new DataTransfer();
+      data.items.add(new File([new Uint8Array(bytes)], 'drop-upload.png', { type: 'image/png' }));
+      return data;
+    }, [...buffer]);
+    try {
+      const admission = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/api/uploads',
+      );
+      await dropzone.dispatchEvent('dragover', { dataTransfer: transfer });
+      await dropzone.dispatchEvent('drop', { dataTransfer: transfer });
+      assert.equal((await admission).status(), 201);
+      await uploaded('drop-upload.png');
+      await clearUpload();
+    } finally {
+      await transfer.dispose();
+    }
     await page.locator('#files').setInputFiles(image);
     await page
       .getByText('40 × 30', { exact: false })
@@ -204,7 +320,7 @@ async function main() {
     }
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log(
-      'Browser upload, conversion, custom save filename, download, format search, mobile layout, deletion and delayed upload cancellation passed.',
+      'Browser upload semantics, keyboard file choosers, dropped-file inspection, conversion, custom save filename, download, format search, mobile layout, deletion and delayed upload cancellation passed.',
     );
   } finally {
     await browser.close();

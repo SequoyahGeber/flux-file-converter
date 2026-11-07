@@ -782,12 +782,6 @@ $('choose').onclick = (e) => {
 };
 $('add').onclick = () => $('files').click();
 $('dropzone').onclick = () => $('files').click();
-$('dropzone').onkeydown = (e) => {
-  if (['Enter', ' '].includes(e.key)) {
-    e.preventDefault();
-    $('files').click();
-  }
-};
 $('files').onchange = (e) => upload([...e.target.files]);
 $('clear').onclick = clear;
 $('delete-results').onclick = clear;

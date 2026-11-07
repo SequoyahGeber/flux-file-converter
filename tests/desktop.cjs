@@ -86,6 +86,58 @@ async function actionContrast(page, selector, minimum = 4.5) {
   // Move off the control so later checks measure its normal state.
   await page.mouse.move(0, 0);
 }
+async function textContrastStates(page, selector, expectedCount, hoverSelector) {
+  const targets = page.locator(selector),
+    controls = page.locator(hoverSelector);
+  assert.equal(await targets.count(), expectedCount, selector + ': contrast target count');
+  assert.equal(
+    await targets.evaluateAll((elements) =>
+      elements.every((el) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })),
+    ),
+    true,
+    selector + ': contrast targets must be visible',
+  );
+  async function settle() {
+    await controls.evaluateAll(async (elements) => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await Promise.all(
+        elements.flatMap((el) => el.getAnimations({ subtree: true })).map((a) => a.finished),
+      );
+    });
+  }
+  await page.mouse.move(0, 0);
+  await settle();
+  await textContrast(page, [selector]);
+  for (const control of await controls.all()) {
+    // The label's corner measures label hover separately from its select.
+    await control.hover({ position: { x: 4, y: 4 } });
+    assert.equal(await control.evaluate((el) => el.matches(':hover')), true);
+    await settle();
+    await textContrast(page, [selector]);
+    await page.mouse.move(0, 0);
+    await settle();
+    await textContrast(page, [selector]);
+  }
+}
+async function optionsContrast(page) {
+  assert.equal(await page.getByLabel('Quality / file size').isEnabled(), true);
+  await textContrastStates(
+    page,
+    '.options-panel label',
+    2,
+    '.options-panel label, .options-panel select',
+  );
+}
+async function compressionContrast(page) {
+  assert.equal(await page.locator('.mode-options > button').count(), 2);
+  assert.equal(await page.locator('.mode-options > button:disabled').count(), 0);
+  for (const pressed of ['true', 'false'])
+    assert.equal(
+      await page.locator(`.mode-options > button[aria-pressed="${pressed}"] small`).count(),
+      1,
+    );
+  await textContrastStates(page, '.mode-options small', 2, '.mode-options > button');
+}
 async function reachableControls(page, state, selectors) {
   for (const selector of selectors) {
     const control = page.locator(selector).first();
@@ -563,6 +615,7 @@ async function main() {
     assert.equal(await options.getAttribute('aria-expanded'), 'true');
     await focusContrast(page, page.getByLabel('Quality / file size'));
     await textSizes(page, 'Options', ['.options-panel label', '.options-panel select']);
+    await optionsContrast(page);
     await options.click();
     assert.equal(await options.getAttribute('aria-expanded'), 'false');
     await page.screenshot({ path: path.join(root, '01-home.png') });
@@ -653,6 +706,10 @@ async function main() {
       await compression.getByRole('button', { name: /Smaller file/, pressed: false }).count(),
       1,
     );
+    await compressionContrast(page);
+    await options.click();
+    await optionsContrast(page);
+    await options.click();
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await electronApp.evaluate(
       ({ dialog }, files) => {
@@ -676,8 +733,10 @@ async function main() {
       await compression.getByRole('button', { name: /Lossless/, pressed: false }).count(),
       1,
     );
+    await compressionContrast(page);
     await options.click();
     await textSizes(page, 'Smaller file compression', ['.options-panel', '.mode-options small']);
+    await optionsContrast(page);
     await options.click();
     await page.getByRole('button', { name: /Compress 2 files/ }).click();
     await page.waitForFunction(() => document.querySelectorAll('.result-button').length === 2, {

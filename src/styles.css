@@ -714,7 +714,7 @@ h1 > span {
 }
 .mode-options small {
   font-size: 0.77rem;
-  color: #a098af;
+  color: #6c6379;
 }
 .radio {
   display: block;
@@ -766,7 +766,7 @@ h1 > span {
   flex-direction: column;
   gap: 9px;
   font-size: 10px;
-  color: #8c839c;
+  color: #6c6379;
 }
 .options-panel select {
   width: 190px;
