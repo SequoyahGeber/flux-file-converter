@@ -83,7 +83,8 @@ final class ReviewerAccessTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(clear.frame.height, 44, "Clear touch height: " + sample)
             clear.tap()
             // The result was never saved, so clearing asks before deleting it.
-            let confirm = app.buttons[AccessibilityID.Converter.clearConfirm]
+            // iOS 27 shows the dialog as a popover whose button nests a second element with the same id.
+            let confirm = app.buttons[AccessibilityID.Converter.clearConfirm].firstMatch
             XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Clear asks before deleting an unsaved result: " + sample)
             confirm.tap()
             XCTAssertTrue(app.buttons[AccessibilityID.Converter.trySample].waitForExistence(timeout: 10), "Cleared job")
