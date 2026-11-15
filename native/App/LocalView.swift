@@ -25,17 +25,17 @@ struct LocalView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: FluxSpace.xxl) {
-                    HStack(spacing: FluxSpace.l) {
+                VStack(alignment: .leading, spacing: FluxSpace.section) {
+                    HStack(spacing: FluxSpace.item) {
                         Image(icon: .appMark).font(FluxType.badge).foregroundStyle(.white)
-                            .frame(width: 56, height: 56).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.l))
+                            .frame(width: 56, height: 56).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.badge))
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: FluxSpace.xs) {
+                        VStack(alignment: .leading, spacing: FluxSpace.titleLines) {
                             Text("Convert. Keep it local.").font(.title2.bold())
                             Label("On-device · No uploads · No login", icon: .onDevice).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    VStack(alignment: .leading, spacing: FluxSpace.l) {
+                    VStack(alignment: .leading, spacing: FluxSpace.item) {
                         Button { importing = true } label: {
                             Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", icon: .chooseFiles)
                                 .frame(maxWidth: .infinity).padding(.vertical, 12)
@@ -60,16 +60,16 @@ struct LocalView: View {
                             }
                             if model.inputs.count > 5 { Text("and \(model.inputs.count - 5) more files").font(.caption).foregroundStyle(.secondary) }
                         }
-                    }.padding(FluxSpace.xl).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
+                    }.padding(FluxSpace.card).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                     if !model.inputs.isEmpty {
                         VStack(alignment: .leading, spacing: FluxSpace.l) {
-                            VStack(alignment: .leading, spacing: FluxSpace.s) {
+                            VStack(alignment: .leading, spacing: FluxSpace.label) {
                                 Text("Convert to").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 Picker("Convert to", selection: $model.target) {
                                     ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract archive" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
                                 }.pickerStyle(.menu).accessibilityIdentifier(AccessibilityID.Converter.outputFormat)
                             }
-                            VStack(alignment: .leading, spacing: FluxSpace.s) {
+                            VStack(alignment: .leading, spacing: FluxSpace.label) {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
@@ -89,7 +89,7 @@ struct LocalView: View {
                                 }
                             }
                             Text(LocalFormats.note(source: model.source, target: model.target, lossless: model.options.lossless)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        }.disabled(model.busy || saving).padding(FluxSpace.xl).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
+                        }.disabled(model.busy || saving).padding(FluxSpace.card).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                         if model.busy {
                             HStack {
                                 ProgressView(); Text(model.message); Spacer()
@@ -109,9 +109,9 @@ struct LocalView: View {
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", icon: .save).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(.secondary)
-                        }.padding(FluxSpace.xl).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
+                        }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                     }
-                    if !model.error.isEmpty { Label(model.error, icon: .warning).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
+                    if !model.error.isEmpty { Label(model.error, icon: .errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
@@ -125,7 +125,7 @@ struct LocalView: View {
                             }.disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.clear)
                         }
                     }.font(.callout)
-                    VStack(alignment: .leading, spacing: FluxSpace.s) {
+                    VStack(alignment: .leading, spacing: FluxSpace.label) {
                         Text("5 GB media · 512 MB other files · One conversion at a time")
                         Text("Keep Flux open while converting. Temporary working files are cleared when you clear the job or reopen Flux.")
                     }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
