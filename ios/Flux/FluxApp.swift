@@ -39,6 +39,7 @@ struct FluxApp: App {
 
   func reset() {
     FluxFeedback.center.close()
+    FluxFeedback.center.discardDraft()
     FluxSettings.reset()
     OfflineEngine.clearTemporaryFiles()
     generation += 1

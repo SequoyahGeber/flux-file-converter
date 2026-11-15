@@ -4,7 +4,8 @@ import SharedDesign
 import SharedStrings
 
 /// Every SF Symbol Flux's native screens use; views never name a symbol directly (PLAN.md §4.8). The standard
-/// concepts use `StandardSymbol`'s names; SharedKit's lint reads this file as Flux's symbol file.
+/// concepts use `StandardSymbol`'s names; SharedKit's lint reads this file as Flux's symbol file. Views use
+/// SharedDesign's `Image(symbol:)` and `Label(_:symbol:)`.
 enum FluxIcon: String, AppSymbol {
     // Standard concepts.
     case settings = "gearshape"  // StandardSymbol.settings
@@ -26,19 +27,4 @@ enum FluxIcon: String, AppSymbol {
     case save = "square.and.arrow.down"
     /// The error line keeps its outlined triangle (no look change); `warning` is the standard filled one.
     case errorLine = "exclamationmark.triangle"
-
-}
-
-extension Image {
-    init(icon: FluxIcon) { self.init(symbol: icon) }
-}
-
-/// SharedDesign's `Label(_:symbol:)` takes a `String`, which a literal title would bypass the string catalog with;
-/// Flux's titles stay localizable through `LocalizedStringKey`.
-extension Label where Title == Text, Icon == Image {
-    @_disfavoredOverload
-    init(_ title: some StringProtocol, icon: FluxIcon) { self.init(String(title), symbol: icon) }
-    init(_ title: LocalizedStringKey, icon: FluxIcon) {
-        self.init { Text(title) } icon: { Image(symbol: icon) }
-    }
 }

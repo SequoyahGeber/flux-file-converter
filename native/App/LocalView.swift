@@ -2,6 +2,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import OfflineKit
+import SharedDesign
 import SharedFeedback
 #if os(macOS)
 import AppKit
@@ -27,17 +28,17 @@ struct LocalView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: FluxSpace.section) {
                     HStack(spacing: FluxSpace.item) {
-                        Image(icon: .appMark).font(FluxType.badge).foregroundStyle(.white)
+                        Image(symbol: FluxIcon.appMark).font(FluxType.badge).foregroundStyle(.white)
                             .frame(width: 56, height: 56).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.badge))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: FluxSpace.titleLines) {
                             Text("Convert. Keep it local.").font(.title2.bold())
-                            Label("On-device · No uploads · No login", icon: .onDevice).font(.caption).foregroundStyle(.secondary)
+                            Label("On-device · No uploads · No login", symbol: FluxIcon.onDevice).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     VStack(alignment: .leading, spacing: FluxSpace.item) {
                         Button { importing = true } label: {
-                            Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", icon: .chooseFiles)
+                            Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", symbol: FluxIcon.chooseFiles)
                                 .frame(maxWidth: .infinity).padding(.vertical, 12)
                         }.buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
                         if model.inputs.isEmpty {
@@ -48,7 +49,7 @@ struct LocalView: View {
                                     Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier(AccessibilityID.Converter.sample(sample.id))
                                 }
                             } label: {
-                                Label("Explore a sample file", icon: .sample)
+                                Label("Explore a sample file", symbol: FluxIcon.sample)
                                     .frame(minHeight: 44).contentShape(Rectangle())
                             }
                                 .accessibilityIdentifier(AccessibilityID.Converter.trySample).disabled(model.busy || saving)
@@ -56,7 +57,7 @@ struct LocalView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(model.inputs.prefix(5).enumerated()), id: \.offset) { _, url in
-                                Label(url.lastPathComponent, icon: .file).font(.callout).lineLimit(2).truncationMode(.middle)
+                                Label(url.lastPathComponent, symbol: FluxIcon.file).font(.callout).lineLimit(2).truncationMode(.middle)
                             }
                             if model.inputs.count > 5 { Text("and \(model.inputs.count - 5) more files").font(.caption).foregroundStyle(.secondary) }
                         }
@@ -98,20 +99,20 @@ struct LocalView: View {
                                 }
                             }
                         } else {
-                            Button { model.convert() } label: { Label("Convert", icon: .convert).frame(maxWidth: .infinity).padding(.vertical, 10) }
+                            Button { model.convert() } label: { Label("Convert", symbol: FluxIcon.convert).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
                         }
                     }
                     if let result = model.result {
                         VStack(alignment: .leading, spacing: FluxSpace.m) {
-                            Label(model.message, icon: .success).foregroundStyle(FluxColor.success)
+                            Label(model.message, symbol: FluxIcon.success).foregroundStyle(FluxColor.success)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
-                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", icon: .save).frame(maxWidth: .infinity).padding(.vertical, 10) }
+                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(.secondary)
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                     }
-                    if !model.error.isEmpty { Label(model.error, icon: .errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
+                    if !model.error.isEmpty { Label(model.error, symbol: FluxIcon.errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
@@ -140,7 +141,7 @@ struct LocalView: View {
                     FeedbackButton(center: FluxFeedback.center)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(icon: .settings) }
+                    Button { showingSettings = true } label: { Image(symbol: FluxIcon.settings) }
                         .accessibilityLabel("Settings").accessibilityIdentifier(AccessibilityID.Settings.open)
                 }
             }
