@@ -1,6 +1,15 @@
 {
-  "originHash" : "51a40f359470353adc5393da1d657bb4e3f3f6ddd3a239a1faab33590a4caf88",
+  "originHash" : "c5208004ed1d442e6405273a8605366dab622ffc16776e41c55c577e37741fa2",
   "pins" : [
+    {
+      "identity" : "sharedkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/SequoyahGeber/SharedKit.git",
+      "state" : {
+        "revision" : "193b3af1432731468c23bd6772ca3bda44fdac4b",
+        "version" : "0.2.1"
+      }
+    },
     {
       "identity" : "yams",
       "kind" : "remoteSourceControl",
