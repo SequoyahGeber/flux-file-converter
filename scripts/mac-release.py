@@ -148,7 +148,14 @@ def main():
         if "--test-origin=" in strings:
             raise SystemExit("A test endpoint override was included in the release binary.")
         manifest = plistlib.loads((app / "Contents/Resources/PrivacyInfo.xcprivacy").read_bytes())
-        if manifest.get("NSPrivacyTracking") is not False or manifest.get("NSPrivacyCollectedDataTypes") != []:
+        # Only what a person sends with feedback is collected: never linked to them, never for tracking.
+        collected = manifest.get("NSPrivacyCollectedDataTypes")
+        feedback_types = {"NSPrivacyCollectedDataTypeOtherUserContent", "NSPrivacyCollectedDataTypeCrashData",
+                          "NSPrivacyCollectedDataTypePerformanceData", "NSPrivacyCollectedDataTypeOtherDiagnosticData"}
+        if (manifest.get("NSPrivacyTracking") is not False or not isinstance(collected, list)
+                or {c.get("NSPrivacyCollectedDataType") for c in collected} != feedback_types
+                or any(c.get("NSPrivacyCollectedDataTypeLinked") is not False or c.get("NSPrivacyCollectedDataTypeTracking") is not False
+                       for c in collected)):
             raise SystemExit("The app's privacy manifest is missing or incorrect.")
         name = f"Flux-Local-{version}-{args.build}"
         if args.development:
