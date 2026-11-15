@@ -84,9 +84,14 @@ def main():
         entitlements = plistlib.loads(command(["codesign", "-d", "--entitlements", "-", "--xml", str(app)], stderr=subprocess.DEVNULL))
         if entitlements.get("get-task-allow", False) or entitlements.get("application-identifier") != settings["team"] + "." + chosen["bundleId"]:
             raise SystemExit("The archived app's signing entitlements are incorrect.")
-        allowed = {"application-identifier", "com.apple.developer.team-identifier", "beta-reports-active", "get-task-allow"}
+        allowed = {"application-identifier", "com.apple.developer.team-identifier", "beta-reports-active", "get-task-allow",
+                   # Feedback reports (SharedKit feedback): the iCloud container, CloudKit, and the environment.
+                   "com.apple.developer.icloud-container-identifiers", "com.apple.developer.icloud-services",
+                   "com.apple.developer.icloud-container-environment"}
         if set(entitlements) - allowed:
             raise SystemExit("Unexpected entitlements in the signed archive.")
+        if entitlements.get("com.apple.developer.icloud-container-identifiers") != ["iCloud.com.sequoyah.flux"]:
+            raise SystemExit("The signed archive lacks the iCloud container iCloud.com.sequoyah.flux (feedback).")
         binary = app / "Flux"
         if command(["lipo", "-archs", str(binary)], text=True).strip() != "arm64":
             raise SystemExit("Use an arm64 iPhone device archive.")

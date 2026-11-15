@@ -2,8 +2,10 @@
 #if os(iOS)
 import SwiftUI
 import OfflineKit
+import SharedDiagnostics
+import SharedFeedback
 
-/// iPhone Settings sheet in the standard order: Appearance, Help, About.
+/// iPhone Settings sheet in the standard order: Appearance, Diagnostics, Help, About.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(FluxSettings.Key.appearanceMode) private var appearance = AppearanceMode.system.rawValue
@@ -16,9 +18,17 @@ struct SettingsView: View {
                         ForEach(AppearanceMode.allCases) { Text($0.title).tag($0.rawValue) }
                     }.pickerStyle(.segmented).accessibilityIdentifier(AccessibilityID.Settings.appearance)
                 }
+                Section("Diagnostics") {
+                    NavigationLink("Diagnostics") {
+                        DiagnosticsView(center: FluxDiagnostics.center, sensitiveTerms: { FluxDiagnostics.fileNames() })
+                            .navigationTitle("Diagnostics").navigationBarTitleDisplayMode(.inline)
+                    }.accessibilityIdentifier(AccessibilityID.Settings.diagnostics)
+                }
                 Section("Help") {
                     Link("Support", destination: ReviewResources.supportURL)
                         .accessibilityIdentifier(AccessibilityID.Settings.support)
+                    SendFeedbackSettingsRow(center: FluxFeedback.center)
+                        .accessibilityIdentifier(AccessibilityID.Settings.sendFeedback)
                 }
                 Section("About") {
                     LabeledContent("Version") {

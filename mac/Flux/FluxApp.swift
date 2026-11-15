@@ -1,6 +1,7 @@
 // SHARED-EXPERIENCE: mac-menus | standard: PROJECT_STANDARDS.md §Mac menus | local implementation; changes must be mirrored in every app listed there
 import SwiftUI
 import WebKit
+import SharedFeedback
 
 @main
 @MainActor
@@ -11,6 +12,9 @@ struct FluxApp: App {
 
     init() {
         LaunchFlags.applyBeforeLaunch()
+        // Diagnostics and feedback start before anything can fail, so the launch-failure alert can offer feedback.
+        FluxDiagnostics.start()
+        _ = FluxFeedback.center
         _desktop = StateObject(wrappedValue: DesktopBridge())
     }
 
@@ -37,6 +41,11 @@ struct FluxApp: App {
                     .keyboardShortcut("-", modifiers: .command)
                 Button("Actual Size") { desktop.webView.pageZoom = 1 }
                     .keyboardShortcut("0", modifiers: .command)
+            }
+            CommandGroup(after: .help) {
+                // The page is a WKWebView, so the screenshot comes from a web snapshot (FluxFeedback.open).
+                Button("Send Feedback…") { FluxFeedback.open(.menu, webView: desktop.webView) }
+                    .keyboardShortcut("/", modifiers: [.command, .option])
             }
             CommandMenu("Go") {
                 Button("Convert Files") { activate(.convert) }.keyboardShortcut("1")
@@ -99,6 +108,7 @@ private struct MainWindow: View {
         // Fits a 13-inch display at its Larger Text setting (1024×640 points).
         DesktopWorkspace(webView: desktop.webView).frame(minWidth: 900, minHeight: 560)
             .onAppear { desktop.openSettings = { openSettings() } }
+            .feedbackHost(FluxFeedback.center)
     }
 }
 

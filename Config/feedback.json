@@ -1,0 +1,10 @@
+{
+  "app_name": "Flux",
+  "team_id": "8MLN9FH4F9",
+  "container": "iCloud.com.sequoyah.flux",
+  "s2s_service": "com.sequoyah.flux.cloudkit-s2s",
+  "s2s_service_per_environment": true,
+  "inbox": "feedback",
+  "schema": "Config/CloudKit/feedback-schema.ckdb",
+  "categories": ["bug", "idea", "other"]
+}

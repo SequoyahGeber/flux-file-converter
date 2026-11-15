@@ -17,7 +17,13 @@ import OfflineKit
     var formats: [String] { inputs.count > 1 ? ["zip"] : LocalFormats.outputs(for: inputs.first?.pathExtension.lowercased() ?? "") }
     var source: String { inputs.first?.pathExtension.lowercased() ?? "" }
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }
-    init() { OfflineEngine.clearTemporaryFiles() }
+    init() {
+        OfflineEngine.clearTemporaryFiles()
+        FluxDiagnostics.fileNames = { [weak self] in
+            guard let self else { return [] }
+            return self.inputs.map(\.lastPathComponent) + [self.filename] + (self.result.map { [$0.url.lastPathComponent] } ?? [])
+        }
+    }
     func selectSample(_ sample: ReviewResources.Sample) {
         guard !busy, let url = sample.url else { return }
         select([url]); target = sample.target
@@ -37,6 +43,8 @@ import OfflineKit
         result?.remove(); result = nil; error = ""; message = "Converting on this device…"; busy = true
         let urls = inputs, target = target, filename = filename, options = options, job = JobControl()
         control = job
+        let operation = urls.count > 1 ? "pack" : "convert", started = Date()
+        FluxDiagnostics.jobStarted(operation: operation, source: source, target: target, files: urls.count)
         Task {
             do {
                 let converted = try await Task.detached(priority: .userInitiated) {
@@ -44,7 +52,11 @@ import OfflineKit
                 }.value
                 if job.isCancelled { converted.remove(); throw LocalError.cancelled }
                 result = converted; message = "Ready to save."
-            } catch { self.error = error.localizedDescription; message = "" }
+                FluxDiagnostics.jobFinished(operation: operation, target: target, seconds: Date().timeIntervalSince(started))
+            } catch {
+                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: job.isCancelled, error: error)
+                self.error = error.localizedDescription; message = ""
+            }
             busy = false; control = nil
         }
     }

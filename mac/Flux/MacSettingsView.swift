@@ -1,13 +1,16 @@
 // SHARED-EXPERIENCE: settings | standard: PROJECT_STANDARDS.md §Settings | local implementation; changes must be mirrored in every app listed there
 import SwiftUI
 import OfflineKit
+import SharedDiagnostics
+import SharedFeedback
 
-/// The Settings window (⌘,) in the standard order: Output folder (app-specific), Appearance, Help, About.
+/// The Settings window (⌘,) in the standard order: Output folder (app-specific), Appearance, Diagnostics, Help, About.
 struct MacSettingsView: View {
     @ObservedObject var desktop: DesktopBridge
     @AppStorage(FluxSettings.Key.appearanceMode) private var appearance = AppearanceMode.system.rawValue
     @State private var showingPrivacy = false
     @State private var showingAcknowledgements = false
+    @State private var showingDiagnostics = false
 
     var body: some View {
         Form {
@@ -35,9 +38,15 @@ struct MacSettingsView: View {
                     ForEach(AppearanceMode.allCases) { Text($0.title).tag($0.rawValue) }
                 }.pickerStyle(.segmented).accessibilityIdentifier(AccessibilityID.Settings.appearance)
             }
+            Section("Diagnostics") {
+                Button("Show recent log…") { showingDiagnostics = true }
+                    .accessibilityIdentifier(AccessibilityID.Settings.diagnostics)
+            }
             Section("Help") {
                 Link("Support", destination: ReviewResources.supportURL)
                     .accessibilityIdentifier(AccessibilityID.Settings.support)
+                SendFeedbackSettingsRow(center: FluxFeedback.center)
+                    .accessibilityIdentifier(AccessibilityID.Settings.sendFeedback)
             }
             Section("About") {
                 LabeledContent("Version") { Text(AppVersion.display).textSelection(.enabled) }
@@ -53,5 +62,11 @@ struct MacSettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .sheet(isPresented: $showingPrivacy) { PolicySheet { PrivacyPolicyView() } }
         .sheet(isPresented: $showingAcknowledgements) { PolicySheet { AcknowledgementsView() } }
+        .sheet(isPresented: $showingDiagnostics) {
+            PolicySheet {
+                DiagnosticsView(center: FluxDiagnostics.center, sensitiveTerms: { FluxDiagnostics.fileNames() })
+            }
+        }
+        .feedbackHost(FluxFeedback.center)
     }
 }

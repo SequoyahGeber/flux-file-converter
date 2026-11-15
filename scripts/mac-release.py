@@ -130,9 +130,15 @@ def main():
         expected = {"com.apple.application-identifier", "com.apple.developer.team-identifier",
                     "com.apple.security.app-sandbox",
                     "com.apple.security.files.user-selected.read-write", "com.apple.security.files.bookmarks.app-scope",
-                    "com.apple.security.network.client", "com.apple.security.get-task-allow"}
+                    "com.apple.security.network.client", "com.apple.security.get-task-allow",
+                    # Feedback reports (SharedKit feedback): the iCloud container, CloudKit, and the
+                    # environment the signing step adds.
+                    "com.apple.developer.icloud-container-identifiers", "com.apple.developer.icloud-services",
+                    "com.apple.developer.icloud-container-environment"}
         if set(entitlements) - expected:
             raise SystemExit("Unexpected entitlements in the signed archive.")
+        if entitlements.get("com.apple.developer.icloud-container-identifiers") != ["iCloud.com.sequoyah.flux"]:
+            raise SystemExit("The signed archive lacks the iCloud container iCloud.com.sequoyah.flux (feedback).")
         binary = app / "Contents/MacOS/Flux File Converter"
         architectures = command(["lipo", "-archs", str(binary)], text=True).strip()
         if set(architectures.split()) != {"arm64", "x86_64"}:

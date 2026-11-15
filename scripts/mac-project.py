@@ -8,6 +8,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAC = ROOT / "mac"
 PROJECT = MAC / "Flux.xcodeproj"
 
+# Pinned exactly; the coordinator says when to move (0.2.1 before anything ships).
+SHAREDKIT_URL = "https://github.com/SequoyahGeber/SharedKit.git"
+SHAREDKIT_VERSION = "0.2.1"
+
 
 def identifier(name):
     return hashlib.sha256(name.encode()).hexdigest()[:24].upper()
@@ -53,7 +57,16 @@ def generate():
     package = add("offline-package", 'isa = XCLocalSwiftPackageReference; relativePath = "../native/OfflineKit";')
     dependency = add("offline-product", f'isa = XCSwiftPackageProductDependency; package = {package}; productName = OfflineKit;')
     link = add("offline-link", f'isa = PBXBuildFile; productRef = {dependency};')
-    frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({link}); runOnlyForDeploymentPostprocessing = 0;")
+    # SharedKit by exact version tag over HTTPS, never a path or a range (SharedKit README, "How an app pins").
+    # Written in Xcode's own multi-line layout so SharedKit's marker lint reads the pin.
+    shared = identifier("sharedkit-package")
+    objects.append(f"{shared} = {{\n\t\t\tisa = XCRemoteSwiftPackageReference;\n\t\t\trepositoryURL = \"{SHAREDKIT_URL}\";\n"
+                   f"\t\t\trequirement = {{\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = {SHAREDKIT_VERSION};\n\t\t\t}};\n\t\t}};")
+    shared_products = [add("sharedkit-" + name, f'isa = XCSwiftPackageProductDependency; package = {shared}; productName = {name};')
+                       for name in ("SharedDiagnostics", "SharedFeedback")]
+    shared_links = [add("sharedkit-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in shared_products]
+    product_dependencies = ", ".join([dependency] + shared_products)
+    frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join([link] + shared_links)}); runOnlyForDeploymentPostprocessing = 0;")
     project_configs, target_configs = [], []
     for mode in ["Debug", "Release"]:
         project_configs.append(add("project" + mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }};'))
@@ -74,13 +87,13 @@ def generate():
     target_list = add("target-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(target_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;")
     target = add("target", f'''isa = PBXNativeTarget; buildConfigurationList = {target_list};
         buildPhases = ({source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
-        packageProductDependencies = ({dependency}); name = Flux; productName = "Flux File Converter"; productReference = {product}; productType = "com.apple.product-type.application";''')
+        packageProductDependencies = ({product_dependencies}); name = Flux; productName = "Flux File Converter"; productReference = {product}; productType = "com.apple.product-type.application";''')
     project = add("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700;
         TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 27.0; }}; }}; }};
         buildConfigurationList = {project_list}; compatibilityVersion = "Xcode 14.0";
         developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base);
         mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = "";
-        packageReferences = ({package}); targets = ({target});''')
+        packageReferences = ({package}, {shared}); targets = ({target});''')
     PROJECT.mkdir(exist_ok=True)
     (PROJECT / "project.pbxproj").write_text("// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n" + "\n".join(objects) + f"\n}}; rootObject = {project}; }}\n")
     # Keep the shared icon as the source of truth. It is copied during project generation.

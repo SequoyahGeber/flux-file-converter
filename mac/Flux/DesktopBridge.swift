@@ -1,5 +1,7 @@
 import AppKit
 import WebKit
+import SharedDiagnostics
+import SharedFeedback
 import UniformTypeIdentifiers
 import OfflineKit
 
@@ -35,6 +37,11 @@ import OfflineKit
         super.init()
         OfflineEngine.clearTemporaryFiles()
         restoreOutputFolder()
+        FluxDiagnostics.fileNames = { [weak self] in
+            guard let self else { return [] }
+            return self.files.values.map(\.lastPathComponent) + self.results.values.map(\.url.lastPathComponent)
+                + self.saved.values.map(\.lastPathComponent)
+        }
         // Bigger Text is ⌘+ in the menu; also accept ⌘= (the same key without Shift).
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.webView.window,
@@ -64,7 +71,14 @@ import OfflineKit
                 alert.messageText = "Flux could not start"
                 alert.informativeText = "The local interface protection could not be loaded. Close Flux and open it again."
                 alert.addButton(withTitle: "Quit Flux")
-                alert.runModal()
+                alert.addButton(withTitle: "Send Feedback…")
+                let failure: any Error = error ?? URLError(.unknown)
+                FluxDiagnostics.center.journal.record(.error, .lifecycle, "launchFailed", ["error": .error(failure)])
+                if alert.runModal() == .alertSecondButtonReturn {
+                    // The form opens over the window; the person quits Flux when done.
+                    FluxFeedback.center.open(.launchProblem)
+                    return
+                }
                 NSApplication.shared.terminate(nil)
                 return
             }
@@ -311,6 +325,8 @@ import OfflineKit
             // The full engine's worker enforces its own two-hour tool limit.
             let token = full ? JobControl(deadline: 2 * 60 * 60 + 600) : JobControl(); control = token
             update["status"] = "running"; update["progress"] = 5; emit("update", update)
+            let started = Date()
+            FluxDiagnostics.jobStarted(operation: operation, source: ext, target: target, files: ids.count)
             do {
                 let inputs = ids.compactMap { files[$0] }
                 let result: LocalResult
@@ -330,6 +346,7 @@ import OfflineKit
                     "operation": operation, "sourceName": source.lastPathComponent, "sourceFamily": families.first { ($0["formats"] as! [String]).contains(ext) }?["id"] ?? "unsupported",
                     "completedAt": Date().timeIntervalSince1970 * 1000, "saved": false, "savedBytes": ((try? LocalPolicy.fileSize(source)) ?? 0) - size]
                 history.insert(record, at: 0); update["result"] = record; update["status"] = "done"; update["progress"] = 100
+                FluxDiagnostics.jobFinished(operation: operation, target: target, seconds: Date().timeIntervalSince(started))
                 while history.count > 100 {
                     let discarded = history.removeLast()
                     if let discardedID = discarded["id"] as? String {
@@ -337,7 +354,10 @@ import OfflineKit
                         saved.removeValue(forKey: discardedID)
                     }
                 }
-            } catch { update["status"] = cancelled ? "cancelled" : "error"; update["error"] = error.localizedDescription; update["progress"] = 0 }
+            } catch {
+                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: cancelled || token.isCancelled, error: error)
+                update["status"] = cancelled ? "cancelled" : "error"; update["error"] = error.localizedDescription; update["progress"] = 0
+            }
             control = nil; emit("update", update)
         }
         busy = false; emit("update", ["batchComplete": true, "history": history])

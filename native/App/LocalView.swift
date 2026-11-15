@@ -2,6 +2,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import OfflineKit
+import SharedFeedback
 #if os(macOS)
 import AppKit
 #else
@@ -135,11 +136,16 @@ struct LocalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    FeedbackButton(center: FluxFeedback.center)
+                        .accessibilityIdentifier(AccessibilityID.Converter.feedback)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings").accessibilityIdentifier(AccessibilityID.Settings.open)
                 }
             }
-            .sheet(isPresented: $showingSettings) { SettingsView() }
+            .sheet(isPresented: $showingSettings) { SettingsView().feedbackHost(FluxFeedback.center) }
+            .feedbackHost(FluxFeedback.center)
             #endif
             .confirmationDialog("Delete the unsaved result?", isPresented: $confirmingClear, titleVisibility: .visible) {
                 Button("Delete result", role: .destructive) { model.clear() }

@@ -5,6 +5,7 @@ enum AccessibilityID {
     enum Converter {
         static let workspace = "converter.workspace"
         static let chooseFiles = "converter.chooseFiles"
+        static let feedback = "converter.feedback"
         static let trySample = "converter.trySample"
         static func sample(_ id: String) -> String { "converter.sample." + id }
         static let outputFormat = "converter.outputFormat"
@@ -27,6 +28,8 @@ enum AccessibilityID {
         static let chooseOutputFolder = "settings.chooseOutputFolder"
         static let showOutputFolder = "settings.showOutputFolder"
         static let forgetOutputFolder = "settings.forgetOutputFolder"
+        static let diagnostics = "settings.diagnostics"
+        static let sendFeedback = "settings.sendFeedback"
     }
     enum Privacy {
         static let text = "privacy.text"

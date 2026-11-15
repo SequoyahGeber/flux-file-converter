@@ -7,4 +7,7 @@
   <key>com.apple.security.files.user-selected.read-write</key><true/>
   <!-- Keeps the chosen save folder across launches (output.folder bookmark). -->
   <key>com.apple.security.files.bookmarks.app-scope</key><true/>
+  <!-- Feedback reports go to this container's public database (SharedKit feedback, BS-003/BS-004). -->
+  <key>com.apple.developer.icloud-container-identifiers</key><array><string>iCloud.com.sequoyah.flux</string></array>
+  <key>com.apple.developer.icloud-services</key><array><string>CloudKit</string></array>
 </dict></plist>

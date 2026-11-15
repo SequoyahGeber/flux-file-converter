@@ -1,0 +1,27 @@
+// SharedKit's feedback inbox schema: the public-database part of every app's CloudKit container (D-014).
+// Each app copies this file unchanged to Config/CloudKit/feedback-schema.ckdb; `python3 -I tools/feedback.py schema`
+// (from SharedKit, with the app's feedback config) merges it into the container's exported Development schema, then
+// deploy to Production in the CloudKit Console. Field names and category values (bug, idea, other, plus app extras
+// such as Ippo's content) are the ones earlier reports already use, so every record already sent still reads.
+// Anyone signed in to iCloud may create a report and edit their own; only the Maintainer role (the owner's iCloud
+// user, assigned once in the Console) can read anyone else's. Never grant READ to "_world" or "_icloud":
+// reports carry diagnostic logs and screenshots.
+CREATE ROLE Maintainer;
+
+RECORD TYPE FeedbackReport (
+    "___createTime" TIMESTAMP QUERYABLE SORTABLE,
+    "___recordID" REFERENCE QUERYABLE,
+    "___createdBy" REFERENCE QUERYABLE,
+    category STRING QUERYABLE,
+    message STRING,
+    context STRING,
+    device STRING,
+    contentVersion STRING,
+    flags STRING,
+    flagCount INT64,
+    log ASSET,
+    screenshot ASSET,
+    GRANT WRITE TO "_creator",
+    GRANT CREATE TO "_icloud",
+    GRANT WRITE, CREATE, READ TO Maintainer
+);
