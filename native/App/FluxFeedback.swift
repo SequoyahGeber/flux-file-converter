@@ -61,23 +61,15 @@ enum FluxFeedback {
 
     #if os(macOS)
     /// Opens the form with a screenshot of the window. The window's content is a WKWebView, which AppKit's view
-    /// caching draws blank, so the web page is snapshotted first and laid over the web view while the form opens.
+    /// caching draws blank, so the page is snapshotted through WebKit (SharedKit's screenshot provider, 0.3.0).
     static func open(_ source: FeedbackSource, webView: WKWebView) {
-        guard !center.isPresented else { return }
-        guard source != .settings, let window = webView.window else {
-            center.open(source, window: webView.window)
-            return
-        }
-        webView.takeSnapshot(with: nil) { image, _ in
-            MainActor.assumeIsolated {
-                guard let image else { center.open(source, window: window); return }
-                let cover = NSImageView(frame: webView.bounds)
-                cover.image = image
-                cover.imageScaling = .scaleAxesIndependently
-                cover.autoresizingMask = [.width, .height]
-                webView.addSubview(cover)
-                center.open(source, window: window)
-                cover.removeFromSuperview()
+        Task { await center.open(source, window: webView.window) { await snapshot(of: webView) } }
+    }
+
+    private static func snapshot(of webView: WKWebView) async -> CGImage? {
+        await withCheckedContinuation { continuation in
+            webView.takeSnapshot(with: nil) { image, _ in
+                continuation.resume(returning: image?.cgImage(forProposedRect: nil, context: nil, hints: nil))
             }
         }
     }

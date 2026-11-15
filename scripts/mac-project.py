@@ -10,7 +10,7 @@ PROJECT = MAC / "Flux.xcodeproj"
 
 # Pinned exactly; the coordinator says when to move (0.2.1 before anything ships).
 SHAREDKIT_URL = "https://github.com/SequoyahGeber/SharedKit.git"
-SHAREDKIT_VERSION = "0.2.1"
+SHAREDKIT_VERSION = "0.4.0"
 
 
 def identifier(name):
@@ -46,6 +46,10 @@ def generate():
     ref = add("en.lproj", 'isa = PBXFileReference; lastKnownFileType = folder; path = en.lproj; sourceTree = "<group>";')
     resource_refs.append(ref)
     resource_builds.append(add("en.lprojbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
+    # The app's own words (English; the key is the English text). Xcode extracts SwiftUI literals into it.
+    ref = add("Localizable.xcstrings", 'isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = "../../native/App/Localizable.xcstrings"; sourceTree = "<group>";')
+    resource_refs.append(ref)
+    resource_builds.append(add("Localizable.xcstringsbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
     info = add("Info.plist", 'isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";')
     entitlements = add("Flux.entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flux.entitlements; sourceTree = "<group>";')
     product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux File Converter.app"; sourceTree = BUILT_PRODUCTS_DIR;')
@@ -63,7 +67,7 @@ def generate():
     objects.append(f"{shared} = {{\n\t\t\tisa = XCRemoteSwiftPackageReference;\n\t\t\trepositoryURL = \"{SHAREDKIT_URL}\";\n"
                    f"\t\t\trequirement = {{\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = {SHAREDKIT_VERSION};\n\t\t\t}};\n\t\t}};")
     shared_products = [add("sharedkit-" + name, f'isa = XCSwiftPackageProductDependency; package = {shared}; productName = {name};')
-                       for name in ("SharedDiagnostics", "SharedFeedback")]
+                       for name in ("SharedAbout", "SharedDiagnostics", "SharedFeedback")]
     shared_links = [add("sharedkit-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in shared_products]
     product_dependencies = ", ".join([dependency] + shared_products)
     frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join([link] + shared_links)}); runOnlyForDeploymentPostprocessing = 0;")
@@ -75,7 +79,7 @@ def generate():
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
             CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
-            ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES;
+            ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; SWIFT_EMIT_LOC_STRINGS = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
             MARKETING_VERSION = {(ROOT / "native/VERSION").read_text().strip()}; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = {"-Onone" if mode == "Debug" else "-O"};

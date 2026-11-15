@@ -1,7 +1,7 @@
 // SHARED-EXPERIENCE: settings | standard: PROJECT_STANDARDS.md §Settings | local implementation; changes must be mirrored in every app listed there
 #if os(iOS)
 import SwiftUI
-import OfflineKit
+import SharedAbout
 import SharedDiagnostics
 import SharedFeedback
 
@@ -24,21 +24,10 @@ struct SettingsView: View {
                             .navigationTitle("Diagnostics").navigationBarTitleDisplayMode(.inline)
                     }.accessibilityIdentifier(AccessibilityID.Settings.diagnostics)
                 }
-                Section("Help") {
-                    Link("Support", destination: ReviewResources.supportURL)
-                        .accessibilityIdentifier(AccessibilityID.Settings.support)
-                    SendFeedbackSettingsRow(center: FluxFeedback.center)
-                        .accessibilityIdentifier(AccessibilityID.Settings.sendFeedback)
-                }
-                Section("About") {
-                    LabeledContent("Version") {
-                        Text(AppVersion.display).textSelection(.enabled)
-                    }.accessibilityIdentifier(AccessibilityID.Settings.version)
-                    NavigationLink("Acknowledgements") { AcknowledgementsView() }
-                        .accessibilityIdentifier(AccessibilityID.Settings.acknowledgements)
-                    NavigationLink("Privacy policy") { PrivacyPolicyView() }
-                        .accessibilityIdentifier(AccessibilityID.Settings.privacyPolicy)
-                }
+                // "Support", "Send feedback" (no screenshot from Settings, D-011); then "Version",
+                // "Acknowledgements", "Privacy policy".
+                HelpSettingsSection(configuration: FluxAbout.configuration) { FluxFeedback.center.open(.settings) }
+                AboutSettingsSection(configuration: FluxAbout.configuration) { FluxAbout.privacyPolicyText }
             }
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -1,0 +1,13 @@
+{
+  "app_id": "flux",
+  "app_name": "Flux",
+  "project": "mac/Flux.xcodeproj",
+  "scheme": "Flux",
+  "bundle_id": "com.sequoyah.flux.mac",
+  "team_id": "8MLN9FH4F9",
+  "platforms": {
+    "mac": { "package": "release/native/Flux-Local-1.0.3-{build}.pkg" }
+  },
+  "developer_dir": "/Applications/Xcode.app/Contents/Developer",
+  "require_clean_tree": true
+}

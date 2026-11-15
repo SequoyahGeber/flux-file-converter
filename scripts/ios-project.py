@@ -9,7 +9,7 @@ PROJECT = MAC / "Flux.xcodeproj"
 
 # Pinned exactly; the coordinator says when to move (0.2.1 before anything ships).
 SHAREDKIT_URL = "https://github.com/SequoyahGeber/SharedKit.git"
-SHAREDKIT_VERSION = "0.2.1"
+SHAREDKIT_VERSION = "0.4.0"
 
 
 def identifier(name):
@@ -36,6 +36,10 @@ def generate():
         ref = add(file, f'isa = PBXFileReference; lastKnownFileType = {"folder.assetcatalog" if file == "Assets.xcassets" else "file"}; path = "{file}"; sourceTree = "<group>";')
         resource_refs.append(ref)
         resource_builds.append(add(file + "build", f"isa = PBXBuildFile; fileRef = {ref};"))
+    # The app's own words (English; the key is the English text). Xcode extracts SwiftUI literals into it.
+    ref = add("Localizable.xcstrings", 'isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = "../../native/App/Localizable.xcstrings"; sourceTree = "<group>";')
+    resource_refs.append(ref)
+    resource_builds.append(add("Localizable.xcstringsbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
     info = add("Info.plist", 'isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";')
     entitlements = add("Flux.entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flux.entitlements; sourceTree = "<group>";')
     product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = Flux.app; sourceTree = BUILT_PRODUCTS_DIR;')
@@ -53,7 +57,7 @@ def generate():
     objects.append(f"{shared} = {{\n\t\t\tisa = XCRemoteSwiftPackageReference;\n\t\t\trepositoryURL = \"{SHAREDKIT_URL}\";\n"
                    f"\t\t\trequirement = {{\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = {SHAREDKIT_VERSION};\n\t\t\t}};\n\t\t}};")
     shared_products = [add("sharedkit-" + name, f'isa = XCSwiftPackageProductDependency; package = {shared}; productName = {name};')
-                       for name in ("SharedDiagnostics", "SharedFeedback")]
+                       for name in ("SharedAbout", "SharedDiagnostics", "SharedFeedback")]
     shared_links = [add("sharedkit-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in shared_products]
     product_dependencies = ", ".join([dependency] + shared_products)
     frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join([link] + shared_links)}); runOnlyForDeploymentPostprocessing = 0;")
@@ -66,7 +70,7 @@ def generate():
             CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
             CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; TARGETED_DEVICE_FAMILY = 1;
             ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-            ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = YES;
+            ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = YES; SWIFT_EMIT_LOC_STRINGS = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
             MARKETING_VERSION = {(ROOT / "native/VERSION").read_text().strip()}; COMBINE_HIDPI_IMAGES = YES;
             SWIFT_OPTIMIZATION_LEVEL = {"-Onone" if mode == "Debug" else "-O"};
@@ -87,7 +91,12 @@ def generate():
     # Attach references to the existing groups so the project stays inspectable.
     objects[:] = [value.replace(f'children = ({product});', f'children = ({product}, {test_product});').replace(f'children = ({", ".join(source_refs + resource_refs + [info, entitlements])});', f'children = ({", ".join(source_refs + resource_refs + [info, entitlements, test_source])});') for value in objects]
     test_sources = add("review-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_build}, {ids_build}); runOnlyForDeploymentPostprocessing = 0;')
-    test_frameworks = add("review-test-frameworks", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+    # UI tests only: SharedKit's shared flows and fast-reuse helper (they link XCTest), and the shared ids.
+    test_products = [add("sharedkit-test-" + name, f'isa = XCSwiftPackageProductDependency; package = {shared}; productName = {name};')
+                     for name in ("SharedTestSupport", "SharedStrings")]
+    test_links = [add("sharedkit-test-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in test_products]
+    test_product_dependencies = ", ".join(test_products)
+    test_frameworks = add("review-test-frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join(test_links)}); runOnlyForDeploymentPostprocessing = 0;")
     proxy = add("review-test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {identifier("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Flux;')
     test_dependency = add("review-test-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
     test_configs = [add("review-test-" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
@@ -99,7 +108,7 @@ def generate():
     test_configs_list = add("review-test-config-list", f'isa = XCConfigurationList; buildConfigurations = ({", ".join(test_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
     test_target = add("review-test-target", f'''isa = PBXNativeTarget; buildConfigurationList = {test_configs_list};
         buildPhases = ({test_sources}, {test_frameworks}); buildRules = (); dependencies = ({test_dependency});
-        name = FluxUITests; productName = FluxUITests; productReference = {test_product}; productType = "com.apple.product-type.bundle.ui-testing";''')
+        packageProductDependencies = ({test_product_dependencies}); name = FluxUITests; productName = FluxUITests; productReference = {test_product}; productType = "com.apple.product-type.bundle.ui-testing";''')
     project = add("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 2700;
         TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 27.0; }}; }}; }};
         buildConfigurationList = {project_list}; compatibilityVersion = "Xcode 14.0";

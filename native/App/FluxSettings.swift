@@ -32,13 +32,3 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 }
-
-enum AppVersion {
-    /// "1.0.3 (2026111501)"; a missing value shows "?".
-    static var display: String {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let short = info["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info["CFBundleVersion"] as? String ?? "?"
-        return "\(short) (\(build))"
-    }
-}

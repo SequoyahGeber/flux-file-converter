@@ -1,6 +1,7 @@
 // SHARED-EXPERIENCE: mac-menus | standard: PROJECT_STANDARDS.md §Mac menus | local implementation; changes must be mirrored in every app listed there
 import SwiftUI
 import WebKit
+import SharedAbout
 import SharedFeedback
 
 @main
@@ -45,10 +46,14 @@ struct FluxApp: App {
                 Button("Actual Size") { desktop.webView.pageZoom = 1 }
                     .keyboardShortcut("0", modifiers: .command)
             }
-            CommandGroup(after: .help) {
-                // The page is a WKWebView, so the screenshot comes from a web snapshot (FluxFeedback.open).
+            // Help menu in the standard order after the system search field (§Mac menus): Keyboard Shortcuts,
+            // Send Feedback…, Flux Support, Privacy Policy. Flux has no Help book, so the system item goes.
+            CommandGroup(replacing: .help) {
+                KeyboardShortcutsMenuButton()
+                // The page is a WKWebView, so the screenshot comes from WebKit (FluxFeedback.open).
                 Button("Send Feedback…") { FluxFeedback.open(.menu, webView: desktop.webView) }
                     .keyboardShortcut("/", modifiers: [.command, .option])
+                SupportMenuButtons(configuration: FluxAbout.configuration)
             }
             CommandMenu("Go") {
                 Button("Convert Files") { activate(.convert) }.keyboardShortcut("1")
@@ -62,6 +67,7 @@ struct FluxApp: App {
             MacSettingsView(desktop: desktop)
                 .preferredColorScheme((AppearanceMode(rawValue: appearance) ?? .system).colorScheme)
         }
+        KeyboardShortcutsScene(sections: FluxAbout.shortcuts)
     }
 
     private func applyAppearance() {

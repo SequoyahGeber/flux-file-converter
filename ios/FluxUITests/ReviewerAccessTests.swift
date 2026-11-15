@@ -1,9 +1,63 @@
 import XCTest
+import SharedStrings
+import SharedTestSupport
 
 final class ReviewerAccessTests: XCTestCase {
-    func testReviewerCanReadPolicyConvertSamplesAndReachSystemSaveWithoutLogin() {
+    static let bundleID = "com.sequoyah.flux.mac"
+    let app = XCUIApplication()
+
+    /// Reuses the running app with an in-place reset when the previous test passed (D-083), else launches it.
+    func start() {
         continueAfterFailure = false
-        let app = XCUIApplication(); app.launchArguments = ["-uiTesting", "-resetData"]; app.launch()
+        UITestAppReuse.launchOrReset(app, bundleID: Self.bundleID)
+        XCTAssertTrue(SharedUIFlows.appears(app.navigationBars["Flux"], within: 15), "Converter on screen")
+    }
+
+    func openSettings() {
+        let settings = app.buttons[AccessibilityID.Settings.open]
+        XCTAssertTrue(SharedUIFlows.appears(settings, within: 10))
+        // A system toolbar button: iOS sizes it (36 pt glass button) and ignores the label's 44 pt frame.
+        XCTAssertTrue(settings.isHittable, "Settings button can be tapped")
+        settings.tap()
+    }
+
+    func testSettingsHaveTheStandardSectionsVersionAndOfflinePolicy() {
+        start()
+        openSettings()
+        SharedUIFlows.assertSettingsSections(in: app, appSections: ["Appearance", "Diagnostics"])
+        SharedUIFlows.assertAboutShowsVersion(in: app)
+        app.buttons[SharedAccessibilityID.Settings.privacyPolicy].tap()
+        let policy = app.staticTexts[AccessibilityID.Privacy.text]
+        XCTAssertTrue(SharedUIFlows.appears(policy, within: 10))
+        XCTAssertTrue(policy.label.contains("collect no personal information"))
+        XCTAssertTrue(app.descendants(matching: .any)[SharedAccessibilityID.Privacy.updated].exists, "Updated line")
+        // The main screen's bar stays in the tree under the sheet: go back from the policy's own bar.
+        app.navigationBars["Privacy policy"].buttons["BackButton"].tap()
+        let done = app.buttons[AccessibilityID.Settings.done]
+        XCTAssertTrue(SharedUIFlows.appears(done, within: 10)); done.tap()
+    }
+
+    func testFeedbackFromTheConverterButtonReachesTheStandInInbox() {
+        start()
+        SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromButton(app) }
+    }
+
+    func testFeedbackFromSettingsReachesTheStandInInbox() {
+        start()
+        SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromSettings(app) { openSettings() } }
+    }
+
+    /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
+    func testAccessibilityAudit() throws {
+        start()
+        try SharedUIFlows.accessibilityAudit(of: app)
+        openSettings()
+        XCTAssertTrue(SharedUIFlows.appears(app.buttons[AccessibilityID.Settings.done], within: 10))
+        try SharedUIFlows.accessibilityAudit(of: app)
+    }
+
+    func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {
+        start()
         let workspace = app.scrollViews[AccessibilityID.Converter.workspace]
         func reveal(_ element: XCUIElement, _ name: String) {
             XCTAssertTrue(element.waitForExistence(timeout: 10), name)
@@ -31,21 +85,6 @@ final class ReviewerAccessTests: XCTestCase {
             let available = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: app.buttons[AccessibilityID.Converter.save])
             XCTAssertEqual(XCTWaiter.wait(for: [available], timeout: 10), .completed, "Cancelled export stays available")
         }
-        XCTAssertTrue(app.navigationBars["Flux"].waitForExistence(timeout: 10))
-        // Settings: gear at the top trailing corner, sheet with Done; the policy reads offline.
-        let settings = app.buttons[AccessibilityID.Settings.open]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10))
-        // A system toolbar button: iOS sizes it (36 pt glass button) and ignores the label's 44 pt frame.
-        XCTAssertTrue(settings.isHittable, "Settings button can be tapped")
-        settings.tap()
-        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.Settings.version].waitForExistence(timeout: 10), "Version row")
-        app.buttons[AccessibilityID.Settings.privacyPolicy].tap()
-        let policy = app.staticTexts[AccessibilityID.Privacy.text]
-        XCTAssertTrue(policy.waitForExistence(timeout: 10))
-        XCTAssertTrue(policy.label.contains("collect no personal information"))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        let done = app.buttons[AccessibilityID.Settings.done]
-        XCTAssertTrue(done.waitForExistence(timeout: 10)); done.tap()
         workspace.swipeDown()
         for sample in ["image", "document", "video", "data", "archive"] {
             workspace.swipeDown()

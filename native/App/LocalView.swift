@@ -25,21 +25,21 @@ struct LocalView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "arrow.left.arrow.right").font(.title).foregroundStyle(.white)
-                            .frame(width: 56, height: 56).background(.purple.gradient, in: RoundedRectangle(cornerRadius: 15))
+                VStack(alignment: .leading, spacing: FluxSpace.xxl) {
+                    HStack(spacing: FluxSpace.l) {
+                        Image(icon: .appMark).font(FluxType.badge).foregroundStyle(.white)
+                            .frame(width: 56, height: 56).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.l))
                             .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: FluxSpace.xs) {
                             Text("Convert. Keep it local.").font(.title2.bold())
-                            Label("On-device · No uploads · No login", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
+                            Label("On-device · No uploads · No login", icon: .onDevice).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: FluxSpace.l) {
                         Button { importing = true } label: {
-                            Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", systemImage: "plus.circle.fill")
+                            Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", icon: .chooseFiles)
                                 .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        }.buttonStyle(.borderedProminent).tint(.purple).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
+                        }.buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
                         if model.inputs.isEmpty {
                             Text("Convert an image, video, audio file or document. Select several files to make a ZIP.")
                                 .font(.callout).foregroundStyle(.secondary)
@@ -48,7 +48,7 @@ struct LocalView: View {
                                     Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier(AccessibilityID.Converter.sample(sample.id))
                                 }
                             } label: {
-                                Label("Explore a sample file", systemImage: "sparkles")
+                                Label("Explore a sample file", icon: .sample)
                                     .frame(minHeight: 44).contentShape(Rectangle())
                             }
                                 .accessibilityIdentifier(AccessibilityID.Converter.trySample).disabled(model.busy || saving)
@@ -56,20 +56,20 @@ struct LocalView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
                             ForEach(Array(model.inputs.prefix(5).enumerated()), id: \.offset) { _, url in
-                                Label(url.lastPathComponent, systemImage: "doc").font(.callout).lineLimit(2).truncationMode(.middle)
+                                Label(url.lastPathComponent, icon: .file).font(.callout).lineLimit(2).truncationMode(.middle)
                             }
                             if model.inputs.count > 5 { Text("and \(model.inputs.count - 5) more files").font(.caption).foregroundStyle(.secondary) }
                         }
-                    }.padding(18).background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+                    }.padding(FluxSpace.xl).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
                     if !model.inputs.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: FluxSpace.l) {
+                            VStack(alignment: .leading, spacing: FluxSpace.s) {
                                 Text("Convert to").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 Picker("Convert to", selection: $model.target) {
                                     ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract archive" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
                                 }.pickerStyle(.menu).accessibilityIdentifier(AccessibilityID.Converter.outputFormat)
                             }
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: FluxSpace.s) {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
@@ -89,7 +89,7 @@ struct LocalView: View {
                                 }
                             }
                             Text(LocalFormats.note(source: model.source, target: model.target, lossless: model.options.lossless)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        }.disabled(model.busy || saving).padding(18).background(.quaternary, in: RoundedRectangle(cornerRadius: 18))
+                        }.disabled(model.busy || saving).padding(FluxSpace.xl).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
                         if model.busy {
                             HStack {
                                 ProgressView(); Text(model.message); Spacer()
@@ -98,20 +98,20 @@ struct LocalView: View {
                                 }
                             }
                         } else {
-                            Button { model.convert() } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
+                            Button { model.convert() } label: { Label("Convert", icon: .convert).frame(maxWidth: .infinity).padding(.vertical, 10) }
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
                         }
                     }
                     if let result = model.result {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Label(model.message, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: FluxSpace.m) {
+                            Label(model.message, icon: .success).foregroundStyle(FluxColor.success)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
-                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
+                            Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", icon: .save).frame(maxWidth: .infinity).padding(.vertical, 10) }
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(.secondary)
-                        }.padding(18).background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                        }.padding(FluxSpace.xl).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.xl))
                     }
-                    if !model.error.isEmpty { Label(model.error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout).textSelection(.enabled) }
+                    if !model.error.isEmpty { Label(model.error, icon: .warning).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
@@ -125,22 +125,22 @@ struct LocalView: View {
                             }.disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.clear)
                         }
                     }.font(.callout)
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: FluxSpace.s) {
                         Text("5 GB media · 512 MB other files · One conversion at a time")
                         Text("Keep Flux open while converting. Temporary working files are cleared when you clear the job or reopen Flux.")
                     }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }.padding(24).frame(maxWidth: 700)
+                }.padding(FluxSpace.xxl).frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
             }.accessibilityIdentifier(AccessibilityID.Converter.workspace).navigationTitle("Flux")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // SharedKit's in-context button (id feedback.button, exclamationmark.bubble).
                     FeedbackButton(center: FluxFeedback.center)
-                        .accessibilityIdentifier(AccessibilityID.Converter.feedback)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                    Button { showingSettings = true } label: { Image(icon: .settings) }
                         .accessibilityLabel("Settings").accessibilityIdentifier(AccessibilityID.Settings.open)
                 }
             }

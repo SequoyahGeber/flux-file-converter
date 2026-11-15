@@ -1,0 +1,29 @@
+{
+  "app_id": "flux",
+  "app_name": "Flux",
+  "project": "ios/Flux.xcodeproj",
+  "scheme": "Flux",
+  "bundle_id": "com.sequoyah.flux.mac",
+  "team_id": "8MLN9FH4F9",
+  "platforms": {
+    "ios": {
+      "product": "Flux.app",
+      "entitlements": {
+        "com.apple.developer.icloud-container-identifiers": ["iCloud.com.sequoyah.flux"],
+        "com.apple.developer.icloud-services": ["CloudKit"]
+      }
+    }
+  },
+  "export_options": {
+    "signingStyle": "manual",
+    "provisioningProfiles": { "com.sequoyah.flux.mac": "Flux Universal iOS Store" }
+  },
+  "build_settings": {
+    "DEVELOPMENT_TEAM": "8MLN9FH4F9",
+    "FLUX_SIGNING_IDENTITY": "Apple Distribution",
+    "FLUX_PROFILE": "Flux Universal iOS Store"
+  },
+  "output_dir": "release/testflight",
+  "developer_dir": "/Applications/Xcode.app/Contents/Developer",
+  "require_clean_tree": true
+}
