@@ -57,7 +57,7 @@ def generate():
     objects.append(f"{shared} = {{\n\t\t\tisa = XCRemoteSwiftPackageReference;\n\t\t\trepositoryURL = \"{SHAREDKIT_URL}\";\n"
                    f"\t\t\trequirement = {{\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = {SHAREDKIT_VERSION};\n\t\t\t}};\n\t\t}};")
     shared_products = [add("sharedkit-" + name, f'isa = XCSwiftPackageProductDependency; package = {shared}; productName = {name};')
-                       for name in ("SharedAbout", "SharedDiagnostics", "SharedFeedback")]
+                       for name in ("SharedAbout", "SharedDesign", "SharedDiagnostics", "SharedFeedback", "SharedStrings")]
     shared_links = [add("sharedkit-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in shared_products]
     product_dependencies = ", ".join([dependency] + shared_products)
     frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join([link] + shared_links)}); runOnlyForDeploymentPostprocessing = 0;")

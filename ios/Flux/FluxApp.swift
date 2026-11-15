@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import OfflineKit
+import SharedDesign
 import SharedDiagnostics
 import SharedFeedback
 
@@ -24,6 +25,7 @@ struct FluxApp: App {
     WindowGroup {
       // A new identity rebuilds every screen's state and dismisses what was presented over it.
       LocalView().id(session.generation)
+        .tonePalette(FluxPalette.tones)
         .transaction { if LaunchFlags.uiTesting { $0.disablesAnimations = true } }
     }
     .onChange(of: scenePhase) { FluxDiagnostics.center.sceneBecame(active: scenePhase == .active) }
