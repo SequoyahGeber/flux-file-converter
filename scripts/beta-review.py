@@ -19,7 +19,7 @@ CONTACT_FIELDS = ["contactFirstName", "contactLastName", "contactEmail", "contac
 DESCRIPTION = ("Flux converts files entirely on your Mac or iPhone, with no account or server connection. "
     "Convert images, compatible media, supported documents, PDF, structured data and subtitles. "
     "Compress supported files, create ZIP archives and extract ZIP safely. Choose output names and save locations. "
-    "Try a sample includes fictional files using the real converter. Local support depends on content and codecs; "
+    "Explore a sample file uses fictional files and the real converter. Local support depends on content and codecs; "
     "see Supported conversions / All formats. Media is limited to 5 GB and other files to 512 MB. "
     "Keep Flux open during conversion. No advertising, analytics or tracking. Support: " + SITE + "/support/")
 

@@ -4,7 +4,7 @@ Flux’s native Mac and iPhone apps work entirely on the device. No Unraid conne
 
 Choose one file, select an output format and set a name. Convert locally, then use Save to… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract ZIP to folder to unzip. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
-Try a sample includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Try a sample before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read the privacy policy offline in Settings › Privacy policy, on iPhone and on Mac.
+Explore a sample file includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Explore a sample file before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read the privacy policy offline in Settings › Privacy policy, on iPhone and on Mac.
 
 In the iPhone Files picker, Recents is a view of recently accessed files, not a separate storage folder. Files shown there can live in Downloads, iCloud Drive or another provider. Browse shows their actual folders. Selecting a PDF through Recents and saving a PNG in Downloads does not move the PDF. If a save picker asks to replace an existing file, choose a different name to keep both copies.
 
