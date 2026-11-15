@@ -6,6 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # Same Xcode as the release scripts and the other apps, whatever xcode-select points at.
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+# heavy.sh runs through the /usr/bin/python3 shim, which exports the beta Xcode's SDKROOT (D-062).
+unset SDKROOT
 # Build products go outside the repo: Finder and file-provider metadata on the checkout
 # make codesign reject resource bundles built inside native/OfflineKit/.build.
 swift test --package-path native/OfflineKit --scratch-path "${TMPDIR:-/tmp}/flux-offlinekit-check"
