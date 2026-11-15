@@ -43,7 +43,8 @@ final class ReviewerAccessTests: XCTestCase {
         let policy = app.staticTexts[AccessibilityID.Privacy.text]
         XCTAssertTrue(policy.waitForExistence(timeout: 10))
         XCTAssertTrue(policy.label.contains("collect no personal information"))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // The main screen's bar stays in the tree under the sheet: go back from the policy's own bar.
+        app.navigationBars["Privacy policy"].buttons["BackButton"].tap()
         let done = app.buttons[AccessibilityID.Settings.done]
         XCTAssertTrue(done.waitForExistence(timeout: 10)); done.tap()
         workspace.swipeDown()
