@@ -40,5 +40,30 @@ struct MacPolicyTests {
     }
     assert(fm.fileExists(atPath: folder.path))
     print("Atomic safe-save checks passed")
+    try outputFolderRestoreChecks(root)
+    print("Output folder restore checks passed")
   }
+}
+
+/// The saved output folder: access starts before the folder is checked (the sandbox hides it until then),
+/// and a folder that is missing for now is released without being kept or erased.
+func outputFolderRestoreChecks(_ root: URL) throws {
+  let folder = root.appendingPathComponent("chosen-folder")
+  try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+  var accessing = false, stopped = 0
+  let restored = OutputFolderRestore.restore(
+    resolve: { folder },
+    startAccess: { _ in accessing = true; return true },
+    stopAccess: { _ in stopped += 1 },
+    exists: { url in accessing && FileManager.default.fileExists(atPath: url.path) })
+  assert(restored?.url == folder && restored?.scoped == true, "A sandboxed folder must be found once access has started")
+  assert(stopped == 0)
+  accessing = false
+  let missing = OutputFolderRestore.restore(
+    resolve: { root.appendingPathComponent("unmounted") },
+    startAccess: { _ in accessing = true; return true },
+    stopAccess: { _ in stopped += 1 },
+    exists: { FileManager.default.fileExists(atPath: $0.path) })
+  assert(missing == nil && stopped == 1, "A missing folder is released for this launch")
+  assert(OutputFolderRestore.restore(resolve: { nil }, startAccess: { _ in true }, stopAccess: { _ in }, exists: { _ in true }) == nil)
 }

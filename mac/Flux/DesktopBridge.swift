@@ -121,15 +121,13 @@ import OfflineKit
         var stale = false
         // The saved choice is only replaced when the person chooses again or forgets it: a folder on
         // an unmounted volume comes back once the volume does. Until then saves start where macOS left off.
-        guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) else { return }
-        // Start access before touching the folder: the sandbox hides it until then.
-        let scoped = url.startAccessingSecurityScopedResource()
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            // Gone for now: fall back to the save dialog's own location for this launch.
-            if scoped { url.stopAccessingSecurityScopedResource() }
-            return
-        }
-        outputFolder = url; outputScoped = scoped
+        guard let restored = OutputFolderRestore.restore(
+            resolve: { try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) },
+            startAccess: { $0.startAccessingSecurityScopedResource() },
+            stopAccess: { $0.stopAccessingSecurityScopedResource() },
+            exists: { FileManager.default.fileExists(atPath: $0.path) }) else { return }
+        let url = restored.url
+        outputFolder = url; outputScoped = restored.scoped
         if stale, let fresh = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
             UserDefaults.standard.set(fresh, forKey: FluxSettings.Key.outputFolder)
         }
