@@ -1,10 +1,10 @@
 # Flux support
 
-Flux File Converter's native Mac and iPhone apps work entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
+Flux’s native Mac and iPhone apps work entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
 
 Choose one file, select an output format and set a name. Convert locally, then use Save to… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract ZIP to folder to unzip. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
-Try a sample includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Try a sample before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read Privacy & support offline on iPhone, or Settings → Privacy policy on Mac.
+Try a sample includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Try a sample before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read the privacy policy offline in Settings › Privacy policy, on iPhone and on Mac.
 
 In the iPhone Files picker, Recents is a view of recently accessed files, not a separate storage folder. Files shown there can live in Downloads, iCloud Drive or another provider. Browse shows their actual folders. Selecting a PDF through Recents and saving a PNG in Downloads does not move the PDF. If a save picker asks to replace an existing file, choose a different name to keep both copies.
 
@@ -18,7 +18,7 @@ The separate website keeps its existing 5 GB eligible media / 1.9 GB other uploa
 
 ## Activity Monitor on Mac
 
-The app and its main executable are named Flux File Converter. Native conversions run inside that process, including the linked media library, so their CPU and memory usage belongs to Flux. The sidebar uses Apple's WebKit, which macOS runs with separate system helpers. Flux does not launch separate command-line conversion workers. macOS controls its framework helper names and isolation.
+The app is named Flux; its file and main executable are named Flux File Converter. Native conversions run inside that process, including the linked media library, so their CPU and memory usage belongs to Flux. The sidebar uses Apple's WebKit, which macOS runs with separate system helpers. Flux does not launch separate command-line conversion workers. macOS controls its framework helper names and isolation.
 
 In Activity Monitor, search for Flux to find the main process. The Energy tab shows energy information for apps and their processes; Energy Impact is a relative score. View → All Processes, Hierarchically shows parent/child relationships. See [Apple's energy guide](https://support.apple.com/guide/activity-monitor/view-energy-consumption-actmntr43697/mac) and [process guide](https://support.apple.com/guide/activity-monitor/view-information-about-processes-actmntr1001/mac).
 

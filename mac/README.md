@@ -1,4 +1,4 @@
-# Flux Local for Mac
+# Flux for Mac
 
 The original React sidebar workspace, bundled inside a native sandboxed Mac app, with entirely local conversion, compression and ZIP extraction. It shares `native/OfflineKit` with iPhone. WebKit displays bundled assets at a private local origin; it has no server endpoint. WebKit requires a network-client entitlement to launch its helper processes even for local content; remote resources are blocked by a fail-closed content rule list, CSP and navigation policy. The native bridge accepts opaque selected-file IDs, validates its calling frame, blocks remote navigation and serves only bundled interface assets. The Apple sandbox permits user-selected files; original files are retained and saving replaces an existing destination only through the user’s save dialog, using atomic staging on that volume.
 

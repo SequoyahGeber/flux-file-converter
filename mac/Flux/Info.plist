@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Flux File Converter</string>
+	<string>Flux</string>
 	<key>CFBundleIconFile</key>
 	<string>Flux.icns</string>
+	<key>CFBundleName</key>
+	<string>Flux</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationCategoryType</key>

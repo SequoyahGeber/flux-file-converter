@@ -1,4 +1,4 @@
-# Flux Local for iPhone
+# Flux for iPhone
 
 Native SwiftUI app for iOS 18.4+, with entirely on-phone conversion using Apple frameworks and bundled static libraries. It shares `native/OfflineKit` and `native/App` with Mac. No files are sent to Unraid and no login, invitation or MFA is needed. Files can come from the system picker’s document providers; providers may download selected cloud files themselves.
 

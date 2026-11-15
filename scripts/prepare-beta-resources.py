@@ -59,7 +59,7 @@ def main():
     shutil.copyfile(ROOT / "native/OfflineKit/Tests/OfflineKitTests/Resources/remux.mp4", RESOURCES / "Flux-sample-video.mp4")
     (RESOURCES / "Flux-sample-data.json").write_text('[{"name":"Example A","value":42},{"name":"Example B","value":7}]\n')
     archive(RESOURCES / "Flux-sample-archive.zip", {"Read me.txt": "Fictional review files. No personal data.\n", "Sample image.png": image})
-    navigation = '<nav><a href="../">Flux Local</a> · <a href="../privacy/">Privacy</a> · <a href="../support/">Support</a></nav>'
+    navigation = '<nav><a href="../">Flux</a> · <a href="../privacy/">Privacy</a> · <a href="../support/">Support</a></nav>'
     styles = 'body{font:17px/1.65 system-ui,sans-serif;color:#292333;background:#fbf9fd;max-width:760px;margin:3rem auto;padding:0 1.5rem}h1,h2{line-height:1.2;color:#6b4099}h2{margin-top:2rem}a{color:#693695}nav{margin-bottom:2rem;font-size:15px}footer{border-top:1px solid #dacde7;margin-top:3rem;padding-top:1rem;font-size:14px}'
     for name in ["privacy", "support"]:
         markdown = (ROOT / f"docs/{name}.md").read_text()
@@ -74,11 +74,11 @@ def main():
             elif escaped.startswith("# "): blocks.append("<h1>" + escaped[2:] + "</h1>")
             else: blocks.append("<p>" + escaped + "</p>")
         title = "Flux privacy policy" if name == "privacy" else "Flux support"
-        page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="{title}"><title>{title}</title><style>{styles}</style></head><body>{navigation}<main>{"".join(blocks)}</main><footer>Flux Local for Mac and iPhone · On-device file conversion</footer></body></html>'
+        page = f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="{title}"><title>{title}</title><style>{styles}</style></head><body>{navigation}<main>{"".join(blocks)}</main><footer>Flux for Mac and iPhone · On-device file conversion</footer></body></html>'
         destination = SITE / name; destination.mkdir(parents=True, exist_ok=True)
         (destination / "index.html").write_text(page)
     (SITE / ".nojekyll").write_text("")
-    (SITE / "index.html").write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flux Local</title><style>{styles}</style></head><body><h1>Flux Local</h1><p>File conversion, compression and ZIP tools for Mac and iPhone. Files stay on your device. No login or server connection is required.</p><p><a href="privacy/">Privacy policy</a> · <a href="support/">Support and supported conversions</a> · <a href="https://github.com/SequoyahGeber/flux-file-converter">Source and licenses</a></p><p>Beta testers can report issues through Send Beta Feedback in TestFlight. Please use synthetic files and omit private contents.</p></body></html>')
+    (SITE / "index.html").write_text(f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flux</title><style>{styles}</style></head><body><h1>Flux</h1><p>File conversion, compression and ZIP tools for Mac and iPhone. Files stay on your device. No login or server connection is required.</p><p><a href="privacy/">Privacy policy</a> · <a href="support/">Support and supported conversions</a> · <a href="https://github.com/SequoyahGeber/flux-file-converter">Source and licenses</a></p><p>Beta testers can report issues through Send Beta Feedback in TestFlight. Please use synthetic files and omit private contents.</p></body></html>')
     (SITE / "_headers").write_text(HEADERS)
     SITE_ZIP.parent.mkdir(parents=True, exist_ok=True)
     archive(SITE_ZIP, {path.relative_to(SITE).as_posix(): path.read_bytes()
