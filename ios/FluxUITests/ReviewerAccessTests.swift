@@ -3,8 +3,8 @@ import XCTest
 final class ReviewerAccessTests: XCTestCase {
     func testReviewerCanReadPolicyConvertSamplesAndReachSystemSaveWithoutLogin() {
         continueAfterFailure = false
-        let app = XCUIApplication(); app.launch()
-        let workspace = app.scrollViews["converter-workspace"]
+        let app = XCUIApplication(); app.launchArguments = ["-uiTesting", "-resetData"]; app.launch()
+        let workspace = app.scrollViews[AccessibilityID.Converter.workspace]
         func reveal(_ element: XCUIElement, _ name: String) {
             XCTAssertTrue(element.waitForExistence(timeout: 10), name)
             for _ in 0..<4 {
@@ -28,52 +28,64 @@ final class ReviewerAccessTests: XCTestCase {
                 let handle = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08))
                 handle.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
             }
-            let available = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: app.buttons["save-output"])
+            let available = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true"), object: app.buttons[AccessibilityID.Converter.save])
             XCTAssertEqual(XCTWaiter.wait(for: [available], timeout: 10), .completed, "Cancelled export stays available")
         }
         XCTAssertTrue(app.navigationBars["Flux"].waitForExistence(timeout: 10))
-        let privacy = button("privacy-support")
-        XCTAssertGreaterThanOrEqual(privacy.frame.height, 44, "Privacy & support touch height")
-        privacy.tap()
-        XCTAssertTrue(app.staticTexts["offline-privacy"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["offline-privacy"].label.contains("collect no personal information"))
-        tap("privacy-done")
+        // Settings: gear at the top trailing corner, sheet with Done; the policy reads offline.
+        let settings = app.buttons[AccessibilityID.Settings.open]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        // A system toolbar button: iOS sizes it (36 pt glass button) and ignores the label's 44 pt frame.
+        XCTAssertTrue(settings.isHittable, "Settings button can be tapped")
+        settings.tap()
+        XCTAssertTrue(app.descendants(matching: .any)[AccessibilityID.Settings.version].waitForExistence(timeout: 10), "Version row")
+        app.buttons[AccessibilityID.Settings.privacyPolicy].tap()
+        let policy = app.staticTexts[AccessibilityID.Privacy.text]
+        XCTAssertTrue(policy.waitForExistence(timeout: 10))
+        XCTAssertTrue(policy.label.contains("collect no personal information"))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let done = app.buttons[AccessibilityID.Settings.done]
+        XCTAssertTrue(done.waitForExistence(timeout: 10)); done.tap()
         workspace.swipeDown()
         for sample in ["image", "document", "video", "data", "archive"] {
             workspace.swipeDown()
-            tap("try-sample"); tap("sample-" + sample)
-            let format = button("output-format")
+            tap(AccessibilityID.Converter.trySample); tap(AccessibilityID.Converter.sample(sample))
+            let format = button(AccessibilityID.Converter.outputFormat)
             XCTAssertTrue(format.label.contains("Convert to"), "Output picker keeps its spoken purpose")
             if sample == "archive" {
                 // The bundled archive sample selects the real unzip target.
                 XCTAssertEqual(format.value as? String, "Extract archive")
             }
-            let outputName = app.textFields["output-name"]
-            reveal(outputName, "output-name")
+            let outputName = app.textFields[AccessibilityID.Converter.outputName]
+            reveal(outputName, AccessibilityID.Converter.outputName)
             XCTAssertEqual(outputName.label, sample == "archive" ? "Folder name" : "Output file name")
             // The visible captions are hidden from VoiceOver to avoid duplicate
             // names. Keep an attachment for reviewing the Convert to caption.
             let configuration = XCTAttachment(screenshot: app.screenshot())
             configuration.name = "review-configuration-" + sample; configuration.lifetime = .keepAlways; add(configuration)
-            let convert = button("convert-local")
+            let convert = button(AccessibilityID.Converter.convert)
             XCTAssertEqual(convert.label, "Convert")
             convert.tap()
-            XCTAssertTrue(app.buttons["save-output"].waitForExistence(timeout: 60), sample)
-            XCTAssertEqual(app.buttons["save-output"].label, "Save as…")
+            XCTAssertTrue(app.buttons[AccessibilityID.Converter.save].waitForExistence(timeout: 60), sample)
+            XCTAssertEqual(app.buttons[AccessibilityID.Converter.save].label, "Save as…")
             let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "review-" + sample; capture.lifetime = .keepAlways; add(capture)
             if sample == "image" || sample == "archive" {
-                tap("save-output")
+                tap(AccessibilityID.Converter.save)
                 XCTAssertTrue(app.buttons["DOCPicker.actionButton"].waitForExistence(timeout: 30), "System Files save picker: " + sample)
                 let picker = XCTAttachment(screenshot: app.screenshot()); picker.name = "review-system-save-" + sample; picker.lifetime = .keepAlways; add(picker)
                 dismissSavePicker()
-                tap("save-output")
+                tap(AccessibilityID.Converter.save)
                 XCTAssertTrue(app.buttons["DOCPicker.actionButton"].waitForExistence(timeout: 10), "Save can be retried: " + sample)
                 dismissSavePicker()
             }
-            let clear = button("clear-job")
+            let clear = button(AccessibilityID.Converter.clear)
             XCTAssertGreaterThanOrEqual(clear.frame.height, 44, "Clear touch height: " + sample)
             clear.tap()
-            XCTAssertTrue(app.buttons["try-sample"].waitForExistence(timeout: 10), "Cleared job")
+            // The result was never saved, so clearing asks before deleting it.
+            let confirm = app.buttons[AccessibilityID.Converter.clearConfirm]
+            XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Clear asks before deleting an unsaved result: " + sample)
+            confirm.tap()
+            XCTAssertTrue(app.buttons[AccessibilityID.Converter.trySample].waitForExistence(timeout: 10), "Cleared job")
         }
         XCTAssertFalse(app.staticTexts["Sign in"].exists)
     }

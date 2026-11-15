@@ -8,7 +8,9 @@ import OfflineKit
     @Published var filename = "Converted"
     @Published var options = ConversionOptions()
     @Published var busy = false
-    @Published var result: LocalResult?
+    /// A new or renamed result starts unsaved; a successful save marks it saved.
+    @Published var result: LocalResult? { didSet { if result?.url != oldValue?.url { resultSaved = false } } }
+    @Published var resultSaved = false
     @Published var message = ""
     @Published var error = ""
     private var control: JobControl?

@@ -20,6 +20,11 @@ public enum ReviewResources {
     public static let supportURL = URL(string: "https://flux.sequoyahgeber.com/support/")!
     public static var privacyText: String { text("Flux-privacy.txt") }
     public static var supportText: String { text("Flux-support.txt") }
+    /// Third-party code in the distributed apps, with each licence as shipped.
+    public static var acknowledgements: [(name: String, license: String)] {
+        [("FFmpeg", "FFmpeg-LICENSE.txt"), ("libyaml", "libyaml-LICENSE.txt"), ("Yams", "Yams-LICENSE.txt"), ("ZIPFoundation", "ZIPFoundation-LICENSE.txt")]
+            .map { ($0.0, text($0.1)) }
+    }
     private static func text(_ name: String) -> String {
         guard let url = Bundle.module.url(forResource: name, withExtension: nil),
               let text = try? String(contentsOf: url, encoding: .utf8) else { return "The bundled information is unavailable. Please use the public policy or support page." }
