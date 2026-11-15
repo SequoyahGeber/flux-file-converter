@@ -253,6 +253,11 @@ function App() {
         setError(job.bridgeError);
         return;
       }
+      if (job.outputDir !== undefined) {
+        // The Mac app's Settings window changed the save folder.
+        setOutput(job.outputDir);
+        return;
+      }
       if (job.savedResult) {
         setHistory(job.history);
         setQueue((q) =>
@@ -447,6 +452,11 @@ function App() {
   }
 
   function navigate(id) {
+    // The Mac app has a native Settings window (⌘,); the browser and Electron keep the page.
+    if (id === 'settings' && nativeLocal && api.openSettings) {
+      action(() => api.openSettings());
+      return;
+    }
     ['convert', 'compress', 'archive'].includes(id) ? switchMode(id) : setRoute(id);
   }
   const detailFamily = selectedFormat && families.find((f) => f.formats.includes(selectedFormat));
@@ -1305,6 +1315,13 @@ function App() {
                   className="text-button"
                   onClick={() =>
                     action(async () => {
+                      // The Mac app always asks first (native alert); Electron is unchanged.
+                      if (
+                        nativeLocal &&
+                        api.confirmClearHistory &&
+                        !(await api.confirmClearHistory())
+                      )
+                        return;
                       setHistory(await api.clearHistory());
                       if (nativeLocal)
                         setQueue((q) =>

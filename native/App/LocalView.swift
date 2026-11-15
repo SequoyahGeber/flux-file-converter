@@ -1,3 +1,4 @@
+// SHARED-EXPERIENCE: ios-navigation | standard: PROJECT_STANDARDS.md §iOS navigation | local implementation; changes must be mirrored in every app listed there
 import SwiftUI
 import UniformTypeIdentifiers
 import OfflineKit
@@ -11,7 +12,9 @@ struct LocalView: View {
     @StateObject private var model = LocalModel()
     @State private var importing = false
     @State private var showingFormats = false
-    @State private var showingPrivacy = false
+    @State private var showingSettings = false
+    @State private var confirmingClear = false
+    @AppStorage(FluxSettings.Key.appearanceMode) private var appearance = AppearanceMode.system.rawValue
     #if os(iOS)
     @State private var exportFile: ExportFile?
     #endif
@@ -35,19 +38,19 @@ struct LocalView: View {
                         Button { importing = true } label: {
                             Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", systemImage: "plus.circle.fill")
                                 .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        }.buttonStyle(.borderedProminent).tint(.purple).disabled(model.busy || saving).accessibilityIdentifier("choose-files")
+                        }.buttonStyle(.borderedProminent).tint(.purple).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
                         if model.inputs.isEmpty {
                             Text("Convert an image, video, audio file or document. Select several files to make a ZIP.")
                                 .font(.callout).foregroundStyle(.secondary)
                             Menu {
                                 ForEach(ReviewResources.samples, id: \.id) { sample in
-                                    Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier("sample-" + sample.id)
+                                    Button(sample.title) { model.selectSample(sample) }.accessibilityIdentifier(AccessibilityID.Converter.sample(sample.id))
                                 }
                             } label: {
                                 Label("Try a sample", systemImage: "sparkles")
                                     .frame(minHeight: 44).contentShape(Rectangle())
                             }
-                                .accessibilityIdentifier("try-sample").disabled(model.busy || saving)
+                                .accessibilityIdentifier(AccessibilityID.Converter.trySample).disabled(model.busy || saving)
                             Text("Fictional files included with Flux. Uses the same conversion and save flow.")
                                 .font(.caption).foregroundStyle(.secondary)
                         } else {
@@ -63,11 +66,11 @@ struct LocalView: View {
                                 Text("Convert to").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
                                 Picker("Convert to", selection: $model.target) {
                                     ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract archive" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
-                                }.pickerStyle(.menu).accessibilityIdentifier("output-format")
+                                }.pickerStyle(.menu).accessibilityIdentifier(AccessibilityID.Converter.outputFormat)
                             }
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(.secondary).accessibilityHidden(true)
-                                TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier("output-name")
+                                TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
                             }
                             if model.media && model.target != "zip" {
@@ -95,7 +98,7 @@ struct LocalView: View {
                             }
                         } else {
                             Button { model.convert() } label: { Label("Convert", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving).accessibilityIdentifier("convert-local")
+                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
                         }
                     }
                     if let result = model.result {
@@ -103,7 +106,7 @@ struct LocalView: View {
                             Label(model.message, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving || model.busy).accessibilityIdentifier("save-output")
+                                .buttonStyle(.borderedProminent).tint(.purple).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(.secondary)
                         }.padding(18).background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
                     }
@@ -111,15 +114,15 @@ struct LocalView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
-                        }
+                        }.accessibilityIdentifier(AccessibilityID.Converter.supportedConversions)
                         if !model.inputs.isEmpty {
-                            Button(role: .destructive) { model.clear() } label: {
+                            Button(role: .destructive) {
+                                // Confirm only when an unsaved result would be deleted (D-023).
+                                if model.result != nil && !model.resultSaved { confirmingClear = true } else { model.clear() }
+                            } label: {
                                 Text("Clear").frame(minHeight: 44).contentShape(Rectangle())
-                            }.disabled(model.busy || saving).accessibilityIdentifier("clear-job")
+                            }.disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.clear)
                         }
-                        Button { showingPrivacy = true } label: {
-                            Text("Privacy & support").frame(minHeight: 44).contentShape(Rectangle())
-                        }.accessibilityIdentifier("privacy-support")
                     }.font(.callout)
                     VStack(alignment: .leading, spacing: 6) {
                         Text("5 GB media · 512 MB other files · One conversion at a time")
@@ -127,15 +130,28 @@ struct LocalView: View {
                     }.font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(24).frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
-            }.accessibilityIdentifier("converter-workspace").navigationTitle("Flux")
+            }.accessibilityIdentifier(AccessibilityID.Converter.workspace).navigationTitle("Flux")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings").accessibilityIdentifier(AccessibilityID.Settings.open)
+                }
+            }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             #endif
+            .confirmationDialog("Delete the unsaved result?", isPresented: $confirmingClear, titleVisibility: .visible) {
+                Button("Delete result", role: .destructive) { model.clear() }
+                    .accessibilityIdentifier(AccessibilityID.Converter.clearConfirm)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("“\(model.result?.url.lastPathComponent ?? "")” hasn’t been saved. Your original files are kept.")
+            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): model.select(urls); case .failure(let error): model.error = error.localizedDescription }
             }
             .sheet(isPresented: $showingFormats) { FormatView() }
-            .sheet(isPresented: $showingPrivacy) { PrivacySupportView() }
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }
             .onChange(of: scenePhase) { if scenePhase == .background && model.busy { model.cancel() } }
@@ -145,11 +161,13 @@ struct LocalView: View {
             #if os(iOS)
             .sheet(item: $exportFile, onDismiss: { saving = false }) { file in
                 ExportPicker(url: file.url) { success in
-                    if success { model.message = "Saved to Files." }; saving = false; exportFile = nil
+                    if success { model.message = "Saved to Files."; model.resultSaved = true }; saving = false; exportFile = nil
                 }.ignoresSafeArea()
             }
             #endif
         }
+        .preferredColorScheme((AppearanceMode(rawValue: appearance) ?? .system).colorScheme)
+        .task { if LaunchFlags.demo && model.inputs.isEmpty, let sample = ReviewResources.samples.first { model.selectSample(sample) } }
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 580)
         #endif
@@ -175,7 +193,7 @@ struct LocalView: View {
                             guard !FileManager.default.fileExists(atPath: destination.path) else { throw LocalError.invalid("A folder with this name already exists. Choose another location.") }
                             try SafeSave.commit(result.url, to: destination, replaceExisting: false)
                         }.value
-                        model.message = "Saved to \(parent.lastPathComponent)."
+                        model.message = "Saved to \(parent.lastPathComponent)."; model.resultSaved = true
                     } catch { model.error = error.localizedDescription }
                     if scoped { parent.stopAccessingSecurityScopedResource() }; saving = false
                 }
@@ -187,7 +205,7 @@ struct LocalView: View {
                 guard response == .OK, let destination = panel.url else { saving = false; return }
                 let scoped = destination.startAccessingSecurityScopedResource(); saving = true
                 Task {
-                    do { try await Task.detached { try SafeSave.commit(result.url, to: destination) }.value; model.message = "Saved \(destination.lastPathComponent)." }
+                    do { try await Task.detached { try SafeSave.commit(result.url, to: destination) }.value; model.message = "Saved \(destination.lastPathComponent)."; model.resultSaved = true }
                     catch { model.error = error.localizedDescription }
                     if scoped { destination.stopAccessingSecurityScopedResource() }; saving = false
                 }
@@ -211,8 +229,13 @@ private struct FormatView: View {
                 Section("Data & subtitles") { Text("JSON, YAML, CSV, TSV convert between those formats. CSV/TSV need an array of records; YAML aliases are rejected. SRT ↔ VTT or TXT (basic cues).") }
                 Section("ZIP") { Text("Any regular file type → ZIP, including several files at once. ZIP → folder. ZIP extraction rejects links and unsafe paths; up to 2,000 entries, 1 GB expanded and 200× expansion.") }
                 Section("More formats") { Text("This local beta does not include the desktop Electron app’s LibreOffice, Blender, Calibre or Python engines. Unsupported files can still be zipped. No conversion connects to Unraid or uploads files.") }
-            }.navigationTitle("Supported conversions").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            }.navigationTitle("Supported conversions")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier(AccessibilityID.Formats.done) } }
         }
+        .presentationDetents([.medium, .large])
         #if os(macOS)
         .frame(width: 580, height: 580)
         #endif

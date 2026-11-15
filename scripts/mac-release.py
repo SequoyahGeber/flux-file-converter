@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SHARED-EXPERIENCE: engineering | standard: PROJECT_STANDARDS.md §Engineering | local implementation; changes must be mirrored in every app listed there
 """Build and sign the on-device Mac app. Does not upload or release to testers."""
 import argparse
 import contextlib
@@ -45,8 +46,9 @@ def main():
             raise SystemExit("This full engine bundle is for personal use. Public packaging requires completed third-party licensing and corresponding-source review.")
         if not args.development and set(engine_manifest.get("architectures", [])) != {"arm64", "x86_64"}:
             raise SystemExit("Distribution requires complete bundled engines for Apple Silicon and Intel.")
-    if not re.fullmatch(r"[1-9][0-9]{0,17}", args.build):
-        raise SystemExit("Supply an increasing numeric build number.")
+    # Build number (PROJECT_STANDARDS.md §Engineering): YYYYMMDDNN, the day the build is cut (Asia/Tokyo) plus a counter from 01.
+    if not re.fullmatch(r"20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{2}", args.build) or args.build.endswith("00"):
+        raise SystemExit("Use the build number YYYYMMDDNN, for example 2026111501.")
     settings = json.loads(args.config.read_text())
     mode = "development" if args.development else "distribution"
     chosen = settings[mode]
