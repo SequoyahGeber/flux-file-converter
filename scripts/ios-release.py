@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SHARED-EXPERIENCE: engineering | standard: PROJECT_STANDARDS.md §Engineering | local implementation; changes must be mirrored in every app listed there
 """Archive and sign the on-device iPhone app; never upload or release it to testers."""
 import argparse
 import hashlib
@@ -25,8 +26,9 @@ def main():
     parser.add_argument("--config", type=pathlib.Path, default=DEFAULT_CONFIG)
     parser.add_argument("--build", required=True)
     args = parser.parse_args()
-    if not re.fullmatch(r"[1-9][0-9]{0,17}", args.build):
-        raise SystemExit("Supply an increasing numeric build number.")
+    # Build number (PROJECT_STANDARDS.md §Engineering): YYYYMMDDNN, the day the build is cut (Asia/Tokyo) plus a counter from 01.
+    if not re.fullmatch(r"20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{2}", args.build) or args.build.endswith("00"):
+        raise SystemExit("Use the build number YYYYMMDDNN, for example 2026111501.")
     settings = json.loads(args.config.read_text())
     chosen = settings["ios"]
     identity = chosen["identity"]

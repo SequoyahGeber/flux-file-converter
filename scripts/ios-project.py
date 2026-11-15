@@ -28,7 +28,7 @@ def generate():
         source_refs.append(ref)
         source_builds.append(add(file.name + "build", f"isa = PBXBuildFile; fileRef = {ref};"))
     resource_refs, resource_builds = [], []
-    for file in ["../../mac/Flux/PrivacyInfo.xcprivacy", "Assets.xcassets"]:
+    for file in ["PrivacyInfo.xcprivacy", "Assets.xcassets"]:
         ref = add(file, f'isa = PBXFileReference; lastKnownFileType = {"folder.assetcatalog" if file == "Assets.xcassets" else "file"}; path = "{file}"; sourceTree = "<group>";')
         resource_refs.append(ref)
         resource_builds.append(add(file + "build", f"isa = PBXBuildFile; fileRef = {ref};"))
@@ -68,10 +68,12 @@ def generate():
         packageProductDependencies = ({dependency}); name = Flux; productName = Flux; productReference = {product}; productType = "com.apple.product-type.application";''')
     test_source = add("review-test-source", 'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../FluxUITests/ReviewerAccessTests.swift"; sourceTree = "<group>";')
     test_build = add("review-test-build", f'isa = PBXBuildFile; fileRef = {test_source};')
+    # Tests find controls by the app's central accessibility ids, never by display text.
+    ids_build = add("review-test-ids-build", f'isa = PBXBuildFile; fileRef = {identifier("AccessibilityID.swift")};')
     test_product = add("review-test-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = FluxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
     # Attach references to the existing groups so the project stays inspectable.
     objects[:] = [value.replace(f'children = ({product});', f'children = ({product}, {test_product});').replace(f'children = ({", ".join(source_refs + resource_refs + [info, entitlements])});', f'children = ({", ".join(source_refs + resource_refs + [info, entitlements, test_source])});') for value in objects]
-    test_sources = add("review-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_build}); runOnlyForDeploymentPostprocessing = 0;')
+    test_sources = add("review-test-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_build}, {ids_build}); runOnlyForDeploymentPostprocessing = 0;')
     test_frameworks = add("review-test-frameworks", 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
     proxy = add("review-test-proxy", f'isa = PBXContainerItemProxy; containerPortal = {identifier("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Flux;')
     test_dependency = add("review-test-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
