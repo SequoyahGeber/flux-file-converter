@@ -21,9 +21,43 @@ enum FluxFeedback {
         configuration: FeedbackConfiguration(
             appName: "Flux", containerID: containerID, redactor: FluxDiagnostics.redactor,
             screenshot: .standard, screenshotNote: "May show the names of files you chose and their results.",
+            usesStandIn: SharedDiagnostics.isStandInLaunch() && !debugCloudKitDelivery,
             sensitiveTerms: { FluxDiagnostics.fileNames() },
             context: { FluxFeedback.context() }),
         diagnostics: FluxDiagnostics.center)
+
+    /// `-feedbackDelivery cloudkit` sends even under `-demo`, for the round-trip proof (D-072). Debug builds only.
+    static var debugCloudKitDelivery: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-feedbackDelivery"), index + 1 < arguments.count else { return false }
+        return arguments[index + 1] == "cloudkit"
+        #else
+        return false
+        #endif
+    }
+
+    #if DEBUG
+    /// Round-trip proof (D-072): `-feedbackDelivery cloudkit -sendTestFeedback -demo` sends one fictional report,
+    /// prints the outcome on standard output and quits. Run only in the `.devfeedback` build, in its own sandbox.
+    static func sendTestReportIfAsked() {
+        guard ProcessInfo.processInfo.arguments.contains("-sendTestFeedback") else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            center.open(.button)
+            center.edit {
+                $0.category = FeedbackCategory.other.id
+                $0.message = "Flux round-trip test report. Fictional; sent by -sendTestFeedback (D-072)."
+                $0.includeScreenshot = false
+            }
+            await center.review()
+            await center.send()
+            print("sendTestFeedback: \(String(describing: center.draft?.phase))")
+            fflush(stdout)
+            exit(center.draft?.phase == .sent ? 0 : 1)
+        }
+    }
+    #endif
 
     #if os(macOS)
     /// Opens the form with a screenshot of the window. The window's content is a WKWebView, which AppKit's view

@@ -15,6 +15,9 @@ struct FluxApp: App {
         // Diagnostics and feedback start before anything can fail, so the launch-failure alert can offer feedback.
         FluxDiagnostics.start()
         _ = FluxFeedback.center
+        #if DEBUG
+        FluxFeedback.sendTestReportIfAsked()
+        #endif
         _desktop = StateObject(wrappedValue: DesktopBridge())
     }
 
