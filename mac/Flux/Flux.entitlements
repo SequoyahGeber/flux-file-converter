@@ -5,4 +5,6 @@
   <!-- WebKit requires this to launch its helper processes even for bundled local pages. -->
   <key>com.apple.security.network.client</key><true/>
   <key>com.apple.security.files.user-selected.read-write</key><true/>
+  <!-- Keeps the chosen save folder across launches (output.folder bookmark). -->
+  <key>com.apple.security.files.bookmarks.app-scope</key><true/>
 </dict></plist>
