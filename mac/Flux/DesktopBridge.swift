@@ -12,8 +12,14 @@ import OfflineKit
     private var results: [String: LocalResult] = [:]
     private var saved: [String: URL] = [:]
     private var history: [[String: Any]] = []
-    private var outputFolder: URL?
+    /// The preferred save folder, kept across launches as an app-scoped bookmark (`output.folder`).
+    /// Without a saved choice, every save dialog starts where macOS last left it, as before.
+    @Published private(set) var outputFolder: URL?
     private var outputScoped = false
+    /// Set by the main window so the bundled UI's Settings button opens the native Settings window.
+    var openSettings: (() -> Void)?
+    private var keyMonitor: Any?
+    private var demoPending = LaunchFlags.demo
     private var busy = false
     private var control: JobControl?
     private var cancelled = false
@@ -25,8 +31,17 @@ import OfflineKit
         configuration.websiteDataStore = .nonPersistent()
         configuration.setURLSchemeHandler(DesktopAssets(), forURLScheme: "flux-app")
         webView = LocalDesktopWebView(frame: .zero, configuration: configuration)
+        webView.underPageBackgroundColor = .windowBackgroundColor
         super.init()
         OfflineEngine.clearTemporaryFiles()
+        restoreOutputFolder()
+        // Bigger Text is ⌘+ in the menu; also accept ⌘= (the same key without Shift).
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.webView.window,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers == "=" else { return event }
+            self.zoom(by: 0.1); return nil
+        }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
             SharedMacEngine.terminateAll()
         }
@@ -71,6 +86,67 @@ import OfflineKit
             catch { replyHandler(nil, error.localizedDescription) }
         }
     }
+    func zoom(by step: Double) {
+        // Session-only; rounding keeps repeated steps and Actual Size predictable.
+        webView.pageZoom = min(2, max(0.5, ((webView.pageZoom + step) * 10).rounded() / 10))
+    }
+    /// Shows the folder picker; on a choice, saves it and tells the bundled UI.
+    func chooseOutputFolder() async {
+        guard !busy else { return }
+        busy = true; defer { busy = false }
+        let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true; panel.prompt = "Choose save folder"
+        panel.directoryURL = outputFolder
+        guard await present(panel) == .OK, let url = panel.url else { return }
+        setOutputFolder(url)
+    }
+    func forgetOutputFolder() {
+        if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
+        outputFolder = nil; outputScoped = false
+        UserDefaults.standard.removeObject(forKey: FluxSettings.Key.outputFolder)
+        emit("update", ["outputDir": outputLabel])
+    }
+    func showOutputFolder() {
+        if let outputFolder { NSWorkspace.shared.activateFileViewerSelecting([outputFolder]) }
+    }
+    private func setOutputFolder(_ url: URL) {
+        if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
+        outputFolder = url; outputScoped = url.startAccessingSecurityScopedResource()
+        if let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(bookmark, forKey: FluxSettings.Key.outputFolder)
+        }
+        emit("update", ["outputDir": outputLabel])
+    }
+    private func restoreOutputFolder() {
+        guard let bookmark = UserDefaults.standard.data(forKey: FluxSettings.Key.outputFolder) else { return }
+        var stale = false
+        // The saved choice is only replaced when the person chooses again or forgets it: a folder on
+        // an unmounted volume comes back once the volume does. Until then saves start where macOS left off.
+        guard let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) else { return }
+        // Start access before touching the folder: the sandbox hides it until then.
+        let scoped = url.startAccessingSecurityScopedResource()
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            // Gone for now: fall back to the save dialog's own location for this launch.
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            return
+        }
+        outputFolder = url; outputScoped = scoped
+        if stale, let fresh = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(fresh, forKey: FluxSettings.Key.outputFolder)
+        }
+    }
+    /// "Clear history" is always confirmed when there is history to clear (D-023).
+    private func confirmClearHistory() async -> Bool {
+        guard !history.isEmpty else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Clear history?"
+        alert.informativeText = "Recent files and their temporary results are removed from Flux. Files you saved and your original files are kept."
+        alert.addButton(withTitle: "Clear history").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard let window = webView.window else { return alert.runModal() == .alertFirstButtonReturn }
+        return await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { continuation.resume(returning: $0 == .alertFirstButtonReturn) }
+        }
+    }
     func chooseFiles() {
         Task {
             do { if let records = try await handle("selectFiles", nil) as? [[String: Any]] { emit("files", records) } }
@@ -79,7 +155,13 @@ import OfflineKit
     }
     private func handle(_ method: String, _ args: Any?) async throws -> Any {
         switch method {
-        case "getState", "refreshEngines": return state()
+        case "getState":
+            var current = state()
+            // -demo: the page's first state already holds the fictional sample image.
+            if demoPending, let url = ReviewResources.samples.first?.url, let records = try? register([url]) { current["files"] = records }
+            demoPending = false
+            return current
+        case "refreshEngines": return state()
         case "describeFormat":
             guard let ext = args as? String, ext.count <= 12 else { throw LocalError.unsupported }
             return targets(ext)
@@ -97,11 +179,11 @@ import OfflineKit
         case "openPrivacy": NSWorkspace.shared.open(ReviewResources.privacyURL); return true
         case "selectOutput":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
-            busy = true; defer { busy = false }
-            let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true; panel.prompt = "Choose save folder"
-            guard await present(panel) == .OK, let url = panel.url else { return outputLabel }
-            if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
-            outputFolder = url; outputScoped = url.startAccessingSecurityScopedResource(); return outputLabel
+            await chooseOutputFolder(); return outputLabel
+        case "openSettings": openSettings?(); return true
+        case "confirmClearHistory":
+            guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
+            return await confirmClearHistory()
         case "releaseFiles":
             guard !busy, let ids = args as? [String], ids.count <= 100 else { throw LocalError.invalid("Finish the current batch first.") }
             for id in ids { if scopedFiles.remove(id) != nil { files[id]?.stopAccessingSecurityScopedResource() }; files.removeValue(forKey: id) }
@@ -148,7 +230,7 @@ import OfflineKit
             }
         }
     }
-    private var outputLabel: String { outputFolder?.path ?? "Choose location when saving" }
+    var outputLabel: String { outputFolder?.path ?? "Choose location when saving" }
     private func targets(_ ext: String) -> [String] {
         full ? SharedMacEngine.targets(ext) : LocalFormats.outputs(for: ext).filter { $0 != "unzip" }
     }

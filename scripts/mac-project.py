@@ -37,6 +37,11 @@ def generate():
     ref = add("DesktopUI", 'isa = PBXFileReference; lastKnownFileType = folder; path = DesktopUI; sourceTree = "<group>";')
     resource_refs.append(ref)
     resource_builds.append(add("DesktopUIbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
+    # The app's name is "Flux"; GENERATE_INFOPLIST_FILE sets CFBundleName to the product name,
+    # so the localized InfoPlist.strings carries it (D-023).
+    ref = add("en.lproj", 'isa = PBXFileReference; lastKnownFileType = folder; path = en.lproj; sourceTree = "<group>";')
+    resource_refs.append(ref)
+    resource_builds.append(add("en.lprojbuild", f"isa = PBXBuildFile; fileRef = {ref};"))
     info = add("Info.plist", 'isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>";')
     entitlements = add("Flux.entitlements", 'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Flux.entitlements; sourceTree = "<group>";')
     product = add("product", 'isa = PBXFileReference; explicitFileType = wrapper.application; path = "Flux File Converter.app"; sourceTree = BUILT_PRODUCTS_DIR;')

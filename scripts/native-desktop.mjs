@@ -22,6 +22,7 @@ window.flux = Object.freeze({
   releaseFiles: ids => call('releaseFiles', ids), selectOutput: () => call('selectOutput'),
   start: jobs => call('start', jobs), cancel: () => call('cancel'), reveal: id => call('reveal', id),
   openOutput: () => call('openOutput'), clearHistory: () => call('clearHistory'),
+  confirmClearHistory: () => call('confirmClearHistory'), openSettings: () => call('openSettings'),
   refreshEngines: () => call('refreshEngines'), openFormatList: () => call('openFormatList'),
   describeFormat: ext => call('describeFormat', ext),
   onUpdate: fn => { updates.add(fn); return () => updates.delete(fn); },
@@ -34,4 +35,8 @@ html = html.replace(
   `content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"`,
 );
 html = html.replace('</head>', '<script src="./native-bridge.js"></script></head>');
+// Mac-only: the window title is the app name, and data-host scopes the dark and
+// increased-contrast colours in styles.css so the browser and Electron builds are unchanged.
+html = html.replace(/<title>[^<]*<\/title>/, '<title>Flux</title>');
+html = html.replace(/<html([^>]*)>/, '<html$1 data-host="mac">');
 await writeFile(resolve(out, 'index.html'), html);
