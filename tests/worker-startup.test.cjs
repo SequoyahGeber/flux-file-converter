@@ -154,105 +154,111 @@ test('startup deadline closes a stalled or unclosed channel', async (t) => {
     });
 });
 
-test(
-  'real worker waits for EOF and closes startup before guarded cleanup and authenticated RPC',
-  async (t) => {
-    const f = await fixture(t, 'worker');
-    const bytes = frame();
-    f.send(bytes.subarray(0, 11), false);
-    await delay(100);
-    assert.deepEqual(f.messages.map((message) => message.type), ['guarded']);
-    f.send(bytes.subarray(11), false);
-    await delay(100);
-    assert.deepEqual(f.messages.map((message) => message.type), ['guarded']);
-    f.child.stdio[3].end();
-    const ready = await f.waitFor('ready');
-    assert.equal(ready.closed, true);
-    assert.deepEqual(f.messages.find((message) => message.type === 'cleanup'), {
+test('real worker waits for EOF and closes startup before guarded cleanup and authenticated RPC', async (t) => {
+  const f = await fixture(t, 'worker');
+  const bytes = frame();
+  f.send(bytes.subarray(0, 11), false);
+  await delay(100);
+  assert.deepEqual(
+    f.messages.map((message) => message.type),
+    ['guarded'],
+  );
+  f.send(bytes.subarray(11), false);
+  await delay(100);
+  assert.deepEqual(
+    f.messages.map((message) => message.type),
+    ['guarded'],
+  );
+  f.child.stdio[3].end();
+  const ready = await f.waitFor('ready');
+  assert.equal(ready.closed, true);
+  assert.deepEqual(
+    f.messages.find((message) => message.type === 'cleanup'),
+    {
       type: 'cleanup',
       closed: true,
       guarded: true,
+    },
+  );
+  const request = (url, secret) =>
+    new Promise((resolve, reject) => {
+      const req = http.get(
+        {
+          host: '127.0.0.1',
+          port: ready.port,
+          path: url,
+          headers: secret ? { authorization: 'Bearer ' + secret } : {},
+          agent: false,
+        },
+        (res) => {
+          res.resume();
+          res.once('end', () => resolve(res.statusCode));
+        },
+      );
+      req.on('error', reject);
+      req.setTimeout(2000, () => req.destroy(new Error('Test request timed out.')));
     });
-    const request = (url, secret) =>
-      new Promise((resolve, reject) => {
-        const req = http.get(
-          {
-            host: '127.0.0.1',
-            port: ready.port,
-            path: url,
-            headers: secret ? { authorization: 'Bearer ' + secret } : {},
-            agent: false,
-          },
-          (res) => {
-            res.resume();
-            res.once('end', () => resolve(res.statusCode));
-          },
-        );
-        req.on('error', reject);
-        req.setTimeout(2000, () => req.destroy(new Error('Test request timed out.')));
-      });
-    assert.equal(await request('/health'), 200);
-    assert.equal(await request('/unknown', SYNTHETIC), 404);
-    assert.equal(await request('/unknown', 'wrong-public-synthetic-value-000000'), 401);
-    assert.equal(await request('/unknown'), 401);
-    assert.equal(await fs.readFile(path.join(f.base, 'outside-cleanup'), 'utf8'), 'must survive');
-    assert.equal(await fs.readFile(path.join(f.base, 'decoy', 'cleanup-guard'), 'utf8'), 'keep');
-    assert.equal(f.errors(), '');
-  },
-);
+  assert.equal(await request('/health'), 200);
+  assert.equal(await request('/unknown', SYNTHETIC), 404);
+  assert.equal(await request('/unknown', 'wrong-public-synthetic-value-000000'), 401);
+  assert.equal(await request('/unknown'), 401);
+  assert.equal(await fs.readFile(path.join(f.base, 'outside-cleanup'), 'utf8'), 'must survive');
+  assert.equal(await fs.readFile(path.join(f.base, 'decoy', 'cleanup-guard'), 'utf8'), 'keep');
+  assert.equal(f.errors(), '');
+});
 
-test(
-  'real worker rejects the old environment-only startup before cleanup or listening',
-  async (t) => {
-    const f = await fixture(t, 'worker', { missing: true, legacy: true });
-    assert.deepEqual(await f.exit, { code: 1, signal: null });
-    assert.deepEqual(f.messages.map((message) => message.type), ['guarded']);
-    assert.equal(f.errors(), 'Worker startup failed.\n');
-    assert.equal(await fs.readFile(path.join(f.base, 'work', 'old-job'), 'utf8'), 'remove');
-    assert.equal(await fs.readFile(path.join(f.base, 'outside-cleanup'), 'utf8'), 'must survive');
-  },
-);
+test('real worker rejects the old environment-only startup before cleanup or listening', async (t) => {
+  const f = await fixture(t, 'worker', { missing: true, legacy: true });
+  assert.deepEqual(await f.exit, { code: 1, signal: null });
+  assert.deepEqual(
+    f.messages.map((message) => message.type),
+    ['guarded'],
+  );
+  assert.equal(f.errors(), 'Worker startup failed.\n');
+  assert.equal(await fs.readFile(path.join(f.base, 'work', 'old-job'), 'utf8'), 'remove');
+  assert.equal(await fs.readFile(path.join(f.base, 'outside-cleanup'), 'utf8'), 'must survive');
+});
 
 test('real worker rejects truncated startup before any cleanup', async (t) => {
   const f = await fixture(t, 'worker');
   f.send(frame().subarray(0, 12));
   assert.deepEqual(await f.exit, { code: 1, signal: null });
-  assert.deepEqual(f.messages.map((message) => message.type), ['guarded']);
+  assert.deepEqual(
+    f.messages.map((message) => message.type),
+    ['guarded'],
+  );
   assert.equal(f.errors(), 'Worker startup failed.\n');
   assert.equal(await fs.readFile(path.join(f.base, 'work', 'old-job'), 'utf8'), 'remove');
 });
 
-test(
-  'job execution retains its credential-free environment and only three standard descriptors',
-  async () => {
-    const { execute } = require('../server/worker-io.cjs');
-    const child = new EventEmitter();
-    child.stderr = new PassThrough();
-    const controller = new AbortController();
-    let options;
-    const run = execute('/synthetic-job-root', controller.signal, (command, args, config) => {
-      assert.equal(command, '/usr/local/bin/flux-sandbox');
-      assert.deepEqual(args, ['/usr/local/bin/node', '/app/server/job.cjs', '/synthetic-job-root']);
-      options = config;
-      return child;
-    });
-    child.emit('close', 0);
-    await run;
-    assert.deepEqual(options.stdio, ['ignore', 'ignore', 'pipe']);
-    assert.deepEqual(Object.keys(options.env).sort(), [
-      'FLUX_ARCHIVE_MAX_BYTES',
-      'FLUX_ARCHIVE_MAX_FILES',
-      'FLUX_SERVER',
-      'HOME',
-      'MAGICK_THREAD_LIMIT',
-      'NODE_OPTIONS',
-      'OMP_NUM_THREADS',
-      'OPENBLAS_NUM_THREADS',
-      'PATH',
-      'PYTHONDONTWRITEBYTECODE',
-      'QT_QPA_PLATFORM',
-      'TMPDIR',
-      'XDG_RUNTIME_DIR',
-    ]);
-  },
-);
+test('job execution retains its credential-free environment and only three standard descriptors', async () => {
+  const { execute } = require('../server/worker-io.cjs');
+  const child = new EventEmitter();
+  child.stderr = new PassThrough();
+  const controller = new AbortController();
+  let options;
+  const run = execute('/synthetic-job-root', controller.signal, (command, args, config) => {
+    assert.equal(command, '/usr/local/bin/flux-sandbox');
+    assert.deepEqual(args, ['/usr/local/bin/node', '/app/server/job.cjs', '/synthetic-job-root']);
+    options = config;
+    return child;
+  });
+  child.emit('close', 0);
+  await run;
+  assert.deepEqual(options.stdio, ['ignore', 'ignore', 'pipe']);
+  assert.deepEqual(Object.keys(options.env).sort(), [
+    'FLUX_ARCHIVE_MAX_BYTES',
+    'FLUX_ARCHIVE_MAX_FILES',
+    'FLUX_SERVER',
+    'HOME',
+    'MAGICK_THREAD_LIMIT',
+    'NODE_OPTIONS',
+    'OMP_NUM_THREADS',
+    'OPENBLAS_NUM_THREADS',
+    'PATH',
+    'PYTHONDONTWRITEBYTECODE',
+    'QT_QPA_PLATFORM',
+    'TMPDIR',
+    'XDG_RUNTIME_DIR',
+  ]);
+});

@@ -693,7 +693,10 @@ test('container installs both ImageMagick policies and verifies active executabl
   assert.ok(verify < docker.indexOf('RUN node server/build-catalog.cjs'));
   const compat = await fs.readFile(path.join(__dirname, '../server/compat.py'), 'utf8');
   assert.ok(compat.includes("else '/usr/bin/convert'"));
-  const verifier = await fs.readFile(path.join(__dirname, '../server/imagemagick-policy.cjs'), 'utf8');
+  const verifier = await fs.readFile(
+    path.join(__dirname, '../server/imagemagick-policy.cjs'),
+    'utf8',
+  );
   assert.ok(verifier.includes("['/usr/bin/convert', '/usr/local/bin/magick']"));
   assert.ok(verifier.includes("['-list', 'policy']"));
 });
@@ -706,7 +709,9 @@ test('active ImageMagick policy verifier rejects missing, permissive and unrelat
   const entries = parser.parse(xml).policymap.policy;
   const listing = (policies, major = 7) => {
     const body = policies.map(({ domain, ...fields }) => {
-      const attributes = Object.entries(fields).map(([name, value]) => '    ' + name + ': ' + value);
+      const attributes = Object.entries(fields).map(
+        ([name, value]) => '    ' + name + ': ' + value,
+      );
       return '  Policy: ' + domain + '\n' + attributes.join('\n') + '\n';
     });
     return 'Path: /etc/ImageMagick-' + major + '/policy.xml\n' + body.join('');
@@ -731,9 +736,7 @@ test('active ImageMagick policy verifier rejects missing, permissive and unrelat
     rejects(granting, /granting/);
     rejects(entries.concat({ domain, rights: 'Write', pattern: '*' }), /granting/);
   }
-  const wrongPath = entries.map((p) =>
-    p.domain === 'path' ? { ...p, pattern: '@unrelated' } : p,
-  );
+  const wrongPath = entries.map((p) => (p.domain === 'path' ? { ...p, pattern: '@unrelated' } : p));
   rejects(wrongPath, /Missing path denial/);
   for (const name of ['memory', 'map', 'disk', 'area', 'width', 'height', 'time', 'thread']) {
     rejects(entries.filter((p) => p.name !== name));

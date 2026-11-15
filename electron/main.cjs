@@ -59,11 +59,13 @@ let historyRevision = 0,
   historyFlush,
   savingBatchHistory = false;
 function save() {
-  saving = saving.catch(() => {}).then(async () => {
-    const revision = historyRevision;
-    await persist();
-    savedHistoryRevision = revision;
-  });
+  saving = saving
+    .catch(() => {})
+    .then(async () => {
+      const revision = historyRevision;
+      await persist();
+      savedHistoryRevision = revision;
+    });
   return saving;
 }
 function scheduleHistorySave() {

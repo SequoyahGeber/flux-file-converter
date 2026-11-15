@@ -19,10 +19,16 @@ const product = (file) => ({
   completedAt: 1,
 });
 async function add(harness, count) {
-  return harness.invoke('add-paths', Array.from({ length: count }, (_, i) => '/input/' + i));
+  return harness.invoke(
+    'add-paths',
+    Array.from({ length: count }, (_, i) => '/input/' + i),
+  );
 }
 async function start(harness, files) {
-  await harness.invoke('start-jobs', files.map((file) => ({ id: file.id, target: 'jpg' })));
+  await harness.invoke(
+    'start-jobs',
+    files.map((file) => ({ id: file.id, target: 'jpg' })),
+  );
 }
 async function complete(harness) {
   for (let i = 0; i < 1000 && harness.state().running; i++) await settle();
@@ -80,27 +86,20 @@ test('inspection bounds workers and preserves order, IDs and per-file failures',
   const result = await adding;
   assert.equal(peak, 3);
   assert.equal(active, 0);
-  assert.deepEqual(result.map((file) => file.path), [
-    '/input/0',
-    '/input/1',
-    '/input/2',
-    '/input/3',
-    '/input/4',
-    '/input/folder',
-  ]);
+  assert.deepEqual(
+    result.map((file) => file.path),
+    ['/input/0', '/input/1', '/input/2', '/input/3', '/input/4', '/input/folder'],
+  );
   assert.match(result[1].warning, /synthetic failure/);
   assert.equal(result[1].family, 'unsupported');
   assert.equal(result[5].family, 'folder');
   assert.deepEqual(result[5].compressionOptions, []);
   assert.deepEqual(result[3].compressionOptions, [{ id: 'archive' }]);
   assert.match(result[0].notes.jpg, /Transparency/);
-  assert.deepEqual(h.state().files.map((file) => file.path), [
-    '/input/0',
-    '/input/2',
-    '/input/3',
-    '/input/4',
-    '/input/folder',
-  ]);
+  assert.deepEqual(
+    h.state().files.map((file) => file.path),
+    ['/input/0', '/input/2', '/input/3', '/input/4', '/input/folder'],
+  );
   assert.equal((await h.invoke('add-paths', ['/input/0', '/input/0']))[0].id, result[0].id);
   assert.equal(entered.length, 5, 'existing paths are not inspected again');
   assert.deepEqual(await h.invoke('add-paths', []), []);
@@ -279,11 +278,17 @@ test('final save precedes batch completion and deferred quit', async () => {
   slow.resolve();
   await settle();
   assert.equal(h.state().running, true);
-  assert.equal(h.messages.some((message) => message.data.batchComplete), false);
+  assert.equal(
+    h.messages.some((message) => message.data.batchComplete),
+    false,
+  );
   assert.equal(h.quits, 0);
   finalWrite.resolve();
   await complete(h);
-  assert.deepEqual(h.state().jobs.map((job) => job.status), ['done', 'cancelled', 'cancelled']);
+  assert.deepEqual(
+    h.state().jobs.map((job) => job.status),
+    ['done', 'cancelled', 'cancelled'],
+  );
   finalHistory(h, 1);
   assert.equal(h.quits, 1);
   assert.equal(h.released, 1);
@@ -303,7 +308,10 @@ test('cancel and a stage sweep failure both drain through the final save', async
   await h.invoke('cancel-jobs');
   gate.resolve();
   await complete(h);
-  assert.deepEqual(h.state().jobs.map((job) => job.status), ['done', 'cancelled']);
+  assert.deepEqual(
+    h.state().jobs.map((job) => job.status),
+    ['done', 'cancelled'],
+  );
   finalHistory(h, 1);
   const broken = await createMainHarness({
     sweepStages: async () => {

@@ -226,9 +226,7 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
   const name = path.basename(filePath),
     ext = catalog.extension(name);
   let group = catalog.family(ext);
-  let detected,
-    imageMetadata,
-    mediaMetadata;
+  let detected, imageMetadata, mediaMetadata;
   if (!group) {
     try {
       imageMetadata = await sharp(filePath).metadata();
@@ -247,7 +245,8 @@ async function inspectSource(filePath, engines, resources, { signal } = {}) {
           ).stdout,
         );
         if (mediaMetadata.streams.some((s) => s.codec_type === 'video')) group = { id: 'video' };
-        else if (mediaMetadata.streams.some((s) => s.codec_type === 'audio')) group = { id: 'audio' };
+        else if (mediaMetadata.streams.some((s) => s.codec_type === 'audio'))
+          group = { id: 'audio' };
       } catch {}
     if (!group)
       try {

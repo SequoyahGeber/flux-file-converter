@@ -159,8 +159,7 @@ function batchMessage(batch) {
   ]
     .filter(([status]) => counts[status])
     .map(
-      ([status, label]) =>
-        `${counts[status]} ${counts[status] === 1 ? 'file' : 'files'} ${label}.`,
+      ([status, label]) => `${counts[status]} ${counts[status] === 1 ? 'file' : 'files'} ${label}.`,
     );
   return `Batch finished. ${outcomes.join(' ')}`;
 }
@@ -173,9 +172,7 @@ function SideButton({ id, icon: Icon, children, count, active, onNavigate }) {
     >
       <Icon size={18} />
       <span>{children}</span>
-      {count > 0 && (
-        <b aria-label={`${count} ${count === 1 ? 'file' : 'files'}`}>{count}</b>
-      )}
+      {count > 0 && <b aria-label={`${count} ${count === 1 ? 'file' : 'files'}`}>{count}</b>}
     </button>
   );
 }

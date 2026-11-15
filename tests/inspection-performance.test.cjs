@@ -145,7 +145,9 @@ test('extensionless MP4 reuses one real probe', async (t) => {
     2,
     'known extension also probes once',
   );
-  t.diagnostic('Extensionless MP4: 1 FFprobe invocation (baseline 2), format and streams retained.');
+  t.diagnostic(
+    'Extensionless MP4: 1 FFprobe invocation (baseline 2), format and streams retained.',
+  );
 });
 
 test('extensionless PNG reuses one metadata read', async (t) => {
@@ -192,10 +194,7 @@ test('cached probes reject manifests and exclude attached artwork', async (t) =>
   const { engine, calls } = await isolatedEngine(async () => ({
     stdout: JSON.stringify({
       format: { format_name: 'mp3', duration: '3.2' },
-      streams: [
-        { codec_type: 'video', disposition: { attached_pic: 1 } },
-        { codec_type: 'audio' },
-      ],
+      streams: [{ codec_type: 'video', disposition: { attached_pic: 1 } }, { codec_type: 'audio' }],
     }),
   }));
   const info = await engine.inspectFile(
@@ -245,13 +244,19 @@ test('unknown-extension probing receives cancellation and a bounded timeout', as
     controller.abort();
     throw Object.assign(new Error('cancelled'), { code: 'CANCELLED' });
   });
-  await assert.rejects(engine.inspectFile(unknown, { ffprobe: '/stub/ffprobe' }, resources, {
-    signal: controller.signal,
-  }), (error) => error.code === 'CANCELLED');
+  await assert.rejects(
+    engine.inspectFile(unknown, { ffprobe: '/stub/ffprobe' }, resources, {
+      signal: controller.signal,
+    }),
+    (error) => error.code === 'CANCELLED',
+  );
   assert.equal(calls.probes[0].options.signal, controller.signal);
   const before = calls.metadata;
-  await assert.rejects(engine.inspectFile(unknown, {}, resources, {
-    signal: controller.signal,
-  }), (error) => error.code === 'CANCELLED');
+  await assert.rejects(
+    engine.inspectFile(unknown, {}, resources, {
+      signal: controller.signal,
+    }),
+    (error) => error.code === 'CANCELLED',
+  );
   assert.equal(calls.metadata, before, 'pre-aborted inspection does no metadata work');
 });

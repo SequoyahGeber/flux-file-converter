@@ -381,8 +381,7 @@ async function admissionFixture(t, deps = {}) {
     const res = await fetch(base + '/api/' + route, {
       method,
       headers: { ...(admin ? { 'x-test-owner': '1' } : {}), ...extra },
-      body:
-        body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
+      body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
     return { status: res.status, body: await res.json() };
@@ -570,8 +569,7 @@ test('revocation rejects an in-flight upload reservation without leaking slots o
       503,
     );
   } finally {
-    for (const id of uploads)
-      assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+    for (const id of uploads) assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
     assert.equal(
       (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
       200,
@@ -764,8 +762,7 @@ test('A4: revocation during upload creation removes the file and restores slots 
         503,
       );
     } finally {
-      for (const id of uploads)
-        assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+      for (const id of uploads) assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
       assert.equal(
         (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
         200,
@@ -801,10 +798,7 @@ for (const failure of ['exclusive collision', 'cleanup failure']) {
         target = file;
         await originalWriteFile(file, 'sentinel', { flag: 'wx', mode: 0o600 });
         if (failure === 'cleanup failure') {
-          assert.equal(
-            (await f.call('members/' + one.id, 'DELETE', undefined, true)).status,
-            200,
-          );
+          assert.equal((await f.call('members/' + one.id, 'DELETE', undefined, true)).status, 200);
           return;
         }
         // Exercise the real exclusive-create error against an existing file.
@@ -849,8 +843,7 @@ for (const failure of ['exclusive collision', 'cleanup failure']) {
     } finally {
       fs.writeFile = originalWriteFile;
       fs.rm = originalRm;
-      for (const id of uploads)
-        assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
+      for (const id of uploads) assert.equal((await f.call('uploads/' + id, 'DELETE')).status, 200);
       assert.equal(
         (await f.call('uploads/' + ownerUpload.body.id, 'DELETE', undefined, true)).status,
         200,

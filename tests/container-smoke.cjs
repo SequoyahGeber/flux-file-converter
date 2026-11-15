@@ -37,7 +37,9 @@ async function main() {
       'SEC-02 unresolved: same-UID worker memory open must fail with a permission error; errno=' +
         proof.memory_open,
     );
-    console.log('Passed sandboxed UID 10002 live-worker environment, pidfd and process-memory checks.');
+    console.log(
+      'Passed sandboxed UID 10002 live-worker environment, pidfd and process-memory checks.',
+    );
     const status = await fs.readFile('/proc/self/status', 'utf8');
     for (const field of ['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'])
       assert.match(status, new RegExp(field + ':\\s+0+\\b'));

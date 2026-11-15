@@ -62,7 +62,10 @@ async function desktopPerformance(root, video) {
       const files = await select(electronApp, page, clips);
       const milliseconds = performance.now() - before;
       const metrics = await snapshot(electronApp);
-      assert.deepEqual(files.map((file) => file.path), clips);
+      assert.deepEqual(
+        files.map((file) => file.path),
+        clips,
+      );
       assert.ok(files.every((file) => file.family === 'video' && !file.warning));
       assert.equal(metrics.inspections, 50);
       assert.equal(metrics.probes, 50, 'parallelism does not add probes');
@@ -89,8 +92,7 @@ async function desktopPerformance(root, video) {
         await reset(electronApp);
         const batchStart = performance.now();
         await page.evaluate(
-          (records) =>
-            window.flux.start(records.map((file) => ({ id: file.id, target: 'yaml' }))),
+          (records) => window.flux.start(records.map((file) => ({ id: file.id, target: 'yaml' }))),
           added,
         );
         await page.waitForFunction(async () => !(await window.flux.getState()).running);

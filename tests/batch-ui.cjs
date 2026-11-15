@@ -236,8 +236,7 @@ async function main() {
       ...[laterJob.id, queuedJob.id].map((id) =>
         page.waitForResponse(
           (response) =>
-            response.url() === base + '/api/cancel' &&
-            response.request().postDataJSON()?.id === id,
+            response.url() === base + '/api/cancel' && response.request().postDataJSON()?.id === id,
           { timeout: 10000 },
         ),
       ),
@@ -380,8 +379,7 @@ async function main() {
       const before = submitted.length;
       await page.locator('#run').click();
       await drive(
-        () =>
-          document.querySelector('#cancel').hidden && !document.querySelector('#run').disabled,
+        () => document.querySelector('#cancel').hidden && !document.querySelector('#run').disabled,
       );
       const requests = submitted.slice(before);
       assert.equal(requests.length, expected.length, 'No invalid job may be submitted.');
@@ -447,8 +445,7 @@ async function main() {
     );
     // A stale selected target is not a valid conversion, even if other targets exist.
     await page.evaluate(() => {
-      for (const file of state.files)
-        if (file.targets.length) targets.set(file.id, 'unavailable');
+      for (const file of state.files) if (file.targets.length) targets.set(file.id, 'unavailable');
       render();
     });
     await noEligibleWork();

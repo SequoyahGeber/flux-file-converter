@@ -92,7 +92,10 @@ function verifyPolicy(listing) {
   }
   for (const [name, ceiling] of Object.entries(ceilings)) {
     const rules = policies.filter((p) => p.domain === 'resource' && p.name === name);
-    assert.ok(rules.length && installed.some((p) => rules.includes(p)), 'Missing resource: ' + name);
+    assert.ok(
+      rules.length && installed.some((p) => rules.includes(p)),
+      'Missing resource: ' + name,
+    );
     // Check every loaded value: an additional permissive policy must fail too.
     for (const rule of rules)
       assert.ok(

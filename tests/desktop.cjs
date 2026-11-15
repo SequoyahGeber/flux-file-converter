@@ -79,9 +79,12 @@ async function textContrast(page, selectors, minimum = 4.5) {
 async function actionContrast(page, selector, minimum = 4.5) {
   await textContrast(page, [selector], minimum);
   await page.locator(selector).first().hover();
-  await page.locator(selector).first().evaluate(async (el) => {
-    await Promise.all(el.getAnimations().map((animation) => animation.finished));
-  });
+  await page
+    .locator(selector)
+    .first()
+    .evaluate(async (el) => {
+      await Promise.all(el.getAnimations().map((animation) => animation.finished));
+    });
   await textContrast(page, [selector], minimum);
   // Move off the control so later checks measure its normal state.
   await page.mouse.move(0, 0);
@@ -336,7 +339,10 @@ async function announcementFixtures(electronApp, url) {
     await page.getByRole('button', { name: 'Cancel batch', exact: true }).waitFor();
     await nativeMenuAction(page, 'compress');
     await currentPage(page, 'Convert files');
-    await page.getByRole('alert').getByText(/before switching workspaces/).waitFor();
+    await page
+      .getByRole('alert')
+      .getByText(/before switching workspaces/)
+      .waitFor();
     await page.getByRole('button', { name: 'Dismiss error', exact: true }).click();
     await nativeMenuAction(page, 'cancel');
     await page.locator('.queue-bottom .primary-button').waitFor();
@@ -348,10 +354,11 @@ async function announcementFixtures(electronApp, url) {
       await notification(page, node, '');
     };
     await start();
-    assert.deepEqual(
-      await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)),
-      ['0', '1', '2'],
-    );
+    assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)), [
+      '0',
+      '1',
+      '2',
+    ]);
     await page.evaluate(() => {
       window.a11yFixture.emit({ id: '0', status: 'running', progress: 150 });
     });
@@ -419,10 +426,10 @@ async function announcementFixtures(electronApp, url) {
     // Only failed/cancelled files are retried; old successes and unsupported files stay out.
     for (let repeat = 0; repeat < 2; repeat++) {
       await start();
-      assert.deepEqual(
-        await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)),
-        ['1', '2'],
-      );
+      assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests.map((r) => r.id)), [
+        '1',
+        '2',
+      ]);
       await page.evaluate(() => {
         for (const r of window.a11yFixture.requests)
           window.a11yFixture.emit({ ...r, status: 'error', error: 'Fixture failure.' });
@@ -467,10 +474,12 @@ async function announcementFixtures(electronApp, url) {
     const archiveMode = page.getByRole('group', { name: 'Archive mode', exact: true });
     assert.equal(await archiveMode.getByRole('button', { pressed: true }).isDisabled(), true);
     assert.equal(await archiveMode.getByRole('button', { pressed: false }).isDisabled(), true);
-    assert.deepEqual(
-      await page.evaluate(() => window.a11yFixture.requests[0].includeIds),
-      ['0', '1', '2', '3'],
-    );
+    assert.deepEqual(await page.evaluate(() => window.a11yFixture.requests[0].includeIds), [
+      '0',
+      '1',
+      '2',
+      '3',
+    ]);
     await page.evaluate(() => {
       const r = window.a11yFixture.requests[0];
       window.a11yFixture.emit({ ...r, status: 'error', error: 'Pack failed.' });
@@ -530,7 +539,10 @@ async function announcementFixtures(electronApp, url) {
       '.sample-picker select',
       '.sample-picker small',
     ]);
-    for (const viewport of [{ width: 900, height: 560 }, { width: 600, height: 373 }]) {
+    for (const viewport of [
+      { width: 900, height: 560 },
+      { width: 600, height: 373 },
+    ]) {
       await page.setViewportSize(viewport);
       await reachableControls(page, 'Narrow native home', [
         '.dropzone .primary-button',

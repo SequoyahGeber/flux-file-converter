@@ -181,11 +181,14 @@ async function main() {
         });
       }
     }
-    const transfer = await page.evaluateHandle((bytes) => {
-      const data = new DataTransfer();
-      data.items.add(new File([new Uint8Array(bytes)], 'drop-upload.png', { type: 'image/png' }));
-      return data;
-    }, [...buffer]);
+    const transfer = await page.evaluateHandle(
+      (bytes) => {
+        const data = new DataTransfer();
+        data.items.add(new File([new Uint8Array(bytes)], 'drop-upload.png', { type: 'image/png' }));
+        return data;
+      },
+      [...buffer],
+    );
     try {
       const admission = page.waitForResponse(
         (response) =>

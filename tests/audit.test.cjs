@@ -793,11 +793,7 @@ test('G8: real rpc validates worker replies and sends the authenticated job and 
     const binaryInfo = { ...info, name: 'result.bin', size: body.length, target: 'bin' };
     const binarySpec = { operation: 'convert', target: 'bin' };
     const out = path.join(dir, 'binary-output');
-    const { completedAt, ...metadata } = await invoke(
-      binarySpec,
-      result(binaryInfo, body),
-      out,
-    );
+    const { completedAt, ...metadata } = await invoke(binarySpec, result(binaryInfo, body), out);
     assert.deepEqual(metadata, binaryInfo);
     assert.ok(Number.isSafeInteger(completedAt));
     assert.equal((await fs.stat(out)).size, body.length);
