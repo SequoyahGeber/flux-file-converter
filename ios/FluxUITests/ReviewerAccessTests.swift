@@ -63,6 +63,16 @@ final class ReviewerAccessTests: XCTestCase {
     func testAccessibilityAudit() throws {
         start()
         try SharedUIFlows.accessibilityAudit(of: app)
+        // FX-B-06: also the result card with its success text, after converting the sample image.
+        app.buttons[AccessibilityID.Converter.trySample].firstMatch.tap()
+        app.buttons[AccessibilityID.Converter.sample("image")].firstMatch.tap()
+        let convert = app.buttons[AccessibilityID.Converter.convert].firstMatch
+        XCTAssertTrue(SharedUIFlows.appears(convert, within: 10))
+        if !convert.isHittable { app.scrollViews[AccessibilityID.Converter.workspace].swipeUp() }
+        convert.tap()
+        XCTAssertTrue(app.buttons[AccessibilityID.Converter.save].waitForExistence(timeout: 60))
+        try SharedUIFlows.accessibilityAudit(of: app)
+        app.scrollViews[AccessibilityID.Converter.workspace].swipeDown()
         openSettings()
         XCTAssertTrue(SharedUIFlows.appears(app.buttons[AccessibilityID.Settings.done], within: 10))
         try SharedUIFlows.accessibilityAudit(of: app)

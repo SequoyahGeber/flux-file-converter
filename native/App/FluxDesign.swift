@@ -51,6 +51,13 @@ enum FluxPalette {
     /// background it sits on): #656569 is 4.56:1 there and 5.8:1 on white. Dark mode keeps the system value.
     static let caption = ColorToken(name: "caption", light: RGB(0x656569), dark: RGB(0x8D8D93),
                                     lightIncreasedContrast: RGB(0x5A5A5E), darkIncreasedContrast: RGB(0xA3A3A9))
+    /// Success and failure *text* in light mode: the system green and red are 2.09:1 on the success card and 3.55:1 on
+    /// white, below 4.5:1 for body text. Each is darkened just enough to pass (#22823A 4.57:1 on the card, #DE332A
+    /// 4.55:1 on white) (FX-B-06). Fills and dark mode keep the system values.
+    static let successText = ColorToken(name: "successText", light: RGB(0x22823A), dark: RGB(0x30D158),
+                                        lightIncreasedContrast: RGB(0x248A3D), darkIncreasedContrast: RGB(0x30DB5B))
+    static let criticalText = ColorToken(name: "criticalText", light: RGB(0xDE332A), dark: RGB(0xFF453A),
+                                         lightIncreasedContrast: RGB(0xD70015), darkIncreasedContrast: RGB(0xFF6961))
     /// Set once at the root: the shared components colour by tone.
     static let tones = TonePalette(accent: accent.color, success: success.color, critical: critical.color)
 }
@@ -60,6 +67,8 @@ enum FluxColor {
     static let accent = FluxPalette.accent.color
     static let success = FluxPalette.success.color
     static let failure = FluxPalette.critical.color
+    static let successText = FluxPalette.successText.color
+    static let failureText = FluxPalette.criticalText.color
     static let successBackground = FluxPalette.success.color.opacity(0.08)
     static let card = HierarchicalShapeStyle.quaternary
 }

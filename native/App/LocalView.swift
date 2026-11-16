@@ -108,7 +108,7 @@ struct LocalView: View {
                     }
                     if let result = model.result {
                         VStack(alignment: .leading, spacing: FluxSpace.m) {
-                            Label(model.message, symbol: FluxIcon.success).foregroundStyle(FluxColor.success)
+                            Label(model.message, symbol: FluxIcon.success).foregroundStyle(FluxColor.successText)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
@@ -116,7 +116,7 @@ struct LocalView: View {
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                             .id(Outcome.result)
                     }
-                    if !model.error.isEmpty { Label(model.error, symbol: FluxIcon.errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled).id(Outcome.error) }
+                    if !model.error.isEmpty { Label(model.error, symbol: FluxIcon.errorLine).foregroundStyle(FluxColor.failureText).font(.callout).textSelection(.enabled).id(Outcome.error) }
                     // A stop the person chose (or leaving Flux) is a plain status, not an error (FX-B-04).
                     if !model.notice.isEmpty { Label(model.notice, symbol: FluxIcon.info).font(.callout).id(Outcome.notice).accessibilityIdentifier(AccessibilityID.Converter.notice) }
                     VStack(alignment: .leading, spacing: 0) {
