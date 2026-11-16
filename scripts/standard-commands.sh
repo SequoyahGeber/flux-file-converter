@@ -25,7 +25,7 @@ ui-test)
     xcodebuild -project ios/Flux.xcodeproj -scheme Flux -destination "id=$device" -derivedDataPath /tmp/flux-ui \
         CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- PROVISIONING_PROFILE_SPECIFIER= build-for-testing
     xcodebuild -project ios/Flux.xcodeproj -scheme Flux -destination "id=$device" -derivedDataPath /tmp/flux-ui \
-        test-without-building
+        -parallel-testing-enabled NO test-without-building
     ;;
 *) echo "unknown command: $1" >&2; exit 2 ;;
 esac
