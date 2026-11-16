@@ -51,9 +51,24 @@ enum Documents {
         guard source.utf8.count <= LocalPolicy.textLimit else { throw LocalError.invalid("HTML exceeds 16 MB.") }
         var text = try stripHiddenElements(source, control: control)
         text = text.replacingOccurrences(of: "(?i)</(?:p|div|h[1-6]|li)>|<br\\s*/?>", with: "\n", options: .regularExpression)
-        text = text.replacingOccurrences(of: "<[^>]{0,4096}>", with: "", options: .regularExpression)
+        text = try stripTags(text, control: control)
         for (entity, value) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "), ("&amp;", "&")] { text = text.replacingOccurrences(of: entity, with: value) }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Removes every `<…>` of at most 4096 bytes inside, with the same result as the regex `<[^>]{0,4096}>` but in
+    /// linear time and cancellable (FX-A-08): ICU rescanned up to 4096 bytes from every unclosed `<`.
+    static func stripTags(_ source: String, control: JobControl) throws -> String {
+        let bytes = Array(source.utf8), count = bytes.count
+        var output = [UInt8](); output.reserveCapacity(count)
+        var index = 0, nextClose = 0
+        while index < count {
+            if index & 4095 == 0 { try control.check() }
+            guard bytes[index] == 60 else { output.append(bytes[index]); index += 1; continue }
+            if nextClose <= index { nextClose = bytes[(index + 1)...].firstIndex(of: 62) ?? count }
+            if nextClose < count, nextClose - index - 1 <= 4096 { index = nextClose + 1 }
+            else { output.append(60); index += 1 }
+        }
+        return String(decoding: output, as: UTF8.self)
     }
     /// Removes script, style and head elements with the same results as the regex
     /// `(?is)<(script|style|head)\b[^>]*>.*?</\1\s*>`, in linear time. ICU's version

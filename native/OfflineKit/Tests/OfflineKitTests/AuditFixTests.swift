@@ -212,4 +212,18 @@ final class AuditFixTests: XCTestCase {
         XCTAssertTrue(LocalError.timedOut(2 * 60 * 60 + 600).localizedDescription.hasPrefix("Stopped after 2 hours 10 minutes,"))
         XCTAssertEqual(LocalError.duration(60 * 60), "1 hour")
     }
+    // FX-A-08: the tag strip matches the old regex and stays linear on unclosed "<".
+    func testTagStripMatchesTheRegexAndIsLinear() throws {
+        let long = String(repeating: "x", count: 4097)
+        for source in ["a<b>c", "<p>one</p><br/>two", "x < y > z", "<<a>>", "no tags", "<open", "a<\(long)>b", "a<\(long.dropLast())>b", "é<i>ü</i>ß"] {
+            let regex = source.replacingOccurrences(of: "<[^>]{0,4096}>", with: "", options: .regularExpression)
+            XCTAssertEqual(try Documents.stripTags(source, control: JobControl()), regex, source)
+        }
+        let hostile = String(repeating: "<", count: 16 * 1024 * 1024 - 2) + ">"
+        let start = ProcessInfo.processInfo.systemUptime
+        _ = try Documents.stripTags(hostile, control: JobControl())
+        XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 5)
+        let stopped = JobControl(); stopped.cancel()
+        XCTAssertThrowsError(try Documents.stripTags(hostile, control: stopped))
+    }
 }
