@@ -19,7 +19,8 @@ struct SettingsView: View {
                     }.pickerStyle(.segmented).accessibilityIdentifier(AccessibilityID.Settings.appearance)
                 }
                 Section("Diagnostics") {
-                    NavigationLink("Diagnostics") {
+                    // The row names what it opens, so it never repeats its section header.
+                    NavigationLink("Recent log") {
                         DiagnosticsView(center: FluxDiagnostics.center, sensitiveTerms: { FluxDiagnostics.fileNames() })
                             .navigationTitle("Diagnostics").navigationBarTitleDisplayMode(.inline)
                     }.accessibilityIdentifier(AccessibilityID.Settings.diagnostics)

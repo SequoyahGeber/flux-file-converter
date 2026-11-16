@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/SequoyahGeber/SharedKit.git",
       "state" : {
-        "revision" : "193b3af1432731468c23bd6772ca3bda44fdac4b",
-        "version" : "0.2.1"
+        "revision" : "37b3679f3fa7988b5eaaa68b4c06713cd5d41d0d",
+        "version" : "0.4.0"
       }
     },
     {

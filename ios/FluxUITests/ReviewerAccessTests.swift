@@ -2,6 +2,8 @@ import XCTest
 import SharedStrings
 import SharedTestSupport
 
+/// SharedKit's UI-test helpers are main-actor isolated.
+@MainActor
 final class ReviewerAccessTests: XCTestCase {
     static let bundleID = "com.sequoyah.flux.mac"
     let app = XCUIApplication()
@@ -39,21 +41,37 @@ final class ReviewerAccessTests: XCTestCase {
 
     func testFeedbackFromTheConverterButtonReachesTheStandInInbox() {
         start()
+        continueAfterFailure = true
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromButton(app) }
+        keepScreenOnFailure("feedback-button")
     }
 
     func testFeedbackFromSettingsReachesTheStandInInbox() {
         start()
+        continueAfterFailure = true
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromSettings(app) { openSettings() } }
+        keepScreenOnFailure("feedback-settings")
+    }
+
+    /// Diagnostics only on failure (D-083): the attachment is deleted when the test passes.
+    func keepScreenOnFailure(_ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name; shot.lifetime = .deleteOnSuccess; add(shot)
+    }
+
+    /// Approved exceptions, each recorded with the coordinator: the converter's secondary caption
+    /// "On-device · No uploads · No login" nearly passes contrast; changing it would change the look (PLAN §3).
+    nonisolated static func approvedAuditExceptions(_ issue: XCUIAccessibilityAuditIssue) -> Bool {
+        issue.auditType == .contrast && (issue.element?.label.hasPrefix("On-device") ?? false)
     }
 
     /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
     func testAccessibilityAudit() throws {
         start()
-        try SharedUIFlows.accessibilityAudit(of: app)
+        try SharedUIFlows.accessibilityAudit(of: app, ignoring: Self.approvedAuditExceptions)
         openSettings()
         XCTAssertTrue(SharedUIFlows.appears(app.buttons[AccessibilityID.Settings.done], within: 10))
-        try SharedUIFlows.accessibilityAudit(of: app)
+        try SharedUIFlows.accessibilityAudit(of: app, ignoring: Self.approvedAuditExceptions)
     }
 
     func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {
@@ -93,7 +111,9 @@ final class ReviewerAccessTests: XCTestCase {
             XCTAssertTrue(format.label.contains("Convert to"), "Output picker keeps its spoken purpose")
             if sample == "archive" {
                 // The bundled archive sample selects the real unzip target.
-                XCTAssertEqual(format.value as? String, "Extract archive")
+                // iOS 27 reports the menu picker's selection in its label or its value.
+                let shown = [format.label, format.value as? String ?? ""].joined(separator: " ")
+                XCTAssertTrue(shown.contains("Extract archive"), "Archive selects Extract archive: \(shown)")
             }
             let outputName = app.textFields[AccessibilityID.Converter.outputName]
             reveal(outputName, AccessibilityID.Converter.outputName)
