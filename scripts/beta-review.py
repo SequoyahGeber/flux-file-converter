@@ -35,6 +35,7 @@ def main():
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     version = (ROOT / "native/VERSION").read_text().strip()
     notes = (ROOT / "docs/beta-review-notes.txt").read_text().strip()
+    if len(notes) > 4000: issues.append(f"docs/beta-review-notes.txt is {len(notes)} characters; App Store Connect accepts 4,000.")
     if int(args.build) < 2026100305 or version != "1.0.3": issues.append("Use the review-ready 1.0.3 build or update this preflight for the new release.")
     for page, title in [("privacy", "Flux privacy policy"), ("support", "Flux support")]:
         try:

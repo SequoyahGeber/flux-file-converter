@@ -10,6 +10,12 @@ shift 2
 SHAREDKIT=${SHAREDKIT_HOME:-$HOME/dev/SharedKit}
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 unset SDKROOT  # D-062
+# The Mac package name carries the version; stop early if the config was not updated with native/VERSION (FX-A-13).
+version=$(tr -d '[:space:]' < native/VERSION)
+if [ "$platform" = mac ] && ! grep -q "Flux-Local-$version-{build}.pkg" Config/testflight-mac.json; then
+    echo "Config/testflight-mac.json does not name the $version package from native/VERSION; update its package path." >&2
+    exit 1
+fi
 if [ "$platform" = mac ] && [[ " $* " != *" --dry-run "* ]]; then
     python3 scripts/mac-release.py --build "$build"
 fi

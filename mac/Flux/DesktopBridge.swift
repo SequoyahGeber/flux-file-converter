@@ -80,7 +80,8 @@ import OfflineKit
                 FluxDiagnostics.center.journal.record(.error, .lifecycle, "launchFailed", ["error": .error(failure)])
                 if alert.runModal() == .alertSecondButtonReturn {
                     // The form opens over the window; the person quits Flux when done.
-                    FluxFeedback.center.open(.launchProblem)
+                    // The page never loaded, so a screenshot would be blank: send none (FX-A-17).
+                    Task { await FluxFeedback.center.open(.launchProblem) { nil } }
                     return
                 }
                 NSApplication.shared.terminate(nil)
