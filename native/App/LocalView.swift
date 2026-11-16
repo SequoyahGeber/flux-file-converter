@@ -77,7 +77,10 @@ struct LocalView: View {
                             }
                             VStack(alignment: .leading, spacing: FluxSpace.label) {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(FluxPalette.caption.color).accessibilityHidden(true)
-                                TextField("Converted", text: $model.filename).textFieldStyle(.roundedBorder).accessibilityIdentifier(AccessibilityID.Converter.outputName)
+                                // Wraps instead of clipping a long name at large text sizes (audit: text clipped); Return can't add a line.
+                                TextField("Converted", text: $model.filename, axis: .vertical).lineLimit(1...4).textFieldStyle(.roundedBorder).submitLabel(.done)
+                                    .onChange(of: model.filename) { _, name in if name.contains(where: \.isNewline) { model.filename = name.filter { !$0.isNewline } } }
+                                    .accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
                             }
                             if model.media && model.target != "zip" {

@@ -123,7 +123,7 @@ final class ReviewerAccessTests: XCTestCase {
                 let shown = [format.label, format.value as? String ?? ""].joined(separator: " ")
                 XCTAssertTrue(shown.contains("Extract archive"), "Archive selects Extract archive: \(shown)")
             }
-            let outputName = app.textFields[AccessibilityID.Converter.outputName]
+            let outputName = app.descendants(matching: .any)[AccessibilityID.Converter.outputName].firstMatch  // a wrapping field may report as a text view
             reveal(outputName, AccessibilityID.Converter.outputName)
             XCTAssertEqual(outputName.label, sample == "archive" ? "Folder name" : "Output file name")
             // The visible captions are hidden from VoiceOver to avoid duplicate
