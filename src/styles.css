@@ -2356,3 +2356,11 @@ select {
     color: #1b1730;
   }
 }
+/* FX-B-14 (owner decision 16 Nov): Mac hit targets are at least 24 × 24 points; the icons keep their size. */
+:root[data-host='mac'] .search-button {
+  width: 24px;
+}
+:root[data-host='mac'] .remove-button {
+  width: 24px;
+  height: 24px;
+}
