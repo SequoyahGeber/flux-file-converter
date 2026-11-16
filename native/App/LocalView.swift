@@ -63,6 +63,7 @@ struct LocalView: View {
                         } else {
                             ForEach(Array(model.inputs.prefix(5).enumerated()), id: \.offset) { _, url in
                                 Label(url.lastPathComponent, symbol: FluxIcon.file).font(.callout).lineLimit(2).truncationMode(.middle)
+                                    .accessibilityLabel("Selected file").accessibilityValue(url.lastPathComponent)
                             }
                             if model.inputs.count > 5 { Text("and \(model.inputs.count - 5) more files").font(.caption).foregroundStyle(FluxPalette.caption.color) }
                         }
@@ -117,6 +118,8 @@ struct LocalView: View {
                         VStack(alignment: .leading, spacing: FluxSpace.m) {
                             Label(model.message, symbol: FluxIcon.success).foregroundStyle(FluxColor.successText)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
+                                // A file name is not a readable label (audit); VoiceOver reads it as the value.
+                                .accessibilityLabel("Converted file").accessibilityValue(result.url.lastPathComponent)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
