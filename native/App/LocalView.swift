@@ -45,7 +45,7 @@ struct LocalView: View {
                         Button { importing = true } label: {
                             Label(model.inputs.isEmpty ? "Choose files" : "Choose different files", symbol: FluxIcon.chooseFiles)
                                 .frame(maxWidth: .infinity).padding(.vertical, 12)
-                        }.buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
+                        }.buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.chooseFiles)
                         if model.inputs.isEmpty {
                             Text("Convert an image, video, audio file or document. Select several files to make a ZIP.")
                                 .font(.callout).foregroundStyle(FluxPalette.caption.color)
@@ -107,7 +107,7 @@ struct LocalView: View {
                             }
                         } else {
                             Button { model.convert() } label: { Label("Convert", symbol: FluxIcon.convert).frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
                         }
                     }
                     if let result = model.result {
@@ -115,7 +115,7 @@ struct LocalView: View {
                             Label(model.message, symbol: FluxIcon.success).foregroundStyle(FluxColor.successText)
                             Text(result.url.lastPathComponent).font(.callout).textSelection(.enabled)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                             .id(Outcome.result)

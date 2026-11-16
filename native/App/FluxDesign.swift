@@ -65,6 +65,11 @@ enum FluxPalette {
     /// Increased Contrast keep the system blues.
     static let link = ColorToken(name: "link", light: RGB(0x004087), dark: RGB(0x0A84FF),
                                  lightIncreasedContrast: RGB(0x003A7A), darkIncreasedContrast: RGB(0x409CFF))
+    /// Filled buttons with white labels (Choose files, Save, Convert). White on the system purple is 4.13:1 in light
+    /// mode and 3.52:1 in dark, below 4.5:1, and the audit flags it; the fill renders exactly as specified, so #9C49C6
+    /// gives 5.0:1 in both. Increased Contrast uses the darker system purple (6.0:1).
+    static let accentFill = ColorToken(name: "accentFill", light: RGB(0x9C49C6), dark: RGB(0x9C49C6),
+                                       lightIncreasedContrast: RGB(0x8944AB), darkIncreasedContrast: RGB(0x8944AB))
     /// Set once at the root: the shared components colour by tone.
     static let tones = TonePalette(accent: accent.color, success: success.color, critical: critical.color)
 }
@@ -72,6 +77,7 @@ enum FluxPalette {
 /// Colour roles the views use.
 enum FluxColor {
     static let accent = FluxPalette.accent.color
+    static let accentFill = FluxPalette.accentFill.color
     static let success = FluxPalette.success.color
     static let failure = FluxPalette.critical.color
     static let successText = FluxPalette.successText.color
