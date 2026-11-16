@@ -19,7 +19,7 @@ enum QuitPolicy {
             return nil
         case (false, true):
             return Prompt(title: "Quit with unsaved results?",
-                          message: "\(files) been saved. They’re deleted when Flux quits. Your original files are kept.",
+                          message: "\(files) been saved. They can’t be saved after Flux quits. Your original files are kept.",
                           quit: "Quit", keep: keep)
         case (true, false):
             return Prompt(title: "Quit while converting?",
@@ -27,7 +27,7 @@ enum QuitPolicy {
                           quit: "Stop Batch and Quit", keep: keep)
         case (true, true):
             return Prompt(title: "Quit while converting?",
-                          message: "The current batch stops, and \(files) been saved. They’re deleted when Flux quits. Your original files are kept.",
+                          message: "The current batch stops, and \(files) been saved. They can’t be saved after Flux quits. Your original files are kept.",
                           quit: "Stop Batch and Quit", keep: keep)
         }
     }
