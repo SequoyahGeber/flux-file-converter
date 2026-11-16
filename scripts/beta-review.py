@@ -2,6 +2,8 @@
 """Preflight exact Mac/iPhone builds; optionally apply metadata and request Beta App Review.
 
 Read-only by default. Review submission does not enable a public link or invite/notify testers.
+--groups adds both exact builds to the "Flux Owner" (internal) and "External testers" groups, with tester
+notification off; it runs before --submit.
 """
 import argparse
 import hashlib
@@ -29,6 +31,8 @@ def main():
     parser.add_argument("build", help="Exact shared numeric build, never latest")
     parser.add_argument("--apply-metadata", action="store_true")
     parser.add_argument("--submit", action="store_true")
+    parser.add_argument("--groups", action="store_true",
+                        help='add both exact builds to "Flux Owner" and "External testers" (no tester notification)')
     args = parser.parse_args()
     if not args.build.isdigit(): parser.error("Use a numeric build.")
     issues = []
@@ -92,6 +96,20 @@ def main():
         if saved.get("notes") != notes or saved.get("demoAccountRequired") is not False or not all(saved.get(key) == contact[key] for key in CONTACT_FIELDS) or not any(x["attributes"].get("description") == DESCRIPTION and x["attributes"].get("privacyPolicyUrl") == SITE + "/privacy/" for x in localized):
             raise SystemExit("Apple metadata read-back mismatch.")
         print("Review contact, walkthrough, description and privacy URL verified.")
+    if args.groups:
+        # "Flux Owner" does not get every build automatically, and SharedKit's beta_review.py refuses internal groups.
+        groups = asc.call("/apps/" + APP + "/betaGroups?limit=200")["data"]
+        build_ids = [item["id"] for item in builds.values()]
+        for bid in build_ids:
+            asc.call("/buildBetaDetails/" + bid, "PATCH", {"data": {"type": "buildBetaDetails", "id": bid, "attributes": {"autoNotifyEnabled": False}}})
+        for name in ["Flux Owner", "External testers"]:
+            group = next((g for g in groups if g["attributes"].get("name") == name), None)
+            if not group: raise SystemExit(f"Beta group not found: {name}")
+            asc.call("/betaGroups/" + group["id"] + "/relationships/builds", "POST",
+                     {"data": [{"type": "builds", "id": bid} for bid in build_ids]})
+            added = {item["id"] for item in asc.call("/betaGroups/" + group["id"] + "/builds?limit=200")["data"]}
+            if not set(build_ids) <= added: raise SystemExit(f"{name}: builds not listed after adding them.")
+            print(f"{name}: builds {args.build} added for {', '.join(sorted(builds))} (testers not notified).")
     if args.submit:
         for platform, item in builds.items():
             bid = item["id"]

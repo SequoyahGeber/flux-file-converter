@@ -152,7 +152,8 @@ def main():
         # which the inbox tooling queries (feedback.py delete --creator), so they are linked to the person; never tracking.
         collected = manifest.get("NSPrivacyCollectedDataTypes")
         feedback_types = {"NSPrivacyCollectedDataTypeOtherUserContent", "NSPrivacyCollectedDataTypeCrashData",
-                          "NSPrivacyCollectedDataTypePerformanceData", "NSPrivacyCollectedDataTypeOtherDiagnosticData"}
+                          "NSPrivacyCollectedDataTypePerformanceData", "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+                          "NSPrivacyCollectedDataTypeUserID", "NSPrivacyCollectedDataTypeCustomerSupport"}  # D-118
         if (manifest.get("NSPrivacyTracking") is not False or not isinstance(collected, list)
                 or {c.get("NSPrivacyCollectedDataType") for c in collected} != feedback_types
                 or any(c.get("NSPrivacyCollectedDataTypeLinked") is not True or c.get("NSPrivacyCollectedDataTypeTracking") is not False

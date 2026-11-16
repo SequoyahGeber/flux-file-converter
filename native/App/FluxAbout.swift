@@ -9,7 +9,7 @@ enum FluxAbout {
         appName: "Flux", supportURL: ReviewResources.supportURL, privacyPolicyURL: ReviewResources.privacyURL,
         // D-044: the coordinator writes the support address in; the slot stays empty until then.
         supportAddress: nil,
-        privacyPolicyUpdated: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 11, day: 15).date!,
+        privacyPolicyUpdated: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 11, day: 17).date!,
         acknowledgements: ReviewResources.acknowledgements.map { Acknowledgement(name: $0.name, licence: $0.license) })
 
     /// The offline policy body; SharedAbout's frame adds "Updated …" before it and the web link after it.
