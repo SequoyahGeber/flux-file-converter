@@ -6,5 +6,12 @@
   "s2s_service_per_environment": true,
   "inbox": "feedback",
   "schema": "Config/CloudKit/feedback-schema.ckdb",
-  "categories": ["bug", "idea", "other"]
+  "categories": [
+    "bug",
+    "idea",
+    "other"
+  ],
+  "s2s_key_ids": {
+    "development": "2d8241671dcb06533792f0476cd0c4f410a16c770a6efa0a807e89b3cbe12258"
+  }
 }
