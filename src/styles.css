@@ -1002,6 +1002,21 @@ select {
   background: var(--fx-bg-b29bde, #b29bde);
   transition: width 0.2s;
 }
+.row-progress-track.indeterminate {
+  overflow: hidden;
+}
+.row-progress-track.indeterminate > div {
+  width: 30%;
+  animation: fx-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes fx-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
 .queue-bottom {
   display: flex;
   align-items: center;
@@ -1486,6 +1501,11 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .spin {
     animation: none;
+  }
+  .row-progress-track.indeterminate > div {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
   }
   *,
   *::before,

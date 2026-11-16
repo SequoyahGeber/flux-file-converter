@@ -42,6 +42,8 @@ struct MacPolicyTests {
     print("Atomic safe-save checks passed")
     try outputFolderRestoreChecks(root)
     print("Output folder restore checks passed")
+    quitPolicyChecks()
+    print("Quit policy checks passed")
   }
 }
 
@@ -66,4 +68,17 @@ func outputFolderRestoreChecks(_ root: URL) throws {
     exists: { FileManager.default.fileExists(atPath: $0.path) })
   assert(missing == nil && stopped == 1, "A missing folder is released for this launch")
   assert(OutputFolderRestore.restore(resolve: { nil }, startAccess: { _ in true }, stopAccess: { _ in }, exists: { _ in true }) == nil)
+}
+
+/// FX-B-01: quitting asks only when it would lose something, and says what.
+func quitPolicyChecks() {
+  assert(QuitPolicy.prompt(running: false, unsaved: 0) == nil, "Nothing to lose: quit without asking")
+  let one = QuitPolicy.prompt(running: false, unsaved: 1)
+  assert(one?.title == "Quit with unsaved results?")
+  assert(one?.message.hasPrefix("1 converted file hasn’t been saved.") == true)
+  assert(one?.quit == "Quit" && one?.keep == "Keep Flux Open")
+  assert(QuitPolicy.prompt(running: false, unsaved: 3)?.message.hasPrefix("3 converted files haven’t been saved.") == true)
+  let running = QuitPolicy.prompt(running: true, unsaved: 0)
+  assert(running?.title == "Quit while converting?" && running?.quit == "Stop Batch and Quit")
+  assert(QuitPolicy.prompt(running: true, unsaved: 2)?.message.contains("2 converted files haven’t been saved") == true)
 }

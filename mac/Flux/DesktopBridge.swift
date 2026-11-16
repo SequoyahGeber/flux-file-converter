@@ -20,6 +20,9 @@ import OfflineKit
     private var outputScoped = false
     /// Set by the main window so the bundled UI's Settings button opens the native Settings window.
     var openSettings: (() -> Void)?
+    /// Set by the main window: shows it again after "Keep Flux Open" when the quit began by closing it.
+    var reopenWindow: (() -> Void)?
+    private var quitConfirmed = false
     private var keyMonitor: Any?
     private var demoPending = LaunchFlags.demo
     private var busy = false
@@ -55,6 +58,7 @@ import OfflineKit
         configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "local")
         webView.navigationDelegate = self
         webView.onDragEnd = { [weak self] in self?.emit("update", ["dragEnded": true]) }
+        webView.onWindow = { [weak self] in self?.guardCloseButton() }
         webView.onFiles = { [weak self] urls in
             guard let self else { return }
             guard !self.busy else { self.emit("update", ["bridgeError": "Finish or cancel the current batch before adding files."]); return }
@@ -89,6 +93,14 @@ import OfflineKit
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         let url = navigationAction.request.url
         decisionHandler(navigationAction.targetFrame?.isMainFrame == true && url?.scheme == "flux-app" && url?.host == "app" ? .allow : .cancel)
+    }
+    /// WebKit's page process can be killed (memory pressure during a large conversion). Without this the window
+    /// stays blank. The page reloads; the running batch is stopped because the new page cannot follow it, and the
+    /// history (with every unsaved result) comes back through `getState` (FX-A-10).
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        FluxDiagnostics.center.journal.record(.error, .lifecycle, "pageProcessEnded", ["running": .bool(control != nil)])
+        if control != nil { cancelled = true; control?.cancel() }
+        webView.load(URLRequest(url: URL(string: "flux-app://app/index.html")!))
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
         guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.protocol == "flux-app", message.frameInfo.securityOrigin.host == "app",
@@ -322,7 +334,8 @@ import OfflineKit
             let name = job["outputName"] as? String ?? (operation == "pack" ? "Archive" : source.deletingPathExtension().lastPathComponent + "-converted")
             // The full engine's worker enforces its own two-hour tool limit.
             let token = full ? JobControl(deadline: 2 * 60 * 60 + 600) : JobControl(); control = token
-            update["status"] = "running"; update["progress"] = 5; emit("update", update)
+            // Neither engine reports progress, so the page shows an indeterminate bar, not a made-up percentage (FX-B-03).
+            update["status"] = "running"; update["progress"] = NSNull(); emit("update", update)
             let started = Date()
             FluxDiagnostics.jobStarted(operation: operation, source: ext, target: target, files: ids.count)
             do {
@@ -337,7 +350,7 @@ import OfflineKit
                     let settings = options
                     result = try await Task.detached(priority: .userInitiated) { try await OfflineEngine.convert(inputs: inputs, target: target, name: name, options: settings, control: token) }.value
                 }
-                if token.isCancelled { result.remove(); throw LocalError.cancelled }
+                if token.isCancelled { result.remove(); try token.check() }
                 let resultID = UUID().uuidString; results[resultID] = result
                 let size = result.isDirectory ? Int64(0) : try LocalPolicy.fileSize(result.url)
                 let record: [String: Any] = ["id": resultID, "name": result.url.lastPathComponent, "target": result.isDirectory ? "folder" : full ? result.url.pathExtension : target, "size": size,
@@ -353,12 +366,40 @@ import OfflineKit
                     }
                 }
             } catch {
-                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: cancelled || token.isCancelled, error: error)
-                update["status"] = cancelled ? "cancelled" : "error"; update["error"] = error.localizedDescription; update["progress"] = 0
+                let stopped = cancelled || token.wasCancelled
+                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: stopped, error: error)
+                // A cancel is shown as "Cancelled. You can try again." like the rest of the batch, never as an error (FX-B-04).
+                update["status"] = stopped ? "cancelled" : "error"; update["progress"] = 0
+                if !stopped { update["error"] = error.localizedDescription }
             }
             control = nil; emit("update", update)
         }
         busy = false; emit("update", ["batchComplete": true, "history": history])
+    }
+    /// The red close button quits Flux; it asks first, while the window is still there (FX-B-01). Other ways to close
+    /// the window reach `confirmQuit` from the app delegate, which shows the window again if the person keeps Flux open.
+    private func guardCloseButton() {
+        guard let button = webView.window?.standardWindowButton(.closeButton), button.target !== self else { return }
+        button.target = self; button.action = #selector(closeButtonClicked(_:))
+    }
+    @objc private func closeButtonClicked(_ sender: Any?) { if confirmQuit() { webView.window?.close() } }
+    /// Asks before quitting would stop a batch or delete unsaved results (FX-B-01). True means quit.
+    func confirmQuit() -> Bool {
+        if quitConfirmed { return true }
+        let unsaved = results.keys.filter { saved[$0] == nil }.count
+        guard let prompt = QuitPolicy.prompt(running: control != nil, unsaved: unsaved) else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        // Keeping Flux open is the default (Return and Escape); quitting would lose work.
+        alert.addButton(withTitle: prompt.keep)
+        let quit = alert.addButton(withTitle: prompt.quit)
+        quit.hasDestructiveAction = true; quit.keyEquivalent = ""
+        guard alert.runModal() == .alertSecondButtonReturn else { return false }
+        quitConfirmed = true
+        cancelled = true; control?.cancel()
+        return true
     }
     private func save(_ result: LocalResult, id: String) async throws {
         guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
@@ -394,6 +435,9 @@ final class LocalDesktopWebView: WKWebView {
     var onFiles: (([URL]) -> Void)?
     /// The page never receives `drop` for a native file drop, so it is told when any drag ends.
     var onDragEnd: (() -> Void)?
+    /// Called when the view is placed in a window.
+    var onWindow: (() -> Void)?
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); if window != nil { onWindow?() } }
     private func acceptsFiles(_ sender: NSDraggingInfo) -> NSDragOperation { sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : [] }
     // super keeps WebKit's dragenter/dragover/dragleave sequence paired for the page.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { _ = super.draggingEntered(sender); return acceptsFiles(sender) }

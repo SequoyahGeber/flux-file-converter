@@ -25,7 +25,7 @@ struct FluxApp: App {
     var body: some Scene {
         Window("Flux", id: "main") {
             MainWindow(desktop: desktop)
-                .onAppear { applyAppearance() }
+                .onAppear { appDelegate.desktop = desktop; applyAppearance() }
                 .onChange(of: appearance) { applyAppearance() }
         }.defaultSize(width: 1260, height: 850)
         .windowStyle(.hiddenTitleBar)
@@ -105,18 +105,27 @@ struct FluxApp: App {
     }
 }
 
-/// Flux has one window; closing it quits the app.
-final class FluxAppDelegate: NSObject, NSApplicationDelegate {
+/// Flux has one window; closing it quits the app. Quitting asks first when it would stop a batch or delete
+/// unsaved results (FX-B-01).
+@MainActor final class FluxAppDelegate: NSObject, NSApplicationDelegate {
+    weak var desktop: DesktopBridge?
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let desktop, !desktop.confirmQuit() else { return .terminateNow }
+        // The quit began by closing the window some other way (⌘W, File ▸ Close): bring it back.
+        if !sender.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) { desktop.reopenWindow?() }
+        return .terminateCancel
+    }
 }
 
 private struct MainWindow: View {
     @ObservedObject var desktop: DesktopBridge
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         // Fits a 13-inch display at its Larger Text setting (1024×640 points).
         DesktopWorkspace(webView: desktop.webView).frame(minWidth: 900, minHeight: 560)
-            .onAppear { desktop.openSettings = { openSettings() } }
+            .onAppear { desktop.openSettings = { openSettings() }; desktop.reopenWindow = { openWindow(id: "main") } }
             .feedbackHost(FluxFeedback.center)
     }
 }

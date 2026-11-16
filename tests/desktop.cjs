@@ -371,6 +371,20 @@ async function announcementFixtures(electronApp, url) {
     await page.waitForFunction(
       () => document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow') === '0',
     );
+    // FX-B-03: the Mac app sends no progress (null): an indeterminate bar with no percentage.
+    await page.evaluate(() => {
+      window.a11yFixture.emit({ id: '0', status: 'running', progress: null });
+    });
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[role="progressbar"]').getAttribute('aria-valuetext') ===
+        'Converting',
+    );
+    assert.equal(await bar.getAttribute('aria-valuenow'), null);
+    assert.match(await page.locator('.file-progress').first().innerText(), /Converting…/);
+    await page.evaluate(() => {
+      window.a11yFixture.emit({ id: '0', status: 'running', progress: 0 });
+    });
     await page.locator('.spin').waitFor();
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.waitForFunction(

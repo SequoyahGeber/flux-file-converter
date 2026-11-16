@@ -930,6 +930,8 @@ function App() {
                   </div>
                   <div className="queue-rows">
                     {queue.map((f) => {
+                      // The Mac app has no real progress, so it sends null: show an indeterminate bar, no percentage.
+                      const indeterminate = f.status === 'running' && f.progress == null;
                       const progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
                       const choice = mode === 'compress' ? compatibleCompression(f) : null;
                       const note =
@@ -971,7 +973,7 @@ function App() {
                               ) : f.status === 'running' ? (
                                 <span className="file-progress">
                                   <Loader2 className="spin" size={16} />
-                                  {progress}%
+                                  {indeterminate ? 'Converting…' : `${progress}%`}
                                 </span>
                               ) : mode === 'convert' && f.targets.length > 0 ? (
                                 <>
@@ -1098,14 +1100,16 @@ function App() {
                           {note && f.status !== 'done' && <div className="row-note">{note}</div>}
                           {f.status === 'running' && (
                             <div
-                              className="row-progress-track"
+                              className={`row-progress-track${indeterminate ? ' indeterminate' : ''}`}
                               role="progressbar"
                               aria-label={`Progress for ${f.name}`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={progress}
+                              aria-valuemin={indeterminate ? undefined : 0}
+                              aria-valuemax={indeterminate ? undefined : 100}
+                              aria-valuenow={indeterminate ? undefined : progress}
+                              aria-valuetext={indeterminate ? 'Converting' : undefined}
+                              aria-busy={indeterminate ? true : undefined}
                             >
-                              <div style={{ width: `${progress}%` }} />
+                              <div style={indeterminate ? undefined : { width: `${progress}%` }} />
                             </div>
                           )}
                         </div>
