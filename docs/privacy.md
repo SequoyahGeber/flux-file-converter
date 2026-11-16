@@ -28,4 +28,4 @@ Cloudflare Access handles website login, MFA and connection security. The websit
 
 Apple separately collects TestFlight usage, crash reports and feedback under its [TestFlight terms](https://www.apple.com/legal/internet-services/itunes/testflight/). Avoid including private file contents in feedback.
 
-Contact sequoyahgeber@gmail.com for support or website membership deletion. [GitHub issues](https://github.com/SequoyahGeber/flux-file-converter/issues) are public; do not attach private files, credentials or invitation links.
+For support or website membership deletion, use Send feedback in the app (Help ▸ Send Feedback… on Mac; Settings ▸ Send feedback on iPhone) or the [support page](https://flux.sequoyahgeber.com/support/). [GitHub issues](https://github.com/SequoyahGeber/flux-file-converter/issues) are public; do not attach private files, credentials or invitation links.
