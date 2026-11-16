@@ -511,7 +511,8 @@ final class ConversionTests: XCTestCase {
             let video = try await asset.loadTracks(withMediaType: .video), audio = try await asset.loadTracks(withMediaType: .audio)
             XCTAssertTrue(video.isEmpty, "\(target) lossless=\(lossless) still has a video track")
             XCTAssertEqual(audio.count, 1, "\(target) lossless=\(lossless)")
-            XCTAssertGreaterThan(try await asset.load(.duration).seconds, 0.1, target)
+            let duration = try await asset.load(.duration).seconds
+            XCTAssertGreaterThan(duration, 0.1, target)
         }
     }
     func testLocalMP4MKVRemux() async throws {

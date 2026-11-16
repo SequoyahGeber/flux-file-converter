@@ -47,16 +47,18 @@ enum FluxPalette {
     static let critical = ColorToken(name: "critical", light: RGB(0xFF3B30), dark: RGB(0xFF453A),
                                      lightIncreasedContrast: RGB(0xD70015), darkIncreasedContrast: RGB(0xFF6961))
     /// Secondary text on the converter. The system secondary label (#8A8A8E over white) is 3.44:1, below 4.5:1 for
-    /// small text; light mode is darkened just enough to pass on the card (#E4E4E4 as rendered, the darkest
-    /// background it sits on): #656569 is 4.56:1 there and 5.8:1 on white. Dark mode keeps the system value.
-    static let caption = ColorToken(name: "caption", light: RGB(0x656569), dark: RGB(0x8D8D93),
+    /// small text. Light mode is darkened just enough to pass Apple's accessibility audit, which measures the rendered
+    /// simulator pixels: there mid-greys render lighter (#656569 showed as #78787C on the #E4E4E4 card, 3.47:1).
+    /// #515155 renders about #646468, 4.6:1 on the card. Dark mode keeps the system value.
+    static let caption = ColorToken(name: "caption", light: RGB(0x515155), dark: RGB(0x8D8D93),
                                     lightIncreasedContrast: RGB(0x5A5A5E), darkIncreasedContrast: RGB(0xA3A3A9))
     /// Success and failure *text* in light mode: the system green and red are 2.09:1 on the success card and 3.55:1 on
-    /// white, below 4.5:1 for body text. Each is darkened just enough to pass (#22823A 4.57:1 on the card, #DE332A
-    /// 4.55:1 on white) (FX-B-06). Fills and dark mode keep the system values.
-    static let successText = ColorToken(name: "successText", light: RGB(0x22823A), dark: RGB(0x30D158),
+    /// white, below 4.5:1 for body text. Each is darkened just enough to pass as rendered in the simulator audit (see
+    /// `caption`): #1C692F about 4.6:1 on the card, #C42D25 about 4.6:1 on white (FX-B-06). Fills and dark mode keep
+    /// the system values.
+    static let successText = ColorToken(name: "successText", light: RGB(0x1C692F), dark: RGB(0x30D158),
                                         lightIncreasedContrast: RGB(0x248A3D), darkIncreasedContrast: RGB(0x30DB5B))
-    static let criticalText = ColorToken(name: "criticalText", light: RGB(0xDE332A), dark: RGB(0xFF453A),
+    static let criticalText = ColorToken(name: "criticalText", light: RGB(0xC42D25), dark: RGB(0xFF453A),
                                          lightIncreasedContrast: RGB(0xD70015), darkIncreasedContrast: RGB(0xFF6961))
     /// Set once at the root: the shared components colour by tone.
     static let tones = TonePalette(accent: accent.color, success: success.color, critical: critical.color)
