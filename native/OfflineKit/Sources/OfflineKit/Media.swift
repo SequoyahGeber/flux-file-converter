@@ -53,12 +53,14 @@ enum Media {
         }
     }
     static func export(_ input: URL, output: URL, target: String, options: ConversionOptions, control: JobControl) async throws {
-        let asset = AVURLAsset(url: input)
-        let presets = AVAssetExportSession.exportPresets(compatibleWith: asset)
         let preset = target == "m4a" ? AVAssetExportPresetAppleM4A :
             options.quality < 0.6 ? AVAssetExportPresetMediumQuality : AVAssetExportPreset1920x1080
-        guard presets.contains(preset), let export = AVAssetExportSession(asset: asset, presetName: preset) else { throw LocalError.unsupported }
         let type: AVFileType = target == "m4a" ? .m4a : target == "mov" ? .mov : .mp4
+        try await export(AVURLAsset(url: input), preset: preset, type: type, output: output, control: control)
+    }
+    static func export(_ asset: AVAsset, preset: String, type: AVFileType, output: URL, control: JobControl) async throws {
+        let presets = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        guard presets.contains(preset), let export = AVAssetExportSession(asset: asset, presetName: preset) else { throw LocalError.unsupported }
         guard export.supportedFileTypes.contains(type) else { throw LocalError.unsupported }
         export.outputURL = output; export.outputFileType = type; export.shouldOptimizeForNetworkUse = false
         export.exportAsynchronously(completionHandler: {})
@@ -78,9 +80,74 @@ enum Media {
         try control.check()
         guard export.status == .completed else { throw export.error ?? LocalError.unsupported }
     }
+    /// Video to an audio format keeps only the sound (FX-A-05). M4A copies the audio track unchanged in lossless
+    /// mode (AAC or ALAC, as Apple's passthrough allows) or re-encodes it as AAC; WAV, AIFF and CAF decode it to
+    /// 32-bit integer PCM. The video track is never written.
+    static func videoAudio(_ input: URL, output: URL, target: String, options: ConversionOptions, control: JobControl) async throws {
+        let asset = AVURLAsset(url: input)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
+            throw LocalError.invalid("This video has no audio track that this device can read.")
+        }
+        try control.check()
+        if target == "m4a" {
+            let composition = AVMutableComposition()
+            guard let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw LocalError.unsupported }
+            try audio.insertTimeRange(try await track.load(.timeRange), of: track, at: .zero)
+            do {
+                try await export(composition, preset: options.lossless ? AVAssetExportPresetPassthrough : AVAssetExportPresetAppleM4A, type: .m4a, output: output, control: control)
+            } catch {
+                guard options.lossless, !control.isCancelled else { throw error }
+                throw LocalError.invalid("This video’s audio can’t be copied into M4A unchanged. Turn off Lossless to convert it to AAC, or choose WAV.")
+            }
+            return
+        }
+        guard let description = try await track.load(.formatDescriptions).first,
+              let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee else { throw LocalError.unsupported }
+        guard basic.mSampleRate.isFinite, basic.mSampleRate >= 8000, basic.mSampleRate <= 192000, basic.mChannelsPerFrame > 0, basic.mChannelsPerFrame <= 8 else {
+            throw LocalError.invalid("Audio sample rate or channel count exceeds its safety limit.")
+        }
+        var settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: false,
+                                       AVLinearPCMIsBigEndianKey: target == "aiff", AVLinearPCMIsNonInterleaved: false]
+        let reader = try AVAssetReader(asset: asset)
+        let source = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
+        guard reader.canAdd(source) else { throw LocalError.unsupported }
+        reader.add(source)
+        settings[AVSampleRateKey] = basic.mSampleRate; settings[AVNumberOfChannelsKey] = Int(basic.mChannelsPerFrame)
+        var layoutSize = 0
+        if let layout = CMAudioFormatDescriptionGetChannelLayout(description, sizeOut: &layoutSize), layoutSize > 0 {
+            settings[AVChannelLayoutKey] = Data(bytes: layout, count: layoutSize)
+        }
+        let type: AVFileType = target == "wav" ? .wav : target == "aiff" ? .aiff : .caf
+        let writer = try AVAssetWriter(outputURL: output, fileType: type)
+        let sink = AVAssetWriterInput(mediaType: .audio, outputSettings: settings)
+        guard writer.canAdd(sink) else { throw LocalError.unsupported }
+        writer.add(sink)
+        guard reader.startReading() else { throw reader.error ?? LocalError.unsupported }
+        guard writer.startWriting() else { reader.cancelReading(); throw writer.error ?? LocalError.unsupported }
+        do {
+            var started = false, appended = 0
+            while let buffer = source.copyNextSampleBuffer() {
+                try control.check()
+                if !started { writer.startSession(atSourceTime: CMSampleBufferGetPresentationTimeStamp(buffer)); started = true }
+                while !sink.isReadyForMoreMediaData { try control.check(); try await Task.sleep(nanoseconds: 10_000_000) }
+                guard sink.append(buffer) else { throw writer.error ?? LocalError.unsupported }
+                appended += 1
+                if appended % 64 == 0, ((try? LocalPolicy.fileSize(output)) ?? 0) > 6 * 1024 * 1024 * 1024 { throw LocalError.invalid("Converted audio exceeds 6 GB.") }
+            }
+            try control.check()
+            guard reader.status == .completed, started else { throw reader.error ?? LocalError.invalid("This video’s audio track could not be read.") }
+            sink.markAsFinished()
+            await writer.finishWriting()
+            guard writer.status == .completed else { throw writer.error ?? LocalError.unsupported }
+        } catch {
+            reader.cancelReading(); writer.cancelWriting(); throw error
+        }
+    }
     static func convert(_ input: URL, output: URL, target: String, options: ConversionOptions, control: JobControl) async throws {
         let ext = input.pathExtension.lowercased()
-        if LocalFormats.audio.contains(ext), ["wav", "aiff", "caf", "m4a"].contains(target) {
+        if LocalFormats.video.contains(ext), ["m4a", "wav", "aiff", "caf"].contains(target) {
+            try await videoAudio(input, output: output, target: target, options: options, control: control)
+        } else if LocalFormats.audio.contains(ext), ["wav", "aiff", "caf", "m4a"].contains(target) {
             if target == "m4a", options.lossless, !["wav", "aif", "aiff", "caf"].contains(ext) {
                 try remux(input, output: output, target: target, control: control)
             } else { try audio(input, output: output, target: target, options: options, control: control) }

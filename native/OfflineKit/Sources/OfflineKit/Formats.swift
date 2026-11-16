@@ -46,6 +46,11 @@ public enum LocalFormats {
             return "Preserves supported fonts and text styling. DOCX PDF/HTML also retains basic tables and embedded images. Layout may differ; unsupported structures report an error."
         }
         if documents.contains(source), source != "txt", source != "md" { return "Extract text only: this output removes layout, images, tables and styling; DOCX equations and other unsupported content may be omitted. Choose PDF/HTML for supported rich DOCX/RTF conversions." }
+        if video.contains(source), ["m4a", "wav", "aiff", "caf"].contains(target) {
+            if target != "m4a" { return "Keeps only the sound: decodes the audio track to uncompressed audio. The video is not included." }
+            return lossless ? "Keeps only the sound: copies the audio track without re-encoding. The video is not included; audio that M4A can’t hold unchanged reports an error."
+                : "Keeps only the sound, re-encoded as AAC. The video is not included."
+        }
         if video.contains(source) || audio.contains(source) {
             if lossless { return "Copies encoded tracks without quality loss. The destination must support every track’s codec; incompatible conversions will report an error." }
             return "Uses Apple’s local media codecs. Re-encoding can reduce quality. Unsupported input codecs will report an error."

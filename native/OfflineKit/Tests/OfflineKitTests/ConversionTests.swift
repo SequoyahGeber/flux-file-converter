@@ -500,6 +500,20 @@ final class ConversionTests: XCTestCase {
         XCTAssertEqual(reader.length, 4410)
         XCTAssertEqual(reader.processingFormat.sampleRate, 44100)
     }
+    /// FX-A-05: every audio output offered for a video keeps the sound and drops the picture.
+    func testVideoToAudioKeepsOnlyTheSound() async throws {
+        let input = Bundle.module.url(forResource: "remux", withExtension: "mp4")!
+        XCTAssertTrue(["m4a", "wav", "aiff", "caf"].allSatisfy(LocalFormats.outputs(for: "mp4").contains))
+        for (target, lossless) in [("m4a", true), ("m4a", false), ("wav", true), ("aiff", true), ("caf", true)] {
+            var options = ConversionOptions(); options.lossless = lossless
+            let result = try await convert(input, target, options: options); defer { result.remove() }
+            let asset = AVURLAsset(url: result.url)
+            let video = try await asset.loadTracks(withMediaType: .video), audio = try await asset.loadTracks(withMediaType: .audio)
+            XCTAssertTrue(video.isEmpty, "\(target) lossless=\(lossless) still has a video track")
+            XCTAssertEqual(audio.count, 1, "\(target) lossless=\(lossless)")
+            XCTAssertGreaterThan(try await asset.load(.duration).seconds, 0.1, target)
+        }
+    }
     func testLocalMP4MKVRemux() async throws {
         let input = ProcessInfo.processInfo.environment["FLUX_MEDIA_FIXTURE"].map { URL(fileURLWithPath: $0) } ?? Bundle.module.url(forResource: "remux", withExtension: "mp4")!
         let mkv = try await convert(input, "mkv"); defer { mkv.remove() }
