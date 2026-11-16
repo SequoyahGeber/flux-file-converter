@@ -98,13 +98,14 @@ def main():
         if "--test-origin=" in command(["strings", "-a", str(binary)], text=True):
             raise SystemExit("A test endpoint override was included in the release binary.")
         manifest = plistlib.loads((app / "PrivacyInfo.xcprivacy").read_bytes())
-        # Only what a person sends with feedback is collected: never linked to them, never for tracking.
+        # Only what a person sends with feedback is collected. Reports carry the sender's CloudKit user record id,
+        # which the inbox tooling queries (feedback.py delete --creator), so they are linked to the person; never tracking.
         collected = manifest.get("NSPrivacyCollectedDataTypes")
         feedback_types = {"NSPrivacyCollectedDataTypeOtherUserContent", "NSPrivacyCollectedDataTypeCrashData",
                           "NSPrivacyCollectedDataTypePerformanceData", "NSPrivacyCollectedDataTypeOtherDiagnosticData"}
         if (manifest.get("NSPrivacyTracking") is not False or not isinstance(collected, list)
                 or {c.get("NSPrivacyCollectedDataType") for c in collected} != feedback_types
-                or any(c.get("NSPrivacyCollectedDataTypeLinked") is not False or c.get("NSPrivacyCollectedDataTypeTracking") is not False
+                or any(c.get("NSPrivacyCollectedDataTypeLinked") is not True or c.get("NSPrivacyCollectedDataTypeTracking") is not False
                        for c in collected)):
             raise SystemExit("The app's privacy manifest is missing or incorrect.")
         # The archive is already signed with its App Store profile. This client has
