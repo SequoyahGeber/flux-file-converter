@@ -2,13 +2,23 @@ import Foundation
 import Darwin
 
 public enum LocalError: LocalizedError {
-    case invalid(String), cancelled, unsupported
+    /// `cancelled` is a deliberate stop (the person, or the app leaving the foreground); `timedOut` carries the
+    /// job's deadline in seconds so the message states the limit that actually applied.
+    case invalid(String), cancelled, timedOut(TimeInterval), unsupported
     public var errorDescription: String? {
         switch self {
         case .invalid(let message): return message
-        case .cancelled: return "Conversion cancelled or exceeded the 10-minute limit."
+        case .cancelled: return "Conversion cancelled."
+        case .timedOut(let limit): return "Stopped after \(LocalError.duration(limit)), the time limit for one conversion. Try a smaller file or a lossless option."
         case .unsupported: return "This conversion is not supported on this device. Try another output format."
         }
+    }
+    /// "10 minutes", "2 hours 10 minutes".
+    static func duration(_ seconds: TimeInterval) -> String {
+        let minutes = max(1, Int((seconds / 60).rounded())), hours = minutes / 60, rest = minutes % 60
+        func unit(_ n: Int, _ name: String) -> String { "\(n) \(name)\(n == 1 ? "" : "s")" }
+        if hours == 0 { return unit(minutes, "minute") }
+        return rest == 0 ? unit(hours, "hour") : unit(hours, "hour") + " " + unit(rest, "minute")
     }
 }
 
@@ -24,7 +34,13 @@ public final class JobControl: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return stopped || ProcessInfo.processInfo.systemUptime - started > deadline
     }
-    public func check() throws { if isCancelled { throw LocalError.cancelled } }
+    /// True only when the job was stopped with `cancel()`, not by its deadline.
+    public var wasCancelled: Bool { lock.lock(); defer { lock.unlock() }; return stopped }
+    /// Throws `cancelled` after `cancel()`, or `timedOut` once the deadline has passed.
+    public func check() throws {
+        guard isCancelled else { return }
+        throw wasCancelled ? LocalError.cancelled : LocalError.timedOut(deadline)
+    }
 }
 
 public enum LocalPolicy {

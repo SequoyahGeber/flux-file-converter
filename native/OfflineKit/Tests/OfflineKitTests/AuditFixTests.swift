@@ -195,4 +195,21 @@ final class AuditFixTests: XCTestCase {
             XCTAssertEqual(try Documents.htmlText(source, control: JobControl()), expected, source)
         }
     }
+    // FX-B-04: a deliberate cancel and a deadline are different outcomes, and the deadline message states its limit.
+    func testCancelAndDeadlineAreDistinct() {
+        let stopped = JobControl(); stopped.cancel()
+        XCTAssertThrowsError(try stopped.check()) { error in
+            guard case LocalError.cancelled = error else { return XCTFail("Expected cancellation, got \(error)") }
+            XCTAssertEqual(error.localizedDescription, "Conversion cancelled.")
+        }
+        XCTAssertTrue(stopped.wasCancelled)
+        let expired = JobControl(deadline: -1)
+        XCTAssertTrue(expired.isCancelled); XCTAssertFalse(expired.wasCancelled)
+        XCTAssertThrowsError(try expired.check()) { error in
+            guard case LocalError.timedOut = error else { return XCTFail("Expected a timeout, got \(error)") }
+        }
+        XCTAssertTrue(LocalError.timedOut(600).localizedDescription.hasPrefix("Stopped after 10 minutes,"))
+        XCTAssertTrue(LocalError.timedOut(2 * 60 * 60 + 600).localizedDescription.hasPrefix("Stopped after 2 hours 10 minutes,"))
+        XCTAssertEqual(LocalError.duration(60 * 60), "1 hour")
+    }
 }
