@@ -2347,3 +2347,12 @@ select {
     --line: #5a5d6b;
   }
 }
+/* FX-B-09 (owner decision 16 Nov): in the Mac app's dark mode the primary button is lavender
+   (#8f7ee0, lighter still on hover), where white text was 3.37:1. A dark label is 5.14:1, 6.74:1 on hover. */
+@media (prefers-color-scheme: dark) {
+  :root[data-host='mac'] .primary-button,
+  :root[data-host='mac'] .primary-button:hover:not(:disabled),
+  :root[data-host='mac'] .primary-button .button-shortcut {
+    color: #1b1730;
+  }
+}
