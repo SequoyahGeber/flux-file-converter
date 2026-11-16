@@ -13,7 +13,7 @@ MAC WALKTHROUGH
 IPHONE WALKTHROUGH
 1. Launch Flux. Tap Explore a sample file, then Sample image. Convert to JPG is selected. Edit Output file name, tap Convert, then Save as… and select a destination in the system Files export picker. Cancelling the picker leaves the result available to save again.
 2. Tap Clear, then repeat Explore a sample file with Sample document (DOCX to PDF), Sample video (MP4 to MKV), Sample data (JSON to CSV) and Sample archive (ZIP to folder). Each runs the real engine. Choose files imports your own files; several files can be packaged as ZIP.
-3. Supported conversions lists actual formats and content/codec limitations. Privacy & support displays the complete bundled policy and help without a network connection. Public policy/support links open only when tapped.
+3. Supported conversions lists actual formats and content/codec limitations. Settings > About > Privacy policy shows the bundled policy offline. Public policy/support links open only when tapped.
 4. Flux keeps the screen awake while converting; switching apps stops work after iOS's brief background time. Clear removes temporary results only. In the Files picker, Recents is a view of files that may reside in Downloads or another folder; it is not a separate storage location.
 
 LIMITATIONS

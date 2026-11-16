@@ -144,6 +144,10 @@ function Logo({ small = false }) {
     </div>
   );
 }
+// "file", "3 files", and never a zero count (FX-B-13): with nothing left to do the button reads "Convert files".
+function fileCount(n) {
+  return n === 1 ? 'file' : n === 0 ? 'files' : `${n} files`;
+}
 function batchMessage(batch) {
   if (!batch?.size) return 'Batch finished.';
   const counts = { done: 0, error: 0, cancelled: 0, unfinished: 0 };
@@ -486,7 +490,7 @@ function App() {
           </span>
         </div>
         <div className="sidebar-label">WORKSPACE</div>
-        <nav>
+        <nav aria-label="Workspace">
           <SideButton
             active={route === 'convert'}
             onNavigate={navigate}
@@ -523,7 +527,7 @@ function App() {
           </SideButton>
         </nav>
         <div className="sidebar-label second-label">EXPLORE</div>
-        <nav>
+        <nav aria-label="Explore">
           <SideButton
             active={route === 'formats'}
             onNavigate={navigate}
@@ -768,7 +772,7 @@ function App() {
               )}
               {!queue.length ? (
                 <div className={`dropzone ${dragging ? 'dragging' : ''}`}>
-                  <div className="dropzone-art">
+                  <div className="dropzone-art" aria-hidden="true">
                     <div className="art-file art-left">
                       <FileImage size={23} />
                       <span>{mode === 'archive' ? 'FILES' : 'PNG'}</span>
@@ -1143,9 +1147,9 @@ function App() {
                           <FileArchive size={16} />
                         )}{' '}
                         {mode === 'convert'
-                          ? `Convert ${pending.length === 1 ? 'file' : `${pending.length} files`}`
+                          ? `Convert ${fileCount(pending.length)}`
                           : mode === 'compress'
-                            ? `Compress ${pending.length === 1 ? 'file' : `${pending.length} files`}`
+                            ? `Compress ${fileCount(pending.length)}`
                             : archiveMode === 'pack'
                               ? 'Create ZIP'
                               : 'Extract archives'}
@@ -1162,7 +1166,7 @@ function App() {
                   <button
                     disabled={running}
                     title={output}
-                    aria-label={`Save to ${output}`}
+                    aria-label={`Save location: ${output}`}
                     onClick={() => action(async () => setOutput(await api.selectOutput()))}
                   >
                     {output.split('/').slice(-2).join(' / ')}

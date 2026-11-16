@@ -667,10 +667,12 @@ async function main() {
       { files: [image, video, word, pdf], output: path.join(root, 'results') },
     );
     const initialOutput = (await page.evaluate(() => window.flux.getState())).outputDir;
-    await page.getByRole('button', { name: `Save to ${initialOutput}`, exact: true }).click();
+    await page
+      .getByRole('button', { name: `Save location: ${initialOutput}`, exact: true })
+      .click();
     assert.equal(
       await page
-        .getByRole('button', { name: `Save to ${path.join(root, 'results')}`, exact: true })
+        .getByRole('button', { name: `Save location: ${path.join(root, 'results')}`, exact: true })
         .count(),
       1,
     );

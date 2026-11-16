@@ -85,7 +85,8 @@ struct LocalView: View {
                             if model.target == "zip" { Toggle("Compress ZIP contents", isOn: $model.options.compressArchive) }
                             if ["jpg", "heic"].contains(model.target) || (model.media && !model.options.lossless) || (model.source == "pdf" && model.target == "pdf") {
                                 VStack(alignment: .leading) {
-                                    Text("Quality: \(Int(model.options.quality * 100))%").font(.caption)
+                                    // The slider speaks its own name and value (FX-B-15).
+                                    Text("Quality: \(Int(model.options.quality * 100))%").font(.caption).accessibilityHidden(true)
                                     Slider(value: $model.options.quality, in: 0.2...1)
                                         .accessibilityLabel("Quality")
                                         .accessibilityValue("\(Int(model.options.quality * 100)) percent")

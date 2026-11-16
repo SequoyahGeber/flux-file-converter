@@ -2,7 +2,7 @@
 
 Flux’s native Mac and iPhone apps work entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
 
-Choose one file, select an output format and set a name. Convert locally, then use Save to… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract ZIP to folder to unzip. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
+Choose one file, select an output format and set a name. Tap or click Convert, then use Save as… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract archive to unzip into a folder. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
 Explore a sample file includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Explore a sample file before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read the privacy policy offline in Settings › Privacy policy, on iPhone and on Mac.
 
