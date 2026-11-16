@@ -64,7 +64,7 @@ D107888DA1F4C63D31AA6A40 = { isa = XCSwiftPackageProductDependency; package = 7C
 			repositoryURL = "https://github.com/SequoyahGeber/SharedKit.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.4.0;
+				version = 0.4.1;
 			};
 		};
 B90265EA4C32E61D5C72407A = { isa = XCSwiftPackageProductDependency; package = 5E7947E597620B9BC3A04D72; productName = SharedAbout; };
