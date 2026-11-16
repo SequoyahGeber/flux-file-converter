@@ -22,9 +22,11 @@ struct LocalView: View {
     #endif
     @State private var saving = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: FluxSpace.section) {
                     HStack(spacing: FluxSpace.item) {
@@ -111,8 +113,11 @@ struct LocalView: View {
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accent).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
                             Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
+                            .id(Outcome.result)
                     }
-                    if !model.error.isEmpty { Label(model.error, symbol: FluxIcon.errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled) }
+                    if !model.error.isEmpty { Label(model.error, symbol: FluxIcon.errorLine).foregroundStyle(FluxColor.failure).font(.callout).textSelection(.enabled).id(Outcome.error) }
+                    // A stop the person chose (or leaving Flux) is a plain status, not an error (FX-B-04).
+                    if !model.notice.isEmpty { Label(model.notice, symbol: FluxIcon.info).font(.callout).id(Outcome.notice).accessibilityIdentifier(AccessibilityID.Converter.notice) }
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
@@ -133,6 +138,11 @@ struct LocalView: View {
                 }.padding(FluxSpace.xxl).frame(maxWidth: 700)
                     .frame(maxWidth: .infinity)
             }.accessibilityIdentifier(AccessibilityID.Converter.workspace).navigationTitle("Flux")
+            // The outcome appears below Convert, often off screen: bring it into view (FX-B-05).
+            .onChange(of: model.result?.url) { if model.result != nil { reveal(Outcome.result, proxy) } }
+            .onChange(of: model.error) { if !model.error.isEmpty { reveal(Outcome.error, proxy) } }
+            .onChange(of: model.notice) { if !model.notice.isEmpty { reveal(Outcome.notice, proxy) } }
+            }
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -161,10 +171,18 @@ struct LocalView: View {
             .sheet(isPresented: $showingFormats) { FormatView() }
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }
-            .onChange(of: scenePhase) { if scenePhase == .background && model.busy { model.cancel() } }
+            .onChange(of: scenePhase) {
+                guard scenePhase == .background, model.busy else { return }
+                #if os(iOS)
+                model.enteredBackground()
+                #else
+                model.cancel(.background)
+                #endif
+            }
             // Status and errors change without moving focus; announce them to VoiceOver.
             .onChange(of: model.message) { if !model.message.isEmpty { AccessibilityNotification.Announcement(model.message).post() } }
             .onChange(of: model.error) { if !model.error.isEmpty { AccessibilityNotification.Announcement(model.error).post() } }
+            .onChange(of: model.notice) { if !model.notice.isEmpty { AccessibilityNotification.Announcement(model.notice).post() } }
             #if os(iOS)
             .sheet(item: $exportFile, onDismiss: { saving = false }) { file in
                 ExportPicker(url: file.url) { success in
@@ -178,6 +196,14 @@ struct LocalView: View {
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 580)
         #endif
+    }
+    private enum Outcome: Hashable { case result, error, notice }
+    /// Scrolls after the new card has been laid out; no animation with Reduce Motion.
+    private func reveal(_ outcome: Outcome, _ proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(reduceMotion ? nil : .default) { proxy.scrollTo(outcome, anchor: .center) }
+        }
     }
     private func save(_ result: LocalResult) {
         saving = true

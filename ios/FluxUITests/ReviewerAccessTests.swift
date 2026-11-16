@@ -121,6 +121,11 @@ final class ReviewerAccessTests: XCTestCase {
             convert.tap()
             XCTAssertTrue(app.buttons[AccessibilityID.Converter.save].waitForExistence(timeout: 60), sample)
             XCTAssertEqual(app.buttons[AccessibilityID.Converter.save].label, "Save as…")
+            // FX-B-05: the result scrolls into view by itself; no swiping before this check.
+            let save = app.buttons[AccessibilityID.Converter.save]
+            let onScreen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: save)
+            XCTAssertEqual(XCTWaiter.wait(for: [onScreen], timeout: 5), .completed, "Save is on screen after converting: " + sample)
+            XCTAssertLessThan(save.frame.maxY, app.frame.maxY, "Save is inside the screen after converting: " + sample)
             let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "review-" + sample; capture.lifetime = .keepAlways; add(capture)
             if sample == "image" || sample == "archive" {
                 tap(AccessibilityID.Converter.save)

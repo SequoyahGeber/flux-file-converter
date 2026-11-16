@@ -1,19 +1,40 @@
 import Foundation
 import SwiftUI
+import AVFoundation
 import OfflineKit
+#if os(iOS)
+import UIKit
+#endif
 
 @MainActor final class LocalModel: ObservableObject {
     @Published var inputs: [URL] = []
     @Published var target = "png"
     @Published var filename = "Converted"
     @Published var options = ConversionOptions()
-    @Published var busy = false
+    /// While a conversion runs the screen stays awake (FX-A-01); every way a job ends goes through here.
+    @Published var busy = false {
+        didSet {
+            #if os(iOS)
+            UIApplication.shared.isIdleTimerDisabled = busy
+            if !busy { endBackgroundTime() }
+            #endif
+        }
+    }
     /// A new or renamed result starts unsaved; a successful save marks it saved.
     @Published var result: LocalResult? { didSet { if result?.url != oldValue?.url { resultSaved = false } } }
     @Published var resultSaved = false
     @Published var message = ""
     @Published var error = ""
+    /// A neutral outcome that is not an error, such as "Conversion cancelled." (FX-B-04).
+    @Published var notice = ""
+    /// Why the running job was stopped, so a stop is never shown as a failure.
+    enum StopReason { case person, background }
+    private var stopReason: StopReason?
+    private var backgroundedDuringJob = false
     private var control: JobControl?
+    #if os(iOS)
+    private var backgroundTime: UIBackgroundTaskIdentifier = .invalid
+    #endif
     var formats: [String] { inputs.count > 1 ? ["zip"] : LocalFormats.outputs(for: inputs.first?.pathExtension.lowercased() ?? "") }
     var source: String { inputs.first?.pathExtension.lowercased() ?? "" }
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }
@@ -31,7 +52,7 @@ import OfflineKit
     func select(_ urls: [URL]) {
         guard !busy else { return }
         guard urls.count <= 100 else { error = "Choose up to 100 files at a time."; return }
-        result?.remove(); result = nil; message = ""; error = ""
+        result?.remove(); result = nil; message = ""; error = ""; notice = ""
         inputs = Array(urls.prefix(100))
         filename = inputs.count == 1 ? inputs[0].deletingPathExtension().lastPathComponent + "-converted" : "Archive"
         target = formats.first ?? "zip"
@@ -40,7 +61,8 @@ import OfflineKit
     }
     func convert() {
         guard !busy, !inputs.isEmpty else { return }
-        result?.remove(); result = nil; error = ""; message = "Converting on this device…"; busy = true
+        result?.remove(); result = nil; error = ""; notice = ""; message = "Converting on this device…"
+        stopReason = nil; backgroundedDuringJob = false; busy = true
         let urls = inputs, target = target, filename = filename, options = options, job = JobControl()
         control = job
         let operation = urls.count > 1 ? "pack" : "convert", started = Date()
@@ -50,23 +72,50 @@ import OfflineKit
                 let converted = try await Task.detached(priority: .userInitiated) {
                     try await OfflineEngine.convert(inputs: urls, target: target, name: filename, options: options, control: job)
                 }.value
-                if job.isCancelled { converted.remove(); throw LocalError.cancelled }
+                if job.isCancelled { converted.remove(); try job.check() }
                 result = converted; message = "Ready to save."
                 FluxDiagnostics.jobFinished(operation: operation, target: target, seconds: Date().timeIntervalSince(started))
             } catch {
-                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: job.isCancelled, error: error)
-                self.error = error.localizedDescription; message = ""
+                FluxDiagnostics.jobFailed(operation: operation, target: target, cancelled: job.wasCancelled, error: error)
+                message = ""
+                // Apple's exporter fails with "interrupted" when the app leaves the foreground mid-export.
+                let interrupted = (error as NSError).domain == AVFoundationErrorDomain
+                    && [-11847, -11818].contains((error as NSError).code)  // AVError.operationInterrupted, .sessionWasInterrupted
+                if stopReason == .background || (backgroundedDuringJob && interrupted) {
+                    notice = "The conversion stopped because Flux was in the background. Convert again to restart it."
+                } else if job.wasCancelled { notice = "Conversion cancelled." }
+                else { self.error = error.localizedDescription }
             }
             busy = false; control = nil
         }
     }
-    func cancel() { control?.cancel(); message = "Cancelling…" }
+    func cancel(_ reason: StopReason = .person) {
+        guard let control else { return }
+        stopReason = reason; control.cancel(); message = "Cancelling…"
+    }
+    #if os(iOS)
+    /// Leaving Flux mid-conversion gives the job the time iOS allows in the background; when that runs out the job
+    /// stops and says why (FX-A-01).
+    func enteredBackground() {
+        guard busy else { return }
+        backgroundedDuringJob = true
+        guard backgroundTime == .invalid else { return }
+        backgroundTime = UIApplication.shared.beginBackgroundTask(withName: "Flux conversion") { [weak self] in
+            MainActor.assumeIsolated { self?.cancel(.background); self?.endBackgroundTime() }
+        }
+        if backgroundTime == .invalid { cancel(.background) }
+    }
+    private func endBackgroundTime() {
+        guard backgroundTime != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTime); backgroundTime = .invalid
+    }
+    #endif
     func configurationChanged() {
         guard !busy else { return }
         if media && !options.lossless && !["mp4", "mov", "m4a", "wav", "aiff", "caf", "zip"].contains(target) {
             target = LocalFormats.audio.contains(source) ? "m4a" : "mp4"
         }
-        result?.remove(); result = nil; message = ""; error = ""
+        result?.remove(); result = nil; message = ""; error = ""; notice = ""
     }
     func renameResult() async throws -> LocalResult {
         guard let result else { throw LocalError.invalid("Convert a file first.") }
@@ -82,6 +131,6 @@ import OfflineKit
     }
     func clear() {
         guard !busy else { return }
-        result?.remove(); result = nil; inputs = []; message = ""; error = ""
+        result?.remove(); result = nil; inputs = []; message = ""; error = ""; notice = ""
     }
 }

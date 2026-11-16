@@ -14,6 +14,7 @@ enum AccessibilityID {
         static let clear = "converter.clear"
         static let clearConfirm = "converter.clearConfirm"
         static let supportedConversions = "converter.supportedConversions"
+        static let notice = "converter.notice"
     }
     enum Settings {
         static let open = "settings.open"
