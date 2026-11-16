@@ -138,8 +138,13 @@ import OfflineKit
     private func setOutputFolder(_ url: URL) {
         if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
         outputFolder = url; outputScoped = url.startAccessingSecurityScopedResource()
-        if let bookmark = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
+        do {
+            let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(bookmark, forKey: FluxSettings.Key.outputFolder)
+        } catch {
+            // The folder works for this session but cannot be remembered: log it and say so (FX-A-15).
+            FluxDiagnostics.center.journal.record(.error, .lifecycle, "outputFolderNotSaved", ["error": .error(error)])
+            emit("update", ["bridgeError": "Flux will use this folder until it quits, but couldn’t remember it for next time."])
         }
         emit("update", ["outputDir": outputLabel])
     }
@@ -155,8 +160,9 @@ import OfflineKit
             exists: { FileManager.default.fileExists(atPath: $0.path) }) else { return }
         let url = restored.url
         outputFolder = url; outputScoped = restored.scoped
-        if stale, let fresh = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) {
-            UserDefaults.standard.set(fresh, forKey: FluxSettings.Key.outputFolder)
+        if stale {
+            do { UserDefaults.standard.set(try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil), forKey: FluxSettings.Key.outputFolder) }
+            catch { FluxDiagnostics.center.journal.record(.error, .lifecycle, "outputFolderNotRefreshed", ["error": .error(error)]) }
         }
     }
     /// "Clear history" is always confirmed when there is history to clear (D-023).
@@ -427,7 +433,9 @@ import OfflineKit
         emit("update", ["savedResult": id, "name": destination.lastPathComponent, "history": history])
     }
     private func emit(_ event: String, _ value: Any) {
-        guard JSONSerialization.isValidJSONObject(["event": event, "value": value]), let data = try? JSONSerialization.data(withJSONObject: ["event": event, "value": value]), let json = String(data: data, encoding: .utf8) else { return }
+        guard JSONSerialization.isValidJSONObject(["event": event, "value": value]), let data = try? JSONSerialization.data(withJSONObject: ["event": event, "value": value]), let json = String(data: data, encoding: .utf8) else {
+            FluxDiagnostics.center.journal.record(.error, .lifecycle, "bridgeUpdateDropped"); return
+        }
         webView.callAsyncJavaScript("window.dispatchEvent(new CustomEvent('flux-native', {detail: payload}));", arguments: ["payload": json], in: nil, in: .page, completionHandler: nil)
     }
 }
