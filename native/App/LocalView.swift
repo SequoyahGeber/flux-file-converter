@@ -23,6 +23,9 @@ struct LocalView: View {
     @State private var saving = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The app mark's tile grows with its symbol at large text sizes; 56 points at the default size (FX-B-15).
+    @ScaledMetric(relativeTo: .title) private var markSize: CGFloat = 56
 
     var body: some View {
         NavigationStack {
@@ -31,7 +34,7 @@ struct LocalView: View {
                 VStack(alignment: .leading, spacing: FluxSpace.section) {
                     HStack(spacing: FluxSpace.item) {
                         Image(symbol: FluxIcon.appMark).font(FluxType.badge).foregroundStyle(.white)
-                            .frame(width: 56, height: 56).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.badge))
+                            .frame(width: markSize, height: markSize).background(FluxColor.accent.gradient, in: RoundedRectangle(cornerRadius: FluxRadius.badge))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: FluxSpace.titleLines) {
                             Text("Convert. Keep it local.").font(.title2.bold())
@@ -95,7 +98,8 @@ struct LocalView: View {
                             Text(LocalFormats.note(source: model.source, target: model.target, lossless: model.options.lossless)).font(.caption).foregroundStyle(FluxPalette.caption.color).fixedSize(horizontal: false, vertical: true)
                         }.disabled(model.busy || saving).padding(FluxSpace.card).background(FluxColor.card, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                         if model.busy {
-                            HStack {
+                            // At accessibility text sizes the status and Cancel stack instead of sharing a row (FX-B-15).
+                            (dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())) {
                                 ProgressView(); Text(model.message); Spacer()
                                 Button(role: .cancel) { model.cancel() } label: {
                                     Text("Cancel").frame(minHeight: 44).contentShape(Rectangle())
