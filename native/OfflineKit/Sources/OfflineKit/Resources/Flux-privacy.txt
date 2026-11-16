@@ -16,7 +16,7 @@ Feedback from the apps
 
 Send feedback (Help ▸ Send Feedback… on Mac; Settings ▸ Send feedback, the feedback button or a shake on iPhone) sends only what you review on its last screen before sending: your message, the category, the device model, system and Flux version, and, if you leave them on, a screenshot of the window or screen and diagnostic info. The screenshot shows exactly what was on screen, which can include file names. Diagnostic info is a short log of recent app events, crash and performance reports from Apple’s MetricKit, and app state; file names, folder paths and output names are removed from it. Reports go through Apple’s iCloud (CloudKit public database) to the Flux developer only. Apple adds an app-specific identifier that links your reports to each other, without your name, email or Apple Account. Apple's App Privacy label lists this identifier as a User ID. Reports are used only to fix problems and improve Flux, never for advertising or tracking.
 
-To have your reports deleted, send another report asking for it, or email support (include the report ID from its first line if you have it). The developer will delete every report you sent from this app. Reports are deleted once dealt with, and at the latest 12 months after they are sent.
+To have your reports deleted, send another report asking for it (include the report ID from its first line if you have it). The developer will delete every report you sent from this app. Reports are deleted once dealt with, and at the latest 12 months after they are sent.
 
 Separate website
 
