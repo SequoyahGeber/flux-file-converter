@@ -389,7 +389,9 @@ import OfflineKit
         guard let button = webView.window?.standardWindowButton(.closeButton), button.target !== self else { return }
         button.target = self; button.action = #selector(closeButtonClicked(_:))
     }
-    @objc private func closeButtonClicked(_ sender: Any?) { if confirmQuit() { webView.window?.close() } }
+    /// Closing the main window quits Flux even when Settings or the shortcuts window is open, so a confirmed
+    /// question is never left behind with the app still running.
+    @objc private func closeButtonClicked(_ sender: Any?) { if confirmQuit() { NSApplication.shared.terminate(nil) } }
     /// Asks before quitting would stop a batch or delete unsaved results (FX-B-01). True means quit.
     func confirmQuit() -> Bool {
         if quitConfirmed { return true }
