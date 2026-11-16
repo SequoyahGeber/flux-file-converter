@@ -60,6 +60,11 @@ enum FluxPalette {
                                         lightIncreasedContrast: RGB(0x248A3D), darkIncreasedContrast: RGB(0x30DB5B))
     static let criticalText = ColorToken(name: "criticalText", light: RGB(0xC42D25), dark: RGB(0xFF453A),
                                          lightIncreasedContrast: RGB(0xD70015), darkIncreasedContrast: RGB(0xFF6961))
+    /// Links and menu pickers on the converter. The system blue renders #009EFF in the audited simulator (about
+    /// 3:1 on white); #004087 renders about #0068A9, 4.65:1 on the #E4E4E4 card and 5.9:1 on white. Dark mode and
+    /// Increased Contrast keep the system blues.
+    static let link = ColorToken(name: "link", light: RGB(0x004087), dark: RGB(0x0A84FF),
+                                 lightIncreasedContrast: RGB(0x003A7A), darkIncreasedContrast: RGB(0x409CFF))
     /// Set once at the root: the shared components colour by tone.
     static let tones = TonePalette(accent: accent.color, success: success.color, critical: critical.color)
 }
@@ -71,6 +76,7 @@ enum FluxColor {
     static let failure = FluxPalette.critical.color
     static let successText = FluxPalette.successText.color
     static let failureText = FluxPalette.criticalText.color
+    static let link = FluxPalette.link.color
     static let successBackground = FluxPalette.success.color.opacity(0.08)
     static let card = HierarchicalShapeStyle.quaternary
 }

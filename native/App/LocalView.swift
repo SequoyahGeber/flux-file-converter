@@ -57,7 +57,7 @@ struct LocalView: View {
                                 Label("Explore a sample file", symbol: FluxIcon.sample)
                                     .frame(minHeight: 44).contentShape(Rectangle())
                             }
-                                .accessibilityIdentifier(AccessibilityID.Converter.trySample).disabled(model.busy || saving)
+                                .tint(FluxColor.link).accessibilityIdentifier(AccessibilityID.Converter.trySample).disabled(model.busy || saving)
                             Text("Fictional files included with Flux. Uses the same conversion and save flow.")
                                 .font(.caption).foregroundStyle(FluxPalette.caption.color)
                         } else {
@@ -73,7 +73,7 @@ struct LocalView: View {
                                 Text("Convert to").font(.caption.bold()).foregroundStyle(FluxPalette.caption.color).accessibilityHidden(true)
                                 Picker("Convert to", selection: $model.target) {
                                     ForEach(model.formats, id: \.self) { format in Text(format == "unzip" ? "Extract archive" : ["txt", "md"].contains(format) && !["txt", "md"].contains(model.source) && LocalFormats.documents.contains(model.source) ? format.uppercased() + " · Extract text" : format.uppercased()).tag(format) }
-                                }.pickerStyle(.menu).accessibilityIdentifier(AccessibilityID.Converter.outputFormat)
+                                }.pickerStyle(.menu).tint(FluxColor.link).accessibilityIdentifier(AccessibilityID.Converter.outputFormat)
                             }
                             VStack(alignment: .leading, spacing: FluxSpace.label) {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(FluxPalette.caption.color).accessibilityHidden(true)
@@ -126,13 +126,13 @@ struct LocalView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Button { showingFormats = true } label: {
                             Text("Supported conversions").frame(minHeight: 44).contentShape(Rectangle())
-                        }.accessibilityIdentifier(AccessibilityID.Converter.supportedConversions)
+                        }.tint(FluxColor.link).accessibilityIdentifier(AccessibilityID.Converter.supportedConversions)
                         if !model.inputs.isEmpty {
                             Button(role: .destructive) {
                                 // Confirm only when an unsaved result would be deleted (D-023).
                                 if model.result != nil && !model.resultSaved { confirmingClear = true } else { model.clear() }
                             } label: {
-                                Text("Clear").frame(minHeight: 44).contentShape(Rectangle())
+                                Text("Clear").foregroundStyle(FluxColor.failureText).frame(minHeight: 44).contentShape(Rectangle())
                             }.disabled(model.busy || saving).accessibilityIdentifier(AccessibilityID.Converter.clear)
                         }
                     }.font(.callout)

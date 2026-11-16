@@ -80,8 +80,8 @@ enum Media {
         try control.check()
         guard export.status == .completed else { throw export.error ?? LocalError.unsupported }
     }
-    /// Video to an audio format keeps only the sound (FX-A-05). M4A copies the audio track unchanged in lossless
-    /// mode (AAC or ALAC, as Apple's passthrough allows) or re-encodes it as AAC; WAV, AIFF and CAF decode it to
+    /// Video to an audio format keeps only the sound (FX-A-05). M4A copies the encoded audio samples unchanged in
+    /// lossless mode (reader and writer with no settings) or re-encodes them as AAC; WAV, AIFF and CAF decode to
     /// 32-bit integer PCM. The video track is never written.
     static func videoAudio(_ input: URL, output: URL, target: String, options: ConversionOptions, control: JobControl) async throws {
         let asset = AVURLAsset(url: input)
@@ -89,16 +89,11 @@ enum Media {
             throw LocalError.invalid("This video has no audio track that this device can read.")
         }
         try control.check()
-        if target == "m4a" {
+        if target == "m4a", !options.lossless {
             let composition = AVMutableComposition()
             guard let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw LocalError.unsupported }
             try audio.insertTimeRange(try await track.load(.timeRange), of: track, at: .zero)
-            do {
-                try await export(composition, preset: options.lossless ? AVAssetExportPresetPassthrough : AVAssetExportPresetAppleM4A, type: .m4a, output: output, control: control)
-            } catch {
-                guard options.lossless, !control.isCancelled else { throw error }
-                throw LocalError.invalid("This video’s audio can’t be copied into M4A unchanged. Turn off Lossless to convert it to AAC, or choose WAV.")
-            }
+            try await export(composition, preset: AVAssetExportPresetAppleM4A, type: .m4a, output: output, control: control)
             return
         }
         guard let description = try await track.load(.formatDescriptions).first,
@@ -106,10 +101,12 @@ enum Media {
         guard basic.mSampleRate.isFinite, basic.mSampleRate >= 8000, basic.mSampleRate <= 192000, basic.mChannelsPerFrame > 0, basic.mChannelsPerFrame <= 8 else {
             throw LocalError.invalid("Audio sample rate or channel count exceeds its safety limit.")
         }
+        // Lossless M4A copies the encoded samples unchanged (nil settings on both sides); the others decode to PCM.
+        let copy = target == "m4a"
         var settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: false,
                                        AVLinearPCMIsBigEndianKey: target == "aiff", AVLinearPCMIsNonInterleaved: false]
         let reader = try AVAssetReader(asset: asset)
-        let source = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
+        let source = AVAssetReaderTrackOutput(track: track, outputSettings: copy ? nil : settings)
         guard reader.canAdd(source) else { throw LocalError.unsupported }
         reader.add(source)
         settings[AVSampleRateKey] = basic.mSampleRate; settings[AVNumberOfChannelsKey] = Int(basic.mChannelsPerFrame)
@@ -117,10 +114,13 @@ enum Media {
         if let layout = CMAudioFormatDescriptionGetChannelLayout(description, sizeOut: &layoutSize), layoutSize > 0 {
             settings[AVChannelLayoutKey] = Data(bytes: layout, count: layoutSize)
         }
-        let type: AVFileType = target == "wav" ? .wav : target == "aiff" ? .aiff : .caf
+        let type: AVFileType = copy ? .m4a : target == "wav" ? .wav : target == "aiff" ? .aiff : .caf
         let writer = try AVAssetWriter(outputURL: output, fileType: type)
-        let sink = AVAssetWriterInput(mediaType: .audio, outputSettings: settings)
-        guard writer.canAdd(sink) else { throw LocalError.unsupported }
+        let sink = AVAssetWriterInput(mediaType: .audio, outputSettings: copy ? nil : settings, sourceFormatHint: copy ? description : nil)
+        guard writer.canAdd(sink) else {
+            if copy { throw LocalError.invalid("This video’s audio can’t be copied into M4A unchanged. Turn off Lossless to convert it to AAC, or choose WAV.") }
+            throw LocalError.unsupported
+        }
         writer.add(sink)
         guard reader.startReading() else { throw reader.error ?? LocalError.unsupported }
         guard writer.startWriting() else { reader.cancelReading(); throw writer.error ?? LocalError.unsupported }
