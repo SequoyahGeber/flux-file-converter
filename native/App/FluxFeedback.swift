@@ -21,7 +21,7 @@ enum FluxFeedback {
         configuration: FeedbackConfiguration(
             appName: "Flux", containerID: containerID, redactor: FluxDiagnostics.redactor,
             screenshot: .standard, screenshotNote: "May show the names of files you chose and their results.",
-            usesStandIn: SharedDiagnostics.isStandInLaunch() && !debugCloudKitDelivery,
+            usesStandIn: LaunchFlags.feedbackStandIn && !debugCloudKitDelivery,
             sensitiveTerms: { FluxDiagnostics.fileNames() },
             context: { FluxFeedback.context() }),
         diagnostics: FluxDiagnostics.center)
