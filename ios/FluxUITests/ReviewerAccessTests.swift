@@ -59,19 +59,13 @@ final class ReviewerAccessTests: XCTestCase {
         shot.name = name; shot.lifetime = .deleteOnSuccess; add(shot)
     }
 
-    /// Approved exceptions, each recorded with the coordinator: the converter's secondary caption
-    /// "On-device · No uploads · No login" nearly passes contrast; changing it would change the look (PLAN §3).
-    nonisolated static func approvedAuditExceptions(_ issue: XCUIAccessibilityAuditIssue) -> Bool {
-        issue.auditType == .contrast && (issue.element?.label.hasPrefix("On-device") ?? false)
-    }
-
     /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
     func testAccessibilityAudit() throws {
         start()
-        try SharedUIFlows.accessibilityAudit(of: app, ignoring: Self.approvedAuditExceptions)
+        try SharedUIFlows.accessibilityAudit(of: app)
         openSettings()
         XCTAssertTrue(SharedUIFlows.appears(app.buttons[AccessibilityID.Settings.done], within: 10))
-        try SharedUIFlows.accessibilityAudit(of: app, ignoring: Self.approvedAuditExceptions)
+        try SharedUIFlows.accessibilityAudit(of: app)
     }
 
     func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {

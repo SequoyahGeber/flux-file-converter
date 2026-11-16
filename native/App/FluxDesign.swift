@@ -46,6 +46,11 @@ enum FluxPalette {
                                     lightIncreasedContrast: RGB(0x248A3D), darkIncreasedContrast: RGB(0x30DB5B))
     static let critical = ColorToken(name: "critical", light: RGB(0xFF3B30), dark: RGB(0xFF453A),
                                      lightIncreasedContrast: RGB(0xD70015), darkIncreasedContrast: RGB(0xFF6961))
+    /// Secondary text on the converter. The system secondary label (#8A8A8E over white) is 3.44:1, below 4.5:1 for
+    /// small text; light mode is darkened just enough to pass on white and on both card tints (#6F6F73, 4.55:1 at
+    /// worst). Dark mode keeps the system value (5.53:1 at worst).
+    static let caption = ColorToken(name: "caption", light: RGB(0x6F6F73), dark: RGB(0x8D8D93),
+                                    lightIncreasedContrast: RGB(0x5A5A5E), darkIncreasedContrast: RGB(0xA3A3A9))
     /// Set once at the root: the shared components colour by tone.
     static let tones = TonePalette(accent: accent.color, success: success.color, critical: critical.color)
 }
