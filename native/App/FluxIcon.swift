@@ -9,12 +9,7 @@ import SharedStrings
 enum FluxIcon: String, AppSymbol {
     // Standard concepts.
     case settings = "gearshape"  // StandardSymbol.settings
-    case feedback = "exclamationmark.bubble"
-    case delete = "trash"
     case share = "square.and.arrow.up"
-    case retry = "arrow.clockwise"
-    case warning = "exclamationmark.triangle.fill"
-    case error = "xmark.octagon.fill"
     case success = "checkmark.circle.fill"
     case info = "info.circle"
     // Flux's own.
@@ -25,6 +20,6 @@ enum FluxIcon: String, AppSymbol {
     case file = "doc"
     case convert = "arrow.triangle.2.circlepath"
     case save = "square.and.arrow.down"
-    /// The error line keeps its outlined triangle (no look change); `warning` is the standard filled one.
+    /// The error line keeps its outlined triangle (no look change). Standard concepts are added when a screen uses them.
     case errorLine = "exclamationmark.triangle"
 }

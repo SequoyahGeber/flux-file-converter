@@ -16,7 +16,7 @@ window.addEventListener('flux-native', event => {
 });
 window.flux = Object.freeze({
   getState: () => call('getState'), selectFiles: () => call('selectFiles'),
-  selectSample: id => call('selectSample', id), openSupport: () => call('openSupport'), openPrivacy: () => call('openPrivacy'),
+  selectSample: id => call('selectSample', id),
   selectFolder: () => Promise.reject(new Error('Select regular files to ZIP in this local beta.')),
   addDroppedFiles: () => Promise.reject(new Error('Use Choose files to grant access to these files.')),
   releaseFiles: ids => call('releaseFiles', ids), selectOutput: () => call('selectOutput'),
@@ -24,7 +24,7 @@ window.flux = Object.freeze({
   openOutput: () => call('openOutput'), clearHistory: () => call('clearHistory'),
   confirmClearHistory: () => call('confirmClearHistory'), openSettings: () => call('openSettings'),
   menuState: state => call('menuState', state), saveAll: () => call('saveAll'), share: (id, rect) => call('share', {id, rect}),
-  refreshEngines: () => call('refreshEngines'), openFormatList: () => call('openFormatList'),
+  openFormatList: () => call('openFormatList'),
   describeFormat: ext => call('describeFormat', ext),
   onUpdate: fn => { updates.add(fn); return () => updates.delete(fn); },
   onFiles: fn => { files.add(fn); return () => files.delete(fn); }

@@ -4,11 +4,7 @@ import UniformTypeIdentifiers
 import OfflineKit
 import SharedDesign
 import SharedFeedback
-#if os(macOS)
-import AppKit
-#else
 import UIKit
-#endif
 
 struct LocalView: View {
     @StateObject private var model = LocalModel()
@@ -17,10 +13,8 @@ struct LocalView: View {
     @State private var showingSettings = false
     @State private var confirmingClear = false
     @AppStorage(FluxSettings.Key.appearanceMode) private var appearance = AppearanceMode.system.rawValue
-    #if os(iOS)
     @State private var exportFile: ExportFile?
     @State private var shareFile: ExportFile?
-    #endif
     @State private var saving = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -83,9 +77,7 @@ struct LocalView: View {
                                 TextField("Converted", text: $model.filename, axis: .vertical).lineLimit(1...4).textFieldStyle(.roundedBorder).submitLabel(.done)
                                     // A file name, not prose: no autocorrect or capitals (FX-B-10).
                                     .autocorrectionDisabled()
-                                    #if os(iOS)
                                     .textInputAutocapitalization(.never)
-                                    #endif
                                     .onChange(of: model.filename) { _, name in if name.contains(where: \.isNewline) { model.filename = name.filter { !$0.isNewline } } }
                                     .accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
@@ -134,12 +126,10 @@ struct LocalView: View {
                                 .accessibilityLabel("Converted file").accessibilityValue(result.url.lastPathComponent)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
                                 .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.busy || model.nameProblem != nil).accessibilityIdentifier(AccessibilityID.Converter.save)
-                            #if os(iOS)
                             // AirDrop, Messages, Mail, Copy or another app in one tap (FX-B-10).
                             Button { share(result) } label: {
                                 Label("Share…", symbol: FluxIcon.share).frame(minHeight: 44).contentShape(Rectangle())
                             }.tint(FluxColor.link).disabled(saving || model.busy || model.nameProblem != nil).accessibilityIdentifier(AccessibilityID.Converter.share)
-                            #endif
                             Text("Save to Files, or share it with another app. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                             .id(Outcome.result)
@@ -172,7 +162,6 @@ struct LocalView: View {
             .onChange(of: model.error) { if !model.error.isEmpty { reveal(Outcome.error, proxy) } }
             .onChange(of: model.notice) { if !model.notice.isEmpty { reveal(Outcome.notice, proxy) } }
             }
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -186,7 +175,6 @@ struct LocalView: View {
             }
             .sheet(isPresented: $showingSettings) { SettingsView().feedbackHost(FluxFeedback.center) }
             .feedbackHost(FluxFeedback.center)
-            #endif
             .confirmationDialog("Delete the unsaved result?", isPresented: $confirmingClear, titleVisibility: .visible) {
                 Button("Delete result", role: .destructive) { model.clear() }
                     .accessibilityIdentifier(AccessibilityID.Converter.clearConfirm)
@@ -197,30 +185,23 @@ struct LocalView: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): model.select(urls); case .failure(let error): model.error = error.localizedDescription }
             }
-            #if os(iOS)
             // "Open in Flux" from Files, Mail or Safari, and files dropped from another app (FX-B-16).
             .onOpenURL { url in model.open([url]) }
             .dropDestination(for: URL.self) { urls, _ in
                 guard !model.busy, !saving else { return false }
                 model.open(urls); return true
             }
-            #endif
             .sheet(isPresented: $showingFormats) { FormatView() }
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }
             .onChange(of: scenePhase) {
                 guard scenePhase == .background, model.busy else { return }
-                #if os(iOS)
                 model.enteredBackground()
-                #else
-                model.cancel(.background)
-                #endif
             }
             // Status and errors change without moving focus; announce them to VoiceOver.
             .onChange(of: model.message) { if !model.message.isEmpty { AccessibilityNotification.Announcement(model.message).post() } }
             .onChange(of: model.error) { if !model.error.isEmpty { AccessibilityNotification.Announcement(model.error).post() } }
             .onChange(of: model.notice) { if !model.notice.isEmpty { AccessibilityNotification.Announcement(model.notice).post() } }
-            #if os(iOS)
             .sheet(item: $shareFile, onDismiss: { saving = false; shareFile = nil }) { file in
                 ShareSheet(url: file.url) { completed, savedToFiles in
                     if completed { model.message = savedToFiles ? "Saved to Files." : "Shared." }
@@ -233,13 +214,9 @@ struct LocalView: View {
                     if success { model.message = "Saved to Files."; model.resultSaved = true }; saving = false; exportFile = nil
                 }.ignoresSafeArea()
             }
-            #endif
         }
         .preferredColorScheme((AppearanceMode(rawValue: appearance) ?? .system).colorScheme)
         .task { if LaunchFlags.demo && model.inputs.isEmpty, let sample = ReviewResources.samples.first { model.selectSample(sample) } }
-        #if os(macOS)
-        .frame(minWidth: 460, minHeight: 580)
-        #endif
     }
     private enum Outcome: Hashable { case result, error, notice }
     /// Scrolls after the new card has been laid out; no animation with Reduce Motion.
@@ -256,7 +233,6 @@ struct LocalView: View {
             catch { model.error = error.localizedDescription; saving = false }
         }
     }
-    #if os(iOS)
     /// Applies the typed name first, as Save as… does, then shows the system share sheet. Sharing isn't saving, so Clear
     /// still asks unless the person chose Save to Files in the sheet.
     private func share(_ result: LocalResult) {
@@ -266,42 +242,8 @@ struct LocalView: View {
             catch { model.error = error.localizedDescription; saving = false }
         }
     }
-    #endif
     private func presentSave(_ result: LocalResult) {
-        #if os(macOS)
-        if result.isDirectory {
-            let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true; panel.prompt = "Save here"
-            panel.begin { response in
-                guard response == .OK, let parent = panel.url else { saving = false; return }
-                let scoped = parent.startAccessingSecurityScopedResource(); saving = true
-                let destination = parent.appendingPathComponent(result.url.lastPathComponent)
-                Task {
-                    do {
-                        try await Task.detached {
-                            guard !FileManager.default.fileExists(atPath: destination.path) else { throw LocalError.invalid("A folder with this name already exists. Choose another location.") }
-                            try SafeSave.commit(result.url, to: destination, replaceExisting: false)
-                        }.value
-                        model.message = "Saved to \(parent.lastPathComponent)."; model.resultSaved = true
-                    } catch { model.error = error.localizedDescription }
-                    if scoped { parent.stopAccessingSecurityScopedResource() }; saving = false
-                }
-            }
-        } else {
-            let panel = NSSavePanel(); panel.nameFieldStringValue = result.url.lastPathComponent; panel.canCreateDirectories = true
-            panel.allowedContentTypes = [UTType(filenameExtension: result.url.pathExtension) ?? .data]
-            panel.begin { response in
-                guard response == .OK, let destination = panel.url else { saving = false; return }
-                let scoped = destination.startAccessingSecurityScopedResource(); saving = true
-                Task {
-                    do { try await Task.detached { try SafeSave.commit(result.url, to: destination) }.value; model.message = "Saved \(destination.lastPathComponent)."; model.resultSaved = true }
-                    catch { model.error = error.localizedDescription }
-                    if scoped { destination.stopAccessingSecurityScopedResource() }; saving = false
-                }
-            }
-        }
-        #else
         exportFile = ExportFile(url: result.url)
-        #endif
     }
 }
 
@@ -318,19 +260,13 @@ private struct FormatView: View {
                 Section("ZIP") { Text("Any regular file type → ZIP, including several files at once. ZIP → folder. ZIP extraction rejects links and unsafe paths; up to 2,000 entries, 1 GB expanded and 200× expansion.") }
                 Section("More formats") { Text("This local beta does not include the desktop Electron app’s LibreOffice, Blender, Calibre or Python engines. Unsupported files can still be zipped. No conversion connects to Unraid or uploads files.") }
             }.navigationTitle("Supported conversions")
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier(AccessibilityID.Formats.done) } }
         }
         .presentationDetents([.medium, .large])
-        #if os(macOS)
-        .frame(width: 580, height: 580)
-        #endif
     }
 }
 
-#if os(iOS)
 // The file and presentation are one state change, so the first sheet cannot
 // capture an unset URL and leave a blank, disabled save screen.
 private struct ExportFile: Identifiable {
@@ -367,4 +303,3 @@ private struct ExportPicker: UIViewControllerRepresentable {
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { completion(false) }
     }
 }
-#endif

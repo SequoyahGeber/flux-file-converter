@@ -22,9 +22,6 @@ enum AccessibilityID {
         static let open = "settings.open"
         static let done = "settings.done"
         static let appearance = "settings.appearance"
-        static let support = "settings.support"
-        static let version = "settings.version"
-        static let acknowledgements = "settings.acknowledgements"
         static let privacyPolicy = "settings.privacyPolicy"
         static let outputFolder = "settings.outputFolder"
         static let chooseOutputFolder = "settings.chooseOutputFolder"
@@ -34,7 +31,6 @@ enum AccessibilityID {
     }
     enum Privacy {
         static let text = "privacy.text"
-        static let webLink = "privacy.webLink"
     }
     enum Formats {
         static let done = "formats.done"

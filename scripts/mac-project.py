@@ -28,7 +28,9 @@ def generate(build_ui=True):
         return identifier(name)
 
     sources = sorted((MAC / "Flux").glob("*.swift"))
-    sources += sorted((ROOT / "native/App").glob("*.swift"))
+    # The iPhone's converter screen, its model and its Settings sheet are iPhone-only; the Mac hosts the page (B-19).
+    iphone_only = {"LocalView.swift", "LocalModel.swift", "SettingsView.swift"}
+    sources += sorted(file for file in (ROOT / "native/App").glob("*.swift") if file.name not in iphone_only)
     source_refs, source_builds = [], []
     for file in sources:
         path = file.name if file.parent == MAC / "Flux" else "../../native/App/" + file.name

@@ -192,8 +192,7 @@ function App() {
     [nativeLocal, setNativeLocal] = useState(false),
     [mediaMode, setMediaMode] = useState('lossless');
   const [reviewInfo, setReviewInfo] = useState({ samples: [] }),
-    [sampleID, setSampleID] = useState('image'),
-    [showPrivacy, setShowPrivacy] = useState(false);
+    [sampleID, setSampleID] = useState('image');
   const [output, setOutput] = useState('Downloads / Flux'),
     [running, setRunning] = useState(false),
     [adding, setAdding] = useState(false),
@@ -323,7 +322,6 @@ function App() {
       }
       if (e.key === 'Escape') {
         setSelectedFormat(null);
-        setShowPrivacy(false);
         setError('');
       }
     };
@@ -1607,32 +1605,14 @@ function App() {
                 <p>Everything you need. Right here on your Mac.</p>
               </div>
               <section className="settings-card">
-                {nativeLocal && (
-                  <div className="review-links">
-                    <h3>
-                      <ShieldCheck size={18} />
-                      Privacy & support
-                    </h3>
-                    <p>Read the policy offline, or open the public support page in your browser.</p>
-                    <button className="secondary-button" onClick={() => setShowPrivacy(true)}>
-                      Privacy policy
-                    </button>
-                    <button
-                      className="secondary-button"
-                      onClick={() => action(() => api.openSupport())}
-                    >
-                      Support
-                    </button>
-                  </div>
-                )}
                 <h3>
                   <FolderOpen size={18} />
                   Output folder
                 </h3>
                 <p>
-                  {nativeLocal
-                    ? 'Choose a preferred folder, then use Save as… on each result to pick its final name and location. Existing files are replaced only after the save dialog asks you.'
-                    : 'New results are saved here. Existing files get a new name and are never overwritten.'}
+                  {
+                    'New results are saved here. Existing files get a new name and are never overwritten.'
+                  }
                 </p>
                 <div className="settings-folder">
                   <span title={output}>{output}</span>
@@ -1673,44 +1653,29 @@ function App() {
                 </div>
                 <p>These local tools power the supported formats. No files leave your computer.</p>
                 <div className="engine-list">
-                  {(nativeLocal
-                    ? [
-                        [
-                          'local',
-                          'On-device conversion',
-                          reviewInfo.fullEngine
-                            ? `Office, spreadsheets, presentations, media, images, ebooks, fonts, ${families.some((f) => f.id === 'model') ? '3D, ' : ''}tables, compression and archives · bundled locally`
-                            : 'ImageIO, PDFKit, Apple media codecs, bundled FFmpeg, ZIP and structured data',
-                        ],
-                      ]
-                    : [
-                        [
-                          'magick',
-                          'ImageMagick',
-                          'Camera RAW, Photoshop, scientific images, and more',
-                        ],
-                        [
-                          'python',
-                          'Extended format engine',
-                          'Fonts, data tables, and PDF reconstruction',
-                        ],
-                        ['blender', 'Blender', '3D meshes, models, and scene conversion'],
-                        ['calibre', 'Calibre', 'Kindle and ebook conversion'],
-                        ['sevenzip', '7-Zip', '7Z/RAR extraction and 7Z output'],
-                        ['tesseract', 'Tesseract', 'English OCR for scanned PDF pages'],
-                        ['images', 'Image engine', 'JPG, PNG, WebP, AVIF, TIFF, GIF, icons'],
-                        ['ffmpeg', 'FFmpeg', 'Video, audio, and media compression'],
-                        ['office', 'LibreOffice', 'Documents, spreadsheets, and presentations'],
-                        ['pandoc', 'Pandoc', 'Text, documents, and ebooks'],
-                        ['pdf', 'macOS PDFKit', 'PDF page rendering and text extraction'],
-                        ['qpdf', 'QPDF', 'Lossless PDF compression'],
-                        ['ghostscript', 'Ghostscript', 'Smaller PDFs with image downsampling'],
-                        ['oxipng', 'OxiPNG', 'Lossless PNG optimization'],
-                        ['jpegtran', 'JPEGtran', 'Lossless JPEG optimization'],
-                        ['archive', 'Archive engine', 'ZIP, TAR, GZIP, BZIP2, and XZ'],
-                        ['data', 'Data engine', 'JSON, YAML, XML, CSV, and TSV'],
-                      ]
-                  ).map(([key, name, description]) => (
+                  {[
+                    ['magick', 'ImageMagick', 'Camera RAW, Photoshop, scientific images, and more'],
+                    [
+                      'python',
+                      'Extended format engine',
+                      'Fonts, data tables, and PDF reconstruction',
+                    ],
+                    ['blender', 'Blender', '3D meshes, models, and scene conversion'],
+                    ['calibre', 'Calibre', 'Kindle and ebook conversion'],
+                    ['sevenzip', '7-Zip', '7Z/RAR extraction and 7Z output'],
+                    ['tesseract', 'Tesseract', 'English OCR for scanned PDF pages'],
+                    ['images', 'Image engine', 'JPG, PNG, WebP, AVIF, TIFF, GIF, icons'],
+                    ['ffmpeg', 'FFmpeg', 'Video, audio, and media compression'],
+                    ['office', 'LibreOffice', 'Documents, spreadsheets, and presentations'],
+                    ['pandoc', 'Pandoc', 'Text, documents, and ebooks'],
+                    ['pdf', 'macOS PDFKit', 'PDF page rendering and text extraction'],
+                    ['qpdf', 'QPDF', 'Lossless PDF compression'],
+                    ['ghostscript', 'Ghostscript', 'Smaller PDFs with image downsampling'],
+                    ['oxipng', 'OxiPNG', 'Lossless PNG optimization'],
+                    ['jpegtran', 'JPEGtran', 'Lossless JPEG optimization'],
+                    ['archive', 'Archive engine', 'ZIP, TAR, GZIP, BZIP2, and XZ'],
+                    ['data', 'Data engine', 'JSON, YAML, XML, CSV, and TSV'],
+                  ].map(([key, name, description]) => (
                     <div className="engine-row" key={key}>
                       <div className={engines[key] ? 'engine-check' : 'engine-missing'}>
                         {engines[key] ? <Check size={13} /> : <X size={13} />}
@@ -1773,29 +1738,6 @@ function App() {
           </button>
         )}
       </div>
-      {showPrivacy && nativeLocal && (
-        <Modal
-          className="policy-modal"
-          labelId="policy-title"
-          onClose={() => setShowPrivacy(false)}
-        >
-          <button
-            className="icon-button modal-close"
-            aria-label="Close privacy policy"
-            onClick={() => setShowPrivacy(false)}
-          >
-            <X size={18} />
-          </button>
-          <h2 id="policy-title">Privacy policy</h2>
-          <div className="policy-text">{reviewInfo.privacyText}</div>
-          <button className="secondary-button" onClick={() => action(() => api.openPrivacy())}>
-            Open public policy
-          </button>
-          <button className="secondary-button" onClick={() => action(() => api.openSupport())}>
-            Support
-          </button>
-        </Modal>
-      )}
       {selectedFormat && (
         <Modal labelId="format-title" onClose={() => setSelectedFormat(null)}>
           <button

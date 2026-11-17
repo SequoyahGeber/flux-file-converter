@@ -6,13 +6,6 @@ import Darwin
 /// Inputs are picker-authorized copies; the worker receives no arbitrary UI paths.
 enum SharedMacEngine {
     static let fileLimit: Int64 = 1_900_000_000
-    /// Shown above the on-device support text, whose limits and process
-    /// description apply to the distributable engine, not this build.
-    static var supportNote: String {
-        let models = families.contains { $0["id"] as? String == "model" }
-        return "Full-engine Mac build: this personal build converts with bundled command-line tools (Office, Calibre, FFmpeg, ImageMagick and others) instead of the on-device engine described below. Its limits replace those below: 5 GB per media file, 1.9 GB other files, and up to two hours per job. Each conversion runs in a separate converter process started by Flux; in Activity Monitor it appears as node and its tools under Flux. Those processes inherit Flux's App Sandbox and stop when you cancel or quit Flux. "
-            + (models ? "3D models are included. " : "3D conversion is not included. ") + "Files are still converted only on this Mac."
-    }
     static var resources: URL? { Bundle.main.url(forResource: "ConversionEngine", withExtension: nil) }
     static let capabilities: [String: Any] = {
         guard let root = resources, let data = try? Data(contentsOf: root.appendingPathComponent("capabilities.json")),

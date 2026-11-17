@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Wraps a policy screen for presentation as its own sheet with "Done".
-struct PolicySheet<Content: View>: View {
+/// Presents a screen (the Mac diagnostics log) as its own sheet with "Done".
+struct DoneSheet<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
     @ViewBuilder let content: Content
     var body: some View {

@@ -50,7 +50,7 @@ struct MacSettingsView: View {
         // Tall enough for the pushed privacy policy and acknowledgements.
         .frame(width: 520, height: 640)
         .sheet(isPresented: $showingDiagnostics) {
-            PolicySheet {
+            DoneSheet {
                 DiagnosticsView(center: FluxDiagnostics.center, sensitiveTerms: { FluxDiagnostics.fileNames() })
             }
         }

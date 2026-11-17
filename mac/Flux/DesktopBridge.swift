@@ -274,7 +274,6 @@ import OfflineKit
             if demoPending, let url = ReviewResources.samples.first?.url, let records = try? register([url]) { current["files"] = records }
             demoPending = false
             return current
-        case "refreshEngines": return state()
         case "describeFormat":
             guard let ext = args as? String, ext.count <= 12 else { throw LocalError.unsupported }
             return targets(ext)
@@ -288,8 +287,6 @@ import OfflineKit
             guard !busy, let id = args as? String,
                   let sample = ReviewResources.samples.first(where: { $0.id == id }), let url = sample.url else { throw LocalError.invalid("Choose an available sample.") }
             return try register([url])
-        case "openSupport": NSWorkspace.shared.open(ReviewResources.supportURL); return true
-        case "openPrivacy": NSWorkspace.shared.open(ReviewResources.privacyURL); return true
         case "selectOutput":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
             await chooseOutputFolder(); return outputLabel
@@ -371,7 +368,6 @@ import OfflineKit
         ["nativeLocal": true, "fullEngine": full, "engines": ["local": true], "enginePaths": ["local": "Built into Flux · no downloads or server"], "outputDir": outputLabel,
          "history": history, "families": families, "running": busy, "files": [], "jobs": [],
          "samples": ReviewResources.samples.map { ["id": $0.id, "title": $0.title, "target": $0.target] },
-         "privacyText": ReviewResources.privacyText, "supportText": full ? SharedMacEngine.supportNote + "\n\n" + ReviewResources.supportText : ReviewResources.supportText,
          "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""]
     }
     private func register(_ urls: [URL]) throws -> [[String: Any]] {

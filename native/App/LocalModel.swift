@@ -2,9 +2,7 @@ import Foundation
 import SwiftUI
 import AVFoundation
 import OfflineKit
-#if os(iOS)
 import UIKit
-#endif
 
 @MainActor final class LocalModel: ObservableObject {
     @Published var inputs: [URL] = []
@@ -14,10 +12,8 @@ import UIKit
     /// While a conversion runs the screen stays awake (FX-A-01); every way a job ends goes through here.
     @Published var busy = false {
         didSet {
-            #if os(iOS)
             UIApplication.shared.isIdleTimerDisabled = busy
             if !busy { endBackgroundTime() }
-            #endif
         }
     }
     /// A new or renamed result starts unsaved; a successful save marks it saved.
@@ -32,9 +28,7 @@ import UIKit
     private var stopReason: StopReason?
     private var backgroundedDuringJob = false
     private var control: JobControl?
-    #if os(iOS)
     private var backgroundTime: UIBackgroundTaskIdentifier = .invalid
-    #endif
     /// The rule the typed output name breaks, shown under the field as it is typed (FX-B-10); nil when it is fine.
     var nameProblem: String? { inputs.isEmpty ? nil : LocalPolicy.nameProblem(filename) }
     var formats: [String] { inputs.count > 1 ? ["zip"] : LocalFormats.outputs(for: inputs.first?.pathExtension.lowercased() ?? "") }
@@ -112,7 +106,6 @@ import UIKit
         guard let control else { return }
         stopReason = reason; control.cancel(); message = "Cancelling…"
     }
-    #if os(iOS)
     /// Leaving Flux mid-conversion gives the job the time iOS allows in the background; when that runs out the job
     /// stops and says why (FX-A-01).
     func enteredBackground() {
@@ -128,7 +121,6 @@ import UIKit
         guard backgroundTime != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTime); backgroundTime = .invalid
     }
-    #endif
     func configurationChanged() {
         guard !busy else { return }
         if media && !options.lossless && !["mp4", "mov", "m4a", "wav", "aiff", "caf", "zip"].contains(target) {
