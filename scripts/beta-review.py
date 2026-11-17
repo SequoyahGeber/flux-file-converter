@@ -8,7 +8,9 @@ notification off; it runs before --submit.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import plistlib
 import subprocess
 import urllib.request
 import asc
@@ -28,7 +30,50 @@ DESCRIPTION = ("Flux converts files entirely on your Mac or iPhone, with no acco
 
 # Files whose later changes leave an already-built app unchanged: a receipt or proof made at an earlier commit still
 # describes HEAD's app when only these differ (2026111702: iOS built at 4ae8678, Mac at c08e9aa, D-125 follow-up).
-RELEASE_TOOLING = {"scripts/mac-release.py", "scripts/ios-release.py", "scripts/testflight.sh", "scripts/beta-review.py"}
+RELEASE_TOOLING = {"scripts/mac-release.py", "scripts/ios-release.py", "scripts/testflight.sh", "scripts/beta-review.py",
+                   "tests/beta-review-receipt.py"}
+EXPORT_UPLOAD = "testflight_upload export"
+
+
+def app_tree_sha256(app):
+    """One sha256 over an .app tree: every file and symlink, in sorted relative-path order, as path, kind and content
+    digest (a symlink's target instead of content). Stable across copies and clones of the same tree."""
+    app = Path(app)
+    if not app.is_dir(): return None
+    total = hashlib.sha256()
+    entries = []
+    for folder, dirs, files in os.walk(app):
+        for name in dirs + files:
+            path = Path(folder) / name
+            if path.is_symlink() or path.is_file(): entries.append(path)
+    for path in sorted(entries, key=lambda p: p.relative_to(app).as_posix()):
+        relative = path.relative_to(app).as_posix()
+        if path.is_symlink(): kind, digest = "link", hashlib.sha256(os.readlink(path).encode()).hexdigest()
+        else: kind, digest = "file", hashlib.sha256(path.read_bytes()).hexdigest()
+        total.update(f"{relative}\0{kind}\0{digest}\n".encode())
+    return total.hexdigest()
+
+
+def export_receipt_issues(receipt, build, asc_build, root):
+    """Problems with an iPhone receipt for a build exported straight to App Store Connect (uploadMethod
+    "testflight_upload export"): no .ipa exists, so the receipt names the archive, the archived app's tree digest and
+    the App Store Connect build id. `asc_build` is App Store Connect's GET /builds/{id} data (or None). Returns a list
+    of issues; empty means the receipt holds. The sourceCommit ancestor rule is checked by the caller."""
+    issues = []
+    for key in ["sourceCommit", "archive", "appSha256", "bundleVersion", "ascBuildId"]:
+        if not receipt.get(key): issues.append(f"receipt lacks {key}")
+    if issues: return issues
+    archive = Path(receipt["archive"])
+    if not archive.is_absolute(): archive = Path(root) / archive
+    apps = sorted((archive / "Products/Applications").glob("*.app")) if archive.is_dir() else []
+    if len(apps) != 1: return [f"archive {archive} holds no single app"]
+    if app_tree_sha256(apps[0]) != receipt["appSha256"]: issues.append("archived app digest differs from the receipt")
+    try: version = plistlib.loads((apps[0] / "Info.plist").read_bytes()).get("CFBundleVersion")
+    except (OSError, plistlib.InvalidFileException): version = None
+    if version != build or receipt["bundleVersion"] != build: issues.append(f"archived CFBundleVersion {version} is not build {build}")
+    if not asc_build or asc_build.get("id") != receipt["ascBuildId"] or asc_build.get("attributes", {}).get("processingState") != "VALID":
+        issues.append(f"App Store Connect build {receipt['ascBuildId']} is not VALID")
+    return issues
 
 
 def main():
@@ -85,8 +130,20 @@ def main():
         suffix = "-distribution" if platform == "MAC_OS" else ""
         path = ROOT / f"release/native/{prefix}-{version}-{args.build}{suffix}.json"
         receipt = json.loads(path.read_text()) if path.is_file() else {}
-        artifact = Path(receipt.get("artifact", "/nonexistent-flux-artifact"))
         print(platform, "receipt source", receipt.get("sourceCommit"), "HEAD", commit)
+        if platform == "IOS" and receipt.get("uploadMethod") == EXPORT_UPLOAD:
+            # Exported straight to App Store Connect: check the archived app, its build number and Apple's record.
+            listed = receipt.get("ascBuildId")
+            asc_build = None
+            if isinstance(listed, str) and listed and all(c.isalnum() or c == "-" for c in listed):
+                try: asc_build = asc.call("/builds/" + listed).get("data")
+                except Exception as error: print(platform, "App Store Connect build lookup failed:", type(error).__name__)
+            problems = export_receipt_issues(receipt, args.build, asc_build, ROOT)
+            if listed != item["id"]: problems.append(f"receipt build id {listed} is not {platform} {args.build} ({item['id']})")
+            if not verified_at(receipt.get("sourceCommit")): problems.append("source commit is not HEAD or a tooling-only ancestor")
+            for problem in problems: issues.append(platform + ": export receipt: " + problem + ".")
+            continue
+        artifact = Path(receipt.get("artifact", "/nonexistent-flux-artifact"))
         if not verified_at(receipt.get("sourceCommit")) or not receipt.get("appleUploadAccepted") or not receipt.get("appleValidationVerified") or not artifact.is_file() or hashlib.sha256(artifact.read_bytes()).hexdigest() != receipt.get("sha256"):
             issues.append(platform + ": verified artifact/source receipt is missing or mismatched.")
     review = asc.call("/apps/" + APP + "/betaAppReviewDetail")["data"]
