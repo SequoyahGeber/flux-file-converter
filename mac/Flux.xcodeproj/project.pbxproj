@@ -64,7 +64,7 @@ D107888DA1F4C63D31AA6A40 = { isa = XCSwiftPackageProductDependency; package = 7C
 			repositoryURL = "https://github.com/SequoyahGeber/SharedKit.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.4.1;
+				version = 0.4.3;
 			};
 		};
 B90265EA4C32E61D5C72407A = { isa = XCSwiftPackageProductDependency; package = 5E7947E597620B9BC3A04D72; productName = SharedAbout; };
@@ -78,12 +78,13 @@ F5FF408B20A7277A9C245C61 = { isa = PBXBuildFile; productRef = AFFC3205DB6472A3FE
 599EB1B87C7AEA318BD526FB = { isa = PBXBuildFile; productRef = 682F58B09962BA9B6CD3BAA3; };
 987638D75FEBCCA54F277764 = { isa = PBXBuildFile; productRef = 69712E79F952418460A773AA; };
 E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (093D8EFC771FF0B38C7E5FA3, 8F093E941A622A382E7828BD, 34E779AD08696B7BD53127C6, F5FF408B20A7277A9C245C61, 599EB1B87C7AEA318BD526FB, 987638D75FEBCCA54F277764); runOnlyForDeploymentPostprocessing = 0; };
+FDDF4E998F1476C9036E47A2 = { isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); alwaysOutOfDate = 1; name = "Release id only in Release"; runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "if [ \"$CONFIGURATION\" != Release ] && [ \"$PRODUCT_BUNDLE_IDENTIFIER\" = com.sequoyah.flux.mac ]; then echo \"error: a $CONFIGURATION build must not use the release bundle id com.sequoyah.flux.mac (it would run in the installed Flux container)\"; exit 1; fi\n"; };
 73EBF6644258C120893E685D = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }; };
 6C7EFF6369083C8E1F2B1994 = { isa = XCBuildConfiguration; name = Debug; buildSettings = {
-            PRODUCT_NAME = "Flux File Converter"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
+            PRODUCT_NAME = "Flux File Converter"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac.uitest;
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
             CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
-            CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
+            CODE_SIGN_ENTITLEMENTS = Flux/Flux-Debug.entitlements; ENABLE_APP_SANDBOX = YES;
             ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; SWIFT_EMIT_LOC_STRINGS = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
             MARKETING_VERSION = 1.0.3; COMBINE_HIDPI_IMAGES = YES;
@@ -109,7 +110,7 @@ DD75E2CB1C510A828AC72D96 = { isa = XCBuildConfiguration; name = Release; buildSe
 7ED5184A5487DF185E3420D0 = { isa = XCConfigurationList; buildConfigurations = (73EBF6644258C120893E685D, 0B0C687DF8B6B8DC790B519C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 82A58AF6F77EDCFC78A65DA6 = { isa = XCConfigurationList; buildConfigurations = (6C7EFF6369083C8E1F2B1994, DD75E2CB1C510A828AC72D96); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 34A04005BCAF206EEC990BD9 = { isa = PBXNativeTarget; buildConfigurationList = 82A58AF6F77EDCFC78A65DA6;
-        buildPhases = (878A52FC5FF6A57D50B7B870, E2AA269EB967A8853A258BFA, 41D311A605520FC7B8B9A980); buildRules = (); dependencies = ();
+        buildPhases = (FDDF4E998F1476C9036E47A2, 878A52FC5FF6A57D50B7B870, E2AA269EB967A8853A258BFA, 41D311A605520FC7B8B9A980); buildRules = (); dependencies = ();
         packageProductDependencies = (D107888DA1F4C63D31AA6A40, B90265EA4C32E61D5C72407A, 4E6802ED9BF3141860298DB6, AFFC3205DB6472A3FEE0E6F8, 682F58B09962BA9B6CD3BAA3, 69712E79F952418460A773AA); name = Flux; productName = "Flux File Converter"; productReference = A8792157CB4F27FB949C035F; productType = "com.apple.product-type.application"; };
 244210E48437B6556980A702 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700;
         TargetAttributes = { 34A04005BCAF206EEC990BD9 = { CreatedOnToolsVersion = 27.0; }; }; };
