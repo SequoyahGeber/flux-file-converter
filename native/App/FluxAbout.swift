@@ -28,6 +28,9 @@ enum FluxAbout {
             KeyboardShortcutItem("Start Conversion, Compression or Archive", "⌘↩"),
             KeyboardShortcutItem("Cancel Batch", "⌘."),
         ]),
+        KeyboardShortcutSection("Edit", [
+            KeyboardShortcutItem("Search Formats…", "⌘F"),
+        ]),
         KeyboardShortcutSection("View", [
             KeyboardShortcutItem("Bigger Text", "⌘+"),
             KeyboardShortcutItem("Smaller Text", "⌘−"),
@@ -39,6 +42,10 @@ enum FluxAbout {
             KeyboardShortcutItem("ZIP & Unzip", "⌘3"),
             KeyboardShortcutItem("Recent Files", "⌘4"),
             KeyboardShortcutItem("All Formats", "⌘5"),
+        ]),
+        // The page's own shortcut, shown on screen beside the search field; ⌘F is its menu twin (FX-B-12).
+        KeyboardShortcutSection("All Formats", [
+            KeyboardShortcutItem("Search Formats", "⌘K"),
         ]),
         KeyboardShortcutSection("Flux", [
             KeyboardShortcutItem("Settings…", "⌘,"),

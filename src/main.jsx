@@ -333,6 +333,12 @@ function App() {
           ? Boolean(f.path)
           : f.family === 'archive';
   const pending = queue.filter((f) => ready(f) && f.status !== 'done');
+  // Mac app only: the menu bar dims Start when this screen has nothing to start (FX-B-12).
+  const canStart =
+    ['convert', 'compress', 'archive'].includes(route) && pending.length > 0 && !adding && !running;
+  useEffect(() => {
+    if (nativeLocal) api.menuState?.({ canStart }).catch(() => {});
+  }, [nativeLocal, canStart]);
   const done = queue.filter((f) => f.status === 'done');
   const total = queue.reduce((sum, f) => sum + f.size, 0);
   const allTargets = useMemo(

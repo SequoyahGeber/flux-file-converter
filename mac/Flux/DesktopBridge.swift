@@ -27,6 +27,10 @@ import OfflineKit
     private var keyMonitor: Any?
     private var demoPending = LaunchFlags.demo
     private var busy = false
+    /// For the menu bar (FX-B-12): Start dims when the page has nothing to start, Cancel and the Go items follow the
+    /// running batch. `canStart` comes from the page (`menuState`); `batchRunning` is native.
+    @Published private(set) var canStart = false
+    @Published private(set) var batchRunning = false
     private var control: JobControl?
     private var cancelled = false
     /// Distributable builds use OfflineKit; only the personal build bundles the full engine.
@@ -39,6 +43,7 @@ import OfflineKit
         webView = LocalDesktopWebView(frame: .zero, configuration: configuration)
         webView.underPageBackgroundColor = .windowBackgroundColor
         super.init()
+        webView.pageZoom = TextSize.restored(from: .standard, key: FluxSettings.Key.textSize)
         OfflineEngine.clearTemporaryFiles()
         restoreOutputFolder()
         FluxDiagnostics.fileNames = { [weak self] in
@@ -51,7 +56,7 @@ import OfflineKit
             guard let self, event.window === self.webView.window,
                   event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                   event.charactersIgnoringModifiers == "=" else { return event }
-            self.zoom(by: 0.1); return nil
+            self.zoom(by: 1); return nil
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
             SharedMacEngine.terminateAll()
@@ -151,9 +156,13 @@ import OfflineKit
             catch { replyHandler(nil, error.localizedDescription) }
         }
     }
-    func zoom(by step: Double) {
-        // Session-only; rounding keeps repeated steps and Actual Size predictable.
-        webView.pageZoom = min(2, max(0.5, ((webView.pageZoom + step) * 10).rounded() / 10))
+    /// View ▸ Bigger Text (+1) and Smaller Text (-1); remembered across launches (FX-B-12).
+    func zoom(by direction: Int) { setTextSize(TextSize.stepped(webView.pageZoom, by: direction)) }
+    /// View ▸ Actual Size is `setTextSize(1)`.
+    func setTextSize(_ value: Double) {
+        let size = TextSize.clamped(value)
+        webView.pageZoom = size
+        TextSize.save(size, to: .standard, key: FluxSettings.Key.textSize)
     }
     /// Shows the folder picker; on a choice, saves it and tells the bundled UI.
     func chooseOutputFolder() async {
@@ -229,7 +238,7 @@ import OfflineKit
         outputFolder = nil; outputScoped = false
         FluxSettings.reset()
         useUITestOutputFolder()
-        quitConfirmed = false; demoPending = LaunchFlags.demo
+        quitConfirmed = false; demoPending = LaunchFlags.demo; canStart = false
         webView.pageZoom = 1
         for window in NSApp.windows where window !== webView.window && window.isVisible { window.close() }
         webView.window?.makeKeyAndOrderFront(nil)
@@ -283,6 +292,10 @@ import OfflineKit
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
             await chooseOutputFolder(); return outputLabel
         case "openSettings": openSettings?(); return true
+        case "menuState":
+            guard let state = args as? [String: Any] else { throw LocalError.invalid("The local interface is unavailable.") }
+            canStart = state["canStart"] as? Bool ?? false
+            return true
         case "confirmClearHistory":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
             return await confirmClearHistory()
@@ -299,7 +312,7 @@ import OfflineKit
                     guard jobs.count == 1, let ids = job["includeIds"] as? [String], !ids.isEmpty, ids.count <= 100, Set(ids).count == ids.count, ids.allSatisfy({ files[$0] != nil }) else { throw LocalError.invalid("Choose up to 100 files to ZIP.") }
                 }
             }
-            busy = true; cancelled = false
+            busy = true; cancelled = false; batchRunning = true
             Task { await run(jobs) }
             return true
         case "cancel": cancelled = true; control?.cancel(); return true
@@ -454,7 +467,7 @@ import OfflineKit
             }
             control = nil; emit("update", update)
         }
-        busy = false; emit("update", ["batchComplete": true, "history": history])
+        busy = false; batchRunning = false; emit("update", ["batchComplete": true, "history": history])
     }
     /// The red close button quits Flux; it asks first, while the window is still there (FX-B-01). Other ways to close
     /// the window reach `confirmQuit` from the app delegate, which shows the window again if the person keeps Flux open.

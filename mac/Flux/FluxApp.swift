@@ -39,18 +39,28 @@ struct FluxApp: App {
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Choose Files…") { desktop.chooseFiles() }.keyboardShortcut("o")
+                // Dimmed when they have nothing to act on, so a shortcut never silently does nothing (FX-B-12).
                 Button("Start Conversion, Compression or Archive") { activate(.start) }
                     .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!desktop.canStart || desktop.batchRunning)
                 Button("Cancel Batch") { activate(.cancel) }
                     .keyboardShortcut(".", modifiers: .command)
+                    .disabled(!desktop.batchRunning)
+            }
+            // ⌘F finds within what is on screen (§Mac menus): Flux's searchable screen is the format list. The
+            // page's own ⌘K does the same and stays. Replaces the text-editing group, as Margin's Find does.
+            CommandGroup(replacing: .textEditing) {
+                Button("Search Formats…") { activate(.searchFormats) }
+                    .keyboardShortcut("f")
+                    .disabled(desktop.batchRunning)
             }
             CommandGroup(after: .toolbar) {
-                // ⌘= is also accepted for Bigger Text (DesktopBridge's key monitor).
-                Button("Bigger Text") { desktop.zoom(by: 0.1) }
+                // ⌘= is also accepted for Bigger Text (DesktopBridge's key monitor). The size is remembered.
+                Button("Bigger Text") { desktop.zoom(by: 1) }
                     .keyboardShortcut("+", modifiers: .command)
-                Button("Smaller Text") { desktop.zoom(by: -0.1) }
+                Button("Smaller Text") { desktop.zoom(by: -1) }
                     .keyboardShortcut("-", modifiers: .command)
-                Button("Actual Size") { desktop.webView.pageZoom = 1 }
+                Button("Actual Size") { desktop.setTextSize(1) }
                     .keyboardShortcut("0", modifiers: .command)
             }
             // Help menu in the standard order after the system search field (§Mac menus): Keyboard Shortcuts,
@@ -62,12 +72,15 @@ struct FluxApp: App {
                     .keyboardShortcut("/", modifiers: [.command, .option])
                 SupportMenuButtons(configuration: FluxAbout.configuration)
             }
+            // The page keeps the batch on screen while it runs, so the Go items dim until it ends.
             CommandMenu("Go") {
-                Button("Convert Files") { activate(.convert) }.keyboardShortcut("1")
-                Button("Compress Files") { activate(.compress) }.keyboardShortcut("2")
-                Button("ZIP & Unzip") { activate(.archive) }.keyboardShortcut("3")
-                Button("Recent Files") { activate(.history) }.keyboardShortcut("4")
-                Button("All Formats") { activate(.formats) }.keyboardShortcut("5")
+                Group {
+                    Button("Convert Files") { activate(.convert) }.keyboardShortcut("1")
+                    Button("Compress Files") { activate(.compress) }.keyboardShortcut("2")
+                    Button("ZIP & Unzip") { activate(.archive) }.keyboardShortcut("3")
+                    Button("Recent Files") { activate(.history) }.keyboardShortcut("4")
+                    Button("All Formats") { activate(.formats) }.keyboardShortcut("5")
+                }.disabled(desktop.batchRunning)
             }
         }
         Settings {
@@ -87,14 +100,21 @@ struct FluxApp: App {
     }
 
     private enum RendererAction: String {
-        case start, cancel, convert, compress, archive, history, formats
+        case start, cancel, convert, compress, archive, history, formats, searchFormats
     }
 
+    /// Runs a menu command in the page. When a sheet, a dialog or a disabled control stops it, Flux beeps instead of
+    /// doing nothing silently (FX-B-12).
     private func activate(_ action: RendererAction) {
         // Native sheets and renderer dialogs must keep background actions blocked.
-        guard desktop.webView.window?.attachedSheet == nil, NSApp.modalWindow == nil else { return }
+        guard desktop.webView.window?.attachedSheet == nil, NSApp.modalWindow == nil else { NSSound.beep(); return }
         desktop.webView.callAsyncJavaScript("""
-            if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+            if (document.querySelector('[role="dialog"][aria-modal="true"]')) return false;
+            if (action === 'searchFormats') {
+                // The page's own ⌘K handler: open All Formats and focus its search field.
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
+                return true;
+            }
             const targets = {
                 start: '.queue-bottom .primary-button',
                 cancel: '.queue-bottom .secondary-button'
@@ -107,8 +127,13 @@ struct FluxApp: App {
                 : Object.hasOwn(targets, action) ? document.querySelector(targets[action]) : null;
             if (button && !button.disabled && !button.closest('[inert]') && button.getClientRects().length) {
                 button.click();
+                return true;
             }
-            """, arguments: ["action": action.rawValue], in: nil, in: .page, completionHandler: nil)
+            return false;
+            """, arguments: ["action": action.rawValue], in: nil, in: .page) { result in
+            if case .success(let value) = result, value as? Bool == true { return }
+            NSSound.beep()
+        }
     }
 }
 

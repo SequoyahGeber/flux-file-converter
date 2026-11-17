@@ -7,8 +7,10 @@ enum FluxSettings {
         static let appearanceMode = "appearance.mode"
         /// Mac only: an app-scoped security bookmark for the preferred save folder.
         static let outputFolder = "output.folder"
+        /// Mac only: the page's text size (View ▸ Bigger Text), 0.5 to 2; absent means Actual Size (FX-B-12).
+        static let textSize = "appearance.textSize"
     }
-    static let all = [Key.appearanceMode, Key.outputFolder]
+    static let all = [Key.appearanceMode, Key.outputFolder, Key.textSize]
     static func reset(_ defaults: UserDefaults = .standard) {
         for key in all { defaults.removeObject(forKey: key) }
     }

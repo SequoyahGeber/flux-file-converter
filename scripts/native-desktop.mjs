@@ -23,6 +23,7 @@ window.flux = Object.freeze({
   start: jobs => call('start', jobs), cancel: () => call('cancel'), reveal: id => call('reveal', id),
   openOutput: () => call('openOutput'), clearHistory: () => call('clearHistory'),
   confirmClearHistory: () => call('confirmClearHistory'), openSettings: () => call('openSettings'),
+  menuState: state => call('menuState', state),
   refreshEngines: () => call('refreshEngines'), openFormatList: () => call('openFormatList'),
   describeFormat: ext => call('describeFormat', ext),
   onUpdate: fn => { updates.add(fn); return () => updates.delete(fn); },
