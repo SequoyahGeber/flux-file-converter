@@ -16,6 +16,9 @@ from datetime import datetime, timezone
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = pathlib.Path.home() / ".appstoreconnect/flux/Signing.local.json"
+# A locally signed (development) build has its own id: signed and sandboxed as the release id, it would run inside the
+# owner's installed Flux container (D-142). Distribution keeps the configured release id.
+DEVELOPMENT_ID = "com.sequoyah.flux.mac.dev"
 
 
 def command(args, **kwargs):
@@ -51,6 +54,9 @@ def main():
         raise SystemExit("Use the build number YYYYMMDDNN, for example 2026111501.")
     settings = json.loads(args.config.read_text())
     mode = "development" if args.development else "distribution"
+    bundle_id = DEVELOPMENT_ID if args.development else settings["bundleId"]
+    if not args.development and bundle_id == DEVELOPMENT_ID:
+        raise SystemExit("Distribution must use the release bundle id, not the development one.")
     chosen = settings[mode]
     identity = chosen["identity"]
     keychain = chosen.get("keychain") or (settings.get("keychain") if not args.development else None)
@@ -67,7 +73,7 @@ def main():
     if not identity_name or not re.search(pattern, identity_name.group(1)):
         raise SystemExit("The identity does not match development/distribution signing.")
     p = profile(pathlib.Path(chosen["profile"]).expanduser())
-    if p["TeamIdentifier"] != [settings["team"]] or p["Entitlements"].get("com.apple.application-identifier") != settings["team"] + "." + settings["bundleId"]:
+    if p["TeamIdentifier"] != [settings["team"]] or p["Entitlements"].get("com.apple.application-identifier") != settings["team"] + "." + bundle_id:
         raise SystemExit("Use a provisioning profile for this Flux app and team.")
     if p["ExpirationDate"].replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
         raise SystemExit("The provisioning profile has expired.")
@@ -103,7 +109,7 @@ def main():
                       "-archivePath", str(archive), "archive", "CURRENT_PROJECT_VERSION=" + args.build,
                       "MARKETING_VERSION=" + version, "FLUX_SIGNING_IDENTITY=" + identity,
                       "FLUX_PROFILE=" + p["Name"], "DEVELOPMENT_TEAM=" + settings["team"],
-                      "PRODUCT_BUNDLE_IDENTIFIER=" + settings["bundleId"],
+                      "PRODUCT_BUNDLE_IDENTIFIER=" + bundle_id,
                       "ENABLE_HARDENED_RUNTIME=YES"]
         if keychain:
             build_args.append("OTHER_CODE_SIGN_FLAGS=--keychain " + shlex.quote(keychain))
@@ -182,7 +188,7 @@ def main():
             command(["pkgutil", "--check-signature", str(artifact)])
         archive_zip = output / (name + "-" + mode + "-archive.zip")
         command(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(archive), str(archive_zip)])
-        receipt = {"bundleId": settings["bundleId"], "version": version, "build": args.build,
+        receipt = {"bundleId": bundle_id, "version": version, "build": args.build,
                    "mode": mode, "architectures": architectures, "entitlements": entitlements,
                    "engine": "full" if args.full_engine else "restricted",
                    "engineArchitectures": engine_manifest.get("architectures", []),
