@@ -258,11 +258,10 @@ final class NameRuleTests: XCTestCase {
     }
 
     func testTruncationNeverSplitsACharacter() {
-        let family = "👨‍👩‍👧‍👦"  // one Character, 25 UTF-8 bytes
-        let value = String(repeating: "a", count: 170) + family
-        let cut = LocalPolicy.suggestedName(from: value)
-        XCTAssertEqual(cut, String(repeating: "a", count: 170))
-        XCTAssertEqual(LocalPolicy.suggestedName(from: String(repeating: "a", count: 155) + family), String(repeating: "a", count: 155) + family)
+        // One Character of two scalars, 8 UTF-8 bytes (regional indicators are not format characters, which go).
+        let flag = "🇯🇵"
+        XCTAssertEqual(LocalPolicy.suggestedName(from: String(repeating: "a", count: 175) + flag), String(repeating: "a", count: 175))
+        XCTAssertEqual(LocalPolicy.suggestedName(from: String(repeating: "a", count: 172) + flag), String(repeating: "a", count: 172) + flag)
         XCTAssertEqual(LocalPolicy.suggestedName(from: " . "), "Converted")
         XCTAssertEqual(LocalPolicy.suggestedName(from: "..", suffix: "-converted"), "Converted")
     }
@@ -366,5 +365,11 @@ final class OpenedFilesTests: XCTestCase {
         XCTAssertFalse(fm.fileExists(atPath: opened.path))
         XCTAssertFalse(fm.fileExists(atPath: inbox.path))
         XCTAssertThrowsError(try OpenedFiles.adopt(elsewhere, root: opened, container: container), "Folders are refused")
+        // A refused open deletes iOS's own copy, never another app's file.
+        try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+        let refused = inbox.appendingPathComponent("refused.pdf"); try Data("r".utf8).write(to: refused)
+        OpenedFiles.discardIncoming([refused, dropped], root: opened, container: container)
+        XCTAssertFalse(fm.fileExists(atPath: refused.path))
+        XCTAssertTrue(fm.fileExists(atPath: dropped.path))
     }
 }

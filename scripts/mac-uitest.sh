@@ -5,7 +5,7 @@
 #   test   runs the bundle against that copy without rebuilding (D-083), one app process reset in place.
 # The copy's own bundle id and sandbox container mean -uiTesting -resetData never touch the installed Flux.
 # A Mac UI test moves the pointer and brings windows forward: run it only under heavy.sh with --uses mac-ui.
-#   ~/dev/SharedKit/tools/heavy.sh --uses build,mac-ui bash scripts/mac-uitest.sh [build|test|all]   (default all)
+#   ~/dev/SharedKit/tools/heavy.sh --uses mac-ui -- bash scripts/mac-uitest.sh [build|test|all]   (default all)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"

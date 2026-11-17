@@ -20,7 +20,7 @@ ui-test:
 
 # Mac UI tests on a sandboxed copy with its own bundle id; they move the pointer (heavy.sh mac-ui).
 mac-ui-test:
-	$(HEAVY) --uses build,mac-ui bash scripts/mac-uitest.sh
+	$(HEAVY) --uses mac-ui -- bash scripts/mac-uitest.sh
 
 lint:
 	npm run -s format:check && npm run -s lint:standards

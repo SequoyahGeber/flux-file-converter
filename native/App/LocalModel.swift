@@ -36,7 +36,8 @@ import UIKit
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }
     init() {
         OfflineEngine.clearTemporaryFiles()
-        OpenedFiles.clear()
+        // Not the inboxes: a file opened from another app may already be waiting there for .onOpenURL.
+        OpenedFiles.clear(inboxes: [])
         FluxDiagnostics.fileNames = { [weak self] in
             guard let self else { return [] }
             return self.inputs.map(\.lastPathComponent) + [self.filename] + (self.result.map { [$0.url.lastPathComponent] } ?? [])
@@ -62,14 +63,16 @@ import UIKit
     func open(_ urls: [URL]) {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
+        // A refused or failed open deletes iOS's copy at once, so nothing of it stays in Documents (backed up).
         guard !busy else {
+            OpenedFiles.discardIncoming(files)
             notice = "Finish or cancel the current conversion, then open the file again."
             return
         }
-        guard files.count <= 100 else { error = "Choose up to 100 files at a time."; return }
+        guard files.count <= 100 else { OpenedFiles.discardIncoming(files); error = "Choose up to 100 files at a time."; return }
         var adopted: [URL] = []
         do { for url in files { adopted.append(try OpenedFiles.adopt(url)) } }
-        catch { OpenedFiles.discard(adopted); self.error = error.localizedDescription; return }
+        catch { OpenedFiles.discard(adopted); OpenedFiles.discardIncoming(files); self.error = error.localizedDescription; return }
         select(adopted)
     }
     func convert() {
@@ -137,6 +140,7 @@ import UIKit
     }
     func clear() {
         guard !busy else { return }
-        result?.remove(); result = nil; OpenedFiles.discard(inputs); inputs = []; message = ""; error = ""; notice = ""
+        // Nothing is being opened now, so the inboxes can be emptied too.
+        result?.remove(); result = nil; OpenedFiles.clear(); inputs = []; message = ""; error = ""; notice = ""
     }
 }

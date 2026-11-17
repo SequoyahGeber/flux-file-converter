@@ -24,7 +24,7 @@ final class FluxMacUITests: XCTestCase {
         UITestAppReuse.launchOrReset(app, bundleID: Self.bundleID, flags: ["-uiTesting"] + flags)
         app.activate()  // a system panel from another app can hold the keyboard
         if waitForPage {
-            XCTAssertTrue(SharedUIFlows.appears(page.staticTexts["Original files are always preserved"], within: 20),
+            XCTAssertTrue(SharedUIFlows.appears(page.staticTexts["A NEW FORMAT, IN A MOMENT"], within: 20),
                           "The converter page did not load")
         }
     }
@@ -115,6 +115,6 @@ final class FluxMacUITests: XCTestCase {
         close.click()
         XCTAssertTrue(tryAgain.waitForExistence(timeout: 10), "The alert comes back after the form closes")
         tryAgain.click()
-        XCTAssertTrue(SharedUIFlows.appears(page.staticTexts["Original files are always preserved"], within: 20), "Try again loads the page")
+        XCTAssertTrue(SharedUIFlows.appears(page.staticTexts["A NEW FORMAT, IN A MOMENT"], within: 20), "Try again loads the page")
     }
 }

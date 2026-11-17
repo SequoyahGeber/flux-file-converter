@@ -4,7 +4,7 @@ import Foundation
 ///
 /// iOS gives Flux its own copy (in Documents/Inbox, or a tmp "-Inbox" folder) for an opened file, and a drop's file
 /// may vanish once the drop ends. Flux moves or copies each one into a private folder in Caches, excluded from backup,
-/// and deletes it on Clear, when another file is chosen, and at the next launch. So the privacy facts still hold: the
+/// and deletes it on Clear, when another file is chosen, and at the next launch; an open Flux refuses is deleted at once. So the privacy facts still hold: the
 /// files people choose stay on the device and nothing of them is kept.
 public enum OpenedFiles {
     public static var directory: URL {
@@ -43,7 +43,13 @@ public enum OpenedFiles {
     public static func discard(_ urls: [URL], root: URL = directory) {
         for url in urls where isInside(url, root) { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
     }
-    /// At launch: every private copy, and anything iOS left in the inboxes.
+    /// Deletes copies iOS made for Flux (inside `container`) that Flux did not take over: an open refused while a
+    /// conversion runs, or one that failed. Files elsewhere are never touched.
+    public static func discardIncoming(_ urls: [URL], root: URL = directory, container: URL = URL(fileURLWithPath: NSHomeDirectory())) {
+        for url in urls where isInside(url, container) && !isInside(url, root) { try? FileManager.default.removeItem(at: url) }
+    }
+    /// Every private copy and anything iOS left in the inboxes. At launch, pass `inboxes: []`: a file opened from
+    /// another app is already waiting in an inbox before Flux's first screen sees it.
     public static func clear(root: URL = directory, inboxes: [URL] = inboxes) {
         for folder in [root] + inboxes { try? FileManager.default.removeItem(at: folder) }
     }
