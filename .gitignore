@@ -33,3 +33,6 @@ mac/Flux/ConversionEngine/
 
 # Feedback reports pulled by scripts/feedback.py (tester data, never committed)
 /feedback/
+
+# Local evidence kept when a worktree is retired (SharedKit disk_report.py retire)
+/build/
