@@ -81,19 +81,6 @@ final class ReviewerAccessTests: XCTestCase {
         try SharedUIFlows.accessibilityAudit(of: app)
     }
 
-    /// The Settings sheet's system-styled rows and bar button: on the iOS 27 simulator the audit cannot resize system
-    /// text, and flagged a different one of these per run (Privacy policy, Acknowledgements, Done) with "Dynamic Type
-    /// font sizes are partially unsupported". SharedKit's named workaround ignores only `.dynamicType`/`.textClipped`
-    /// on exactly these; every other issue, and all of Flux's own text, stays strict.
-    private func auditSettings() throws {
-        let reason = "system-styled Settings row the iOS 27 simulator cannot resize"
-        try SharedUIFlows.accessibilityAudit(of: app, systemStyled: [
-            .init(AccessibilityID.Settings.done, reason: "system bar button; long press shows the large content viewer"),
-            .init("Recent log", reason: reason), .init("Support", reason: reason), .init("Send feedback", reason: reason),
-            .init("Version", reason: reason), .init("Acknowledgements", reason: reason), .init("Privacy policy", reason: reason),
-        ])
-    }
-
     func testAccessibilityAudit() throws {
         continueAfterFailure = true  // report every audit issue in one run, not only the first
         start()
@@ -118,7 +105,7 @@ final class ReviewerAccessTests: XCTestCase {
             return done.isHittable && now == frame
         }
         RunLoop.current.run(until: Date().addingTimeInterval(1))  // the dimming fades after the frame stops
-        try auditSettings()
+        try audit()
     }
 
     func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {
