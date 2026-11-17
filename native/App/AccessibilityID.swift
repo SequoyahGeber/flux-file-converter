@@ -11,6 +11,8 @@ enum AccessibilityID {
         static let outputName = "converter.outputName"
         static let convert = "converter.convert"
         static let save = "converter.save"
+        static let share = "converter.share"
+        static let nameHint = "converter.nameHint"
         static let clear = "converter.clear"
         static let clearConfirm = "converter.clearConfirm"
         static let supportedConversions = "converter.supportedConversions"

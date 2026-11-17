@@ -186,4 +186,38 @@ final class ReviewerAccessTests: XCTestCase {
         }
         XCTAssertFalse(app.staticTexts["Sign in"].exists)
     }
+    /// FX-B-10 and FX-A-09: a bad output name is explained under the field as it is typed and blocks Convert; the
+    /// result can be shared from the system share sheet.
+    func testNameHintAndShare() {
+        start()
+        let workspace = app.scrollViews[AccessibilityID.Converter.workspace]
+        app.buttons[AccessibilityID.Converter.trySample].firstMatch.tap()
+        app.buttons[AccessibilityID.Converter.sample("image")].firstMatch.tap()
+        let field = app.descendants(matching: .any)[AccessibilityID.Converter.outputName].firstMatch
+        XCTAssertTrue(SharedUIFlows.appears(field, within: 10))
+        field.tap()
+        let current = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 2) + "a/b")
+        let hint = app.descendants(matching: .any)[AccessibilityID.Converter.nameHint].firstMatch
+        XCTAssertTrue(SharedUIFlows.appears(hint, within: 5), "The name rule is shown under the field")
+        XCTAssertTrue(hint.label.contains("can’t contain"), hint.label)
+        let convert = app.buttons[AccessibilityID.Converter.convert].firstMatch
+        XCTAssertFalse(convert.isEnabled, "Convert waits for a valid name")
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "-shared")
+        XCTAssertTrue(SharedUIFlows.disappears(hint, within: 5), "The hint goes once the name is valid")
+        SharedUIFlows.dismissKeyboard(in: app)
+        if !convert.isHittable { workspace.swipeUp() }
+        convert.tap()
+        let share = app.buttons[AccessibilityID.Converter.share].firstMatch
+        XCTAssertTrue(share.waitForExistence(timeout: 60), "Share appears with the result")
+        if !share.isHittable { workspace.swipeUp() }
+        share.tap()
+        let sheet = app.otherElements["ActivityListView"]
+        let opened = SharedUIFlows.waitUntil(10) { sheet.exists || !share.isHittable }
+        XCTAssertTrue(opened, "The system share sheet opens")
+        keepScreenOnFailure("share-sheet")
+        if app.buttons["Close"].exists { app.buttons["Close"].firstMatch.tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))) }
+        XCTAssertTrue(SharedUIFlows.appears(share, within: 10), "Back on the result after closing the sheet")
+    }
 }

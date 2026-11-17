@@ -35,6 +35,8 @@ import UIKit
     #if os(iOS)
     private var backgroundTime: UIBackgroundTaskIdentifier = .invalid
     #endif
+    /// The rule the typed output name breaks, shown under the field as it is typed (FX-B-10); nil when it is fine.
+    var nameProblem: String? { inputs.isEmpty ? nil : LocalPolicy.nameProblem(filename) }
     var formats: [String] { inputs.count > 1 ? ["zip"] : LocalFormats.outputs(for: inputs.first?.pathExtension.lowercased() ?? "") }
     var source: String { inputs.first?.pathExtension.lowercased() ?? "" }
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }

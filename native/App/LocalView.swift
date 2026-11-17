@@ -19,6 +19,7 @@ struct LocalView: View {
     @AppStorage(FluxSettings.Key.appearanceMode) private var appearance = AppearanceMode.system.rawValue
     #if os(iOS)
     @State private var exportFile: ExportFile?
+    @State private var shareFile: ExportFile?
     #endif
     @State private var saving = false
     @Environment(\.scenePhase) private var scenePhase
@@ -80,9 +81,20 @@ struct LocalView: View {
                                 Text(model.target == "unzip" ? "Folder name" : "Output file name").font(.caption.bold()).foregroundStyle(FluxPalette.caption.color).accessibilityHidden(true)
                                 // Wraps instead of clipping a long name at large text sizes (audit: text clipped); Return can't add a line.
                                 TextField("Converted", text: $model.filename, axis: .vertical).lineLimit(1...4).textFieldStyle(.roundedBorder).submitLabel(.done)
+                                    // A file name, not prose: no autocorrect or capitals (FX-B-10).
+                                    .autocorrectionDisabled()
+                                    #if os(iOS)
+                                    .textInputAutocapitalization(.never)
+                                    #endif
                                     .onChange(of: model.filename) { _, name in if name.contains(where: \.isNewline) { model.filename = name.filter { !$0.isNewline } } }
                                     .accessibilityIdentifier(AccessibilityID.Converter.outputName)
                                     .accessibilityLabel(model.target == "unzip" ? "Folder name" : "Output file name")
+                                // Checked as it is typed, under the field, instead of after Save as… (FX-B-10, FX-A-09).
+                                if let problem = model.nameProblem {
+                                    Label(problem, symbol: FluxIcon.errorLine).font(.caption).foregroundStyle(FluxColor.failureText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier(AccessibilityID.Converter.nameHint)
+                                }
                             }
                             if model.media && model.target != "zip" {
                                 Toggle("Lossless / preserve quality", isOn: $model.options.lossless)
@@ -111,7 +123,7 @@ struct LocalView: View {
                             }
                         } else {
                             Button { model.convert() } label: { Label("Convert", symbol: FluxIcon.convert).frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving).accessibilityIdentifier(AccessibilityID.Converter.convert)
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.nameProblem != nil).accessibilityIdentifier(AccessibilityID.Converter.convert)
                         }
                     }
                     if let result = model.result {
@@ -121,8 +133,14 @@ struct LocalView: View {
                                 // A file name is not a readable label (audit); VoiceOver reads it as the value.
                                 .accessibilityLabel("Converted file").accessibilityValue(result.url.lastPathComponent)
                             Button { save(result) } label: { Label(saving ? "Saving…" : "Save as…", symbol: FluxIcon.save).frame(maxWidth: .infinity).padding(.vertical, 10) }
-                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.busy).accessibilityIdentifier(AccessibilityID.Converter.save)
-                            Text("Choose the destination in Files or the save dialog. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
+                                .buttonStyle(.borderedProminent).tint(FluxColor.accentFill).disabled(saving || model.busy || model.nameProblem != nil).accessibilityIdentifier(AccessibilityID.Converter.save)
+                            #if os(iOS)
+                            // AirDrop, Messages, Mail, Copy or another app in one tap (FX-B-10).
+                            Button { share(result) } label: {
+                                Label("Share…", symbol: FluxIcon.share).frame(minHeight: 44).contentShape(Rectangle())
+                            }.tint(FluxColor.link).disabled(saving || model.busy || model.nameProblem != nil).accessibilityIdentifier(AccessibilityID.Converter.share)
+                            #endif
+                            Text("Save to Files, or share it with another app. The original file is kept.").font(.caption).foregroundStyle(FluxPalette.caption.color)
                         }.padding(FluxSpace.card).background(FluxColor.successBackground, in: RoundedRectangle(cornerRadius: FluxRadius.card))
                             .id(Outcome.result)
                     }
@@ -195,6 +213,13 @@ struct LocalView: View {
             .onChange(of: model.error) { if !model.error.isEmpty { AccessibilityNotification.Announcement(model.error).post() } }
             .onChange(of: model.notice) { if !model.notice.isEmpty { AccessibilityNotification.Announcement(model.notice).post() } }
             #if os(iOS)
+            .sheet(item: $shareFile, onDismiss: { saving = false; shareFile = nil }) { file in
+                ShareSheet(url: file.url) { completed, savedToFiles in
+                    if completed { model.message = savedToFiles ? "Saved to Files." : "Shared." }
+                    if savedToFiles { model.resultSaved = true }
+                    saving = false; shareFile = nil
+                }.presentationDetents([.medium, .large]).ignoresSafeArea()
+            }
             .sheet(item: $exportFile, onDismiss: { saving = false }) { file in
                 ExportPicker(url: file.url) { success in
                     if success { model.message = "Saved to Files."; model.resultSaved = true }; saving = false; exportFile = nil
@@ -223,6 +248,17 @@ struct LocalView: View {
             catch { model.error = error.localizedDescription; saving = false }
         }
     }
+    #if os(iOS)
+    /// Applies the typed name first, as Save as… does, then shows the system share sheet. Sharing isn't saving, so Clear
+    /// still asks unless the person chose Save to Files in the sheet.
+    private func share(_ result: LocalResult) {
+        saving = true
+        Task {
+            do { let renamed = try await model.renameResult(); shareFile = ExportFile(url: renamed.url) }
+            catch { model.error = error.localizedDescription; saving = false }
+        }
+    }
+    #endif
     private func presentSave(_ result: LocalResult) {
         #if os(macOS)
         if result.isDirectory {
@@ -292,6 +328,20 @@ private struct FormatView: View {
 private struct ExportFile: Identifiable {
     let id = UUID()
     let url: URL
+}
+
+/// The system share sheet for one converted file (FX-B-10). Reports whether an activity completed, and whether it was
+/// Save to Files.
+private struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL, completion: (_ completed: Bool, _ savedToFiles: Bool) -> Void
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        controller.completionWithItemsHandler = { type, completed, _, _ in
+            completion(completed, type?.rawValue == "com.apple.DocumentManagerUICore.SaveToFiles")
+        }
+        return controller
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 private struct ExportPicker: UIViewControllerRepresentable {
