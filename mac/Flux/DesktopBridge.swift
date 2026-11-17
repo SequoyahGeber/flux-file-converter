@@ -31,6 +31,8 @@ import OfflineKit
     /// running batch. `canStart` comes from the page (`menuState`); `batchRunning` is native.
     @Published private(set) var canStart = false
     @Published private(set) var batchRunning = false
+    /// Kept while its menu is open.
+    private var sharePicker: NSSharingServicePicker?
     private var control: JobControl?
     private var cancelled = false
     /// Distributable builds use OfflineKit; only the personal build bundles the full engine.
@@ -321,6 +323,14 @@ import OfflineKit
             if let url = saved[id] { NSWorkspace.shared.activateFileViewerSelecting([url]); return true }
             guard let result = results[id] else { throw LocalError.invalid("This temporary result has been cleared. Convert the original again.") }
             try await save(result, id: id); return true
+        case "saveAll":
+            guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
+            return try await saveAll()
+        case "share":
+            guard !busy, let request = args as? [String: Any], let id = request["id"] as? String else { throw LocalError.invalid("Finish the current batch first.") }
+            guard let result = results[id] else { throw LocalError.invalid("This temporary result has been cleared. Convert the original again.") }
+            share(saved[id] ?? result.url, from: request["rect"] as? [String: Any])
+            return true
         case "openOutput": if let outputFolder { NSWorkspace.shared.activateFileViewerSelecting([outputFolder]) }; return true
         case "clearHistory":
             guard !busy else { throw LocalError.invalid("Finish the current batch first.") }
@@ -519,6 +529,58 @@ import OfflineKit
         saved[id] = destination
         if let index = history.firstIndex(where: { $0["id"] as? String == id }) { history[index]["saved"] = true; history[index]["name"] = destination.lastPathComponent }
         emit("update", ["savedResult": id, "name": destination.lastPathComponent, "history": history])
+    }
+    /// Saves every unsaved result in one go (FX-B-11): into the Settings folder when one is chosen (its bookmark's
+    /// access is already started), otherwise into one folder picked once. Names that are taken get " 2", " 3"; nothing
+    /// is ever replaced. Each saved result is marked like a Save as… and the page shows one summary.
+    private func saveAll() async throws -> Bool {
+        let pending = history.compactMap { $0["id"] as? String }.filter { results[$0] != nil && saved[$0] == nil }
+        guard !pending.isEmpty else { throw LocalError.invalid("Every result is already saved.") }
+        busy = true; defer { busy = false }
+        let folder: URL, scoped: Bool
+        if let outputFolder {
+            folder = outputFolder; scoped = false
+        } else {
+            let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.canCreateDirectories = true
+            panel.prompt = "Save All Here"; panel.message = SaveAllPolicy.panelMessage(count: pending.count)
+            guard await present(panel) == .OK, let url = panel.url else { return false }
+            folder = url; scoped = url.startAccessingSecurityScopedResource()
+        }
+        defer { if scoped { folder.stopAccessingSecurityScopedResource() } }
+        var names: [String: String] = [:], failures: [String] = []
+        for id in pending {
+            guard let result = results[id] else { continue }
+            do {
+                let destination = try await Task.detached { () throws -> URL in
+                    let name = LocalPolicy.uniqueName(result.url.lastPathComponent, isDirectory: result.isDirectory) {
+                        FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+                    }
+                    let destination = folder.appendingPathComponent(name, isDirectory: result.isDirectory)
+                    try SafeSave.commit(result.url, to: destination, replaceExisting: false)
+                    return destination
+                }.value
+                saved[id] = destination; names[id] = destination.lastPathComponent
+                if let index = history.firstIndex(where: { $0["id"] as? String == id }) { history[index]["saved"] = true; history[index]["name"] = destination.lastPathComponent }
+            } catch {
+                FluxDiagnostics.center.journal.record(.error, .lifecycle, "saveAllFailed", ["error": .error(error)])
+                failures.append(result.url.lastPathComponent)
+            }
+        }
+        let message = SaveAllPolicy.summary(saved: names.count, failed: failures, folder: folder.lastPathComponent)
+        emit("update", ["savedAll": Array(names.keys), "names": names, "history": history, "message": message])
+        if !failures.isEmpty { emit("update", ["bridgeError": message]) }
+        return true
+    }
+    /// The system share menu for one result, anchored to the page button the person clicked (FX-B-11).
+    private func share(_ url: URL, from rect: [String: Any]?) {
+        let number = { (key: String) in CGFloat((rect?[key] as? NSNumber)?.doubleValue ?? 0) }
+        // Page coordinates are CSS pixels from the top left; the zoom scales them, and NSView's origin is the bottom left.
+        let zoom = webView.pageZoom
+        var anchor = NSRect(x: number("x") * zoom, y: number("y") * zoom, width: max(1, number("width") * zoom), height: max(1, number("height") * zoom))
+        if !webView.isFlipped { anchor.origin.y = webView.bounds.height - anchor.maxY }
+        if rect == nil { anchor = NSRect(x: webView.bounds.midX, y: webView.bounds.midY, width: 1, height: 1) }
+        let picker = NSSharingServicePicker(items: [url]); sharePicker = picker
+        picker.show(relativeTo: anchor, of: webView, preferredEdge: .minY)
     }
     private func emit(_ event: String, _ value: Any) {
         guard JSONSerialization.isValidJSONObject(["event": event, "value": value]), let data = try? JSONSerialization.data(withJSONObject: ["event": event, "value": value]), let json = String(data: data, encoding: .utf8) else {

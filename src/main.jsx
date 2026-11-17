@@ -41,6 +41,8 @@ import {
   BookOpen,
   Database,
   PenTool,
+  SaveAll,
+  Share,
 } from 'lucide-react';
 import './styles.css';
 import { mergeJob } from './queue.mjs';
@@ -263,6 +265,19 @@ function App() {
         setOutput(job.outputDir);
         return;
       }
+      if (job.savedAll) {
+        // The Mac app saved several results at once (FX-B-11).
+        setHistory(job.history);
+        setQueue((q) =>
+          q.map((f) =>
+            f.result && job.savedAll.includes(f.result.id)
+              ? { ...f, result: { ...f.result, saved: true, name: job.names[f.result.id] } }
+              : f,
+          ),
+        );
+        setToast(job.message);
+        return;
+      }
       if (job.savedResult) {
         setHistory(job.history);
         setQueue((q) =>
@@ -340,6 +355,15 @@ function App() {
     if (nativeLocal) api.menuState?.({ canStart }).catch(() => {});
   }, [nativeLocal, canStart]);
   const done = queue.filter((f) => f.status === 'done');
+  // Mac app only (FX-B-11): with a Settings folder, one unsaved result is enough to offer Save all; without one, two.
+  const unsaved = nativeLocal ? done.filter((f) => f.result && !f.result.saved).length : 0;
+  const saveFolder = nativeLocal && output?.startsWith('/') ? output.split('/').pop() : '';
+  const saveAllLabel =
+    unsaved >= (saveFolder ? 1 : 2)
+      ? saveFolder
+        ? `Save all to “${saveFolder}”`
+        : 'Save all…'
+      : '';
   const total = queue.reduce((sum, f) => sum + f.size, 0);
   const allTargets = useMemo(
     () =>
@@ -973,14 +997,36 @@ function App() {
                             </div>
                             <div className="file-output">
                               {f.status === 'done' ? (
-                                <button
-                                  className="result-button"
-                                  onClick={() => action(() => api.reveal(f.result.id))}
-                                >
-                                  <CheckCircle2 size={16} />
-                                  {nativeLocal && !f.result.saved ? 'Save as…' : 'Show in Finder'}
-                                  <ArrowUpRight size={13} />
-                                </button>
+                                <>
+                                  <button
+                                    className="result-button"
+                                    onClick={() => action(() => api.reveal(f.result.id))}
+                                  >
+                                    <CheckCircle2 size={16} />
+                                    {nativeLocal && !f.result.saved ? 'Save as…' : 'Show in Finder'}
+                                    <ArrowUpRight size={13} />
+                                  </button>
+                                  {/* Mac app only: the system share menu, anchored to this button (FX-B-11). */}
+                                  {nativeLocal && api.share && (
+                                    <button
+                                      className="result-button"
+                                      aria-label={`Share ${f.result.name}`}
+                                      title="Share"
+                                      onClick={(e) => {
+                                        const r = e.currentTarget.getBoundingClientRect();
+                                        const rect = {
+                                          x: r.x,
+                                          y: r.y,
+                                          width: r.width,
+                                          height: r.height,
+                                        };
+                                        action(() => api.share(f.result.id, rect));
+                                      }}
+                                    >
+                                      <Share size={15} />
+                                    </button>
+                                  )}
+                                </>
                               ) : f.status === 'running' ? (
                                 <span className="file-progress">
                                   <Loader2 className="spin" size={16} />
@@ -1132,6 +1178,17 @@ function App() {
                       <ShieldCheck size={15} />
                       Original files are always preserved
                     </span>
+                    {/* Mac app only: save every unsaved result at once, into the Settings folder when one is
+                        chosen, otherwise into one folder picked once (FX-B-11). */}
+                    {!running && nativeLocal && api.saveAll && saveAllLabel && (
+                      <button
+                        className="secondary-button"
+                        onClick={() => action(() => api.saveAll())}
+                      >
+                        <SaveAll size={16} />
+                        {saveAllLabel}
+                      </button>
+                    )}
                     {running ? (
                       <button
                         className="secondary-button"

@@ -30,7 +30,7 @@ struct MacSettingsView: View {
                 } header: {
                     Text("Output folder")
                 } footer: {
-                    Text("Save dialogs start in this folder. Use Save as… on each result to pick its final name and location; an existing file is replaced only after the save dialog asks you.")
+                    Text("Save all puts every unsaved result here, numbering names that are taken, and never replaces a file. Save as… still lets you pick a name and location for one result; save dialogs start in this folder.")
                         .foregroundStyle(.secondary)
                 }
                 Section("Appearance") {
