@@ -98,7 +98,7 @@ import OfflineKit
             self.webView.load(URLRequest(url: URL(string: "flux-app://app/index.html")!))
         }
     }
-    /// The page can't load without its network blocker. The alert keeps a way forward: Try Again recompiles and loads,
+    /// The page can't load without its network blocker. The alert keeps a way forward: Try again recompiles and loads,
     /// Send Feedback… opens the form and brings the choice back when it closes (never an empty window), and Quit
     /// quits (FX-B-22).
     private func showLaunchFailure(_ failure: any Error) {
@@ -106,7 +106,7 @@ import OfflineKit
         let alert = NSAlert()
         alert.messageText = "Flux could not start"
         alert.informativeText = "The local interface protection could not be loaded. Try again, or send feedback so the problem can be fixed."
-        alert.addButton(withTitle: "Try Again")
+        alert.addButton(withTitle: "Try again")
         alert.addButton(withTitle: "Send Feedback…")
         alert.addButton(withTitle: "Quit Flux")
         switch alert.runModal() {

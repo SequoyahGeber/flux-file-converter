@@ -1,5 +1,4 @@
 #!/bin/bash
-# SHARED-EXPERIENCE: engineering | standard: PROJECT_STANDARDS.md §Engineering | local implementation; changes must be mirrored in every app listed there
 # Flux's Mac UI tests (FX-A-14/B-20; PLAN §4.11 shared flows, D-086, D-105), after Mac Control's harness:
 #   build  a Debug build of Flux, copied as "Flux UITests.app" with bundle id com.sequoyah.flux.uitests, ad-hoc signed
 #          with Config/uitests-mac.entitlements (sandboxed, no iCloud), plus the FluxMacUITests bundle;

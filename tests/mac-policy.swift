@@ -43,6 +43,8 @@ struct MacPolicyTests {
     try outputFolderRestoreChecks(root)
     print("Output folder restore checks passed")
     quitPolicyChecks()
+    textSizeChecks()
+    saveAllChecks()
     print("Quit policy checks passed")
   }
 }
@@ -82,3 +84,29 @@ func quitPolicyChecks() {
   assert(running?.title == "Quit while converting?" && running?.quit == "Stop Batch and Quit")
   assert(QuitPolicy.prompt(running: true, unsaved: 2)?.message.contains("2 converted files haven’t been saved") == true)
 }
+
+/// FX-B-12: the text size steps in tenths between 50 % and 200 % and is remembered; Actual Size forgets it.
+func textSizeChecks() {
+  let defaults = UserDefaults(suiteName: "flux-mac-policy-\(UUID().uuidString)")!
+  let key = "appearance.textSize"
+  assert(TextSize.restored(from: defaults, key: key) == 1, "Nothing saved: Actual Size")
+  assert(TextSize.stepped(1, by: 1) == 1.1 && TextSize.stepped(1.1, by: -1) == 1)
+  assert(TextSize.stepped(2, by: 1) == 2 && TextSize.stepped(0.5, by: -1) == 0.5, "Kept in range")
+  assert(TextSize.clamped(1.04) == 1 && TextSize.clamped(.nan) == 1)
+  TextSize.save(1.3, to: defaults, key: key)
+  assert(TextSize.restored(from: defaults, key: key) == 1.3, "Remembered across launches")
+  defaults.set(9.0, forKey: key)
+  assert(TextSize.restored(from: defaults, key: key) == 2, "An unusable saved value is clamped")
+  TextSize.save(1, to: defaults, key: key)
+  assert(defaults.object(forKey: key) == nil, "Actual Size removes the setting")
+}
+
+/// FX-B-11: Save all says how many files went where, and names the ones it couldn't save.
+func saveAllChecks() {
+  assert(SaveAllPolicy.summary(saved: 1, failed: [], folder: "Flux") == "Saved 1 file to “Flux”.")
+  assert(SaveAllPolicy.summary(saved: 3, failed: [], folder: "Out") == "Saved 3 files to “Out”.")
+  assert(SaveAllPolicy.summary(saved: 2, failed: ["a.png"], folder: "Out") == "Saved 2 files to “Out”. Couldn’t save “a.png”. Try Save as… for it.")
+  assert(SaveAllPolicy.summary(saved: 0, failed: ["a", "b", "c", "d", "e"], folder: "Out") == "Couldn’t save “a”, “b”, “c” and 2 more. Try Save as… for them.")
+  assert(SaveAllPolicy.panelMessage(count: 2).hasPrefix("Choose a folder for 2 files."))
+}
+

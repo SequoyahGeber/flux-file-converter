@@ -5,7 +5,7 @@ HEAVY := "$(SHAREDKIT)/tools/heavy.sh"
 export DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
 SIMULATOR ?= Shared-iPhone
 
-.PHONY: build test ui-test lint check-fast check testflight feedback sim-cleanup
+.PHONY: build test ui-test mac-ui-test lint check-fast check testflight feedback sim-cleanup
 
 build:
 	$(HEAVY) bash scripts/standard-commands.sh build
@@ -17,6 +17,10 @@ test:
 # Builds once, then runs the suite without building (D-083); the app is reused between tests.
 ui-test:
 	$(HEAVY) bash scripts/standard-commands.sh ui-test $(SIMULATOR)
+
+# Mac UI tests on a sandboxed copy with its own bundle id; they move the pointer (heavy.sh mac-ui).
+mac-ui-test:
+	$(HEAVY) --uses build,mac-ui bash scripts/mac-uitest.sh
 
 lint:
 	npm run -s format:check && npm run -s lint:standards
