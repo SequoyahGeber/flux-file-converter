@@ -7,9 +7,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAC = ROOT / "ios"
 PROJECT = MAC / "Flux.xcodeproj"
 
-# Pinned exactly; the coordinator says when to move (0.4.1 for release, D-117).
+# Pinned exactly; the coordinator says when to move (0.4.3, D-130).
 SHAREDKIT_URL = "https://github.com/SequoyahGeber/SharedKit.git"
-SHAREDKIT_VERSION = "0.4.1"
+SHAREDKIT_VERSION = "0.4.3"
 
 
 def identifier(name):

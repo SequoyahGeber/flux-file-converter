@@ -42,8 +42,6 @@ final class ReviewerAccessTests: XCTestCase {
     func testFeedbackFromTheConverterButtonReachesTheStandInInbox() {
         start()
         continueAfterFailure = true
-        // D-119: SharedKit 0.4.1's iOS flow leaves the keyboard over "Review report" and races vanishing cells.
-        XCTExpectFailure("SharedKit 0.4.2 SharedUIFlows iOS feedback-flow fix (D-119)", strict: false)
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromButton(app) }
         keepScreenOnFailure("feedback-button")
     }
@@ -51,8 +49,6 @@ final class ReviewerAccessTests: XCTestCase {
     func testFeedbackFromSettingsReachesTheStandInInbox() {
         start()
         continueAfterFailure = true
-        // D-119: SharedKit 0.4.1's iOS flow leaves the keyboard over "Review report" and races vanishing cells.
-        XCTExpectFailure("SharedKit 0.4.2 SharedUIFlows iOS feedback-flow fix (D-119)", strict: false)
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromSettings(app) { openSettings() } }
         keepScreenOnFailure("feedback-settings")
     }
@@ -63,20 +59,10 @@ final class ReviewerAccessTests: XCTestCase {
         shot.name = name; shot.lifetime = .deleteOnSuccess; add(shot)
     }
 
-    /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
-    /// The audit, with D-124's interim scope until the SharedKit 0.4.2 pin: contrast issues on elements whose frame
-    /// overlaps a system navigation bar or toolbar are expected failures (the glass bar is system rendering, D-115).
-    /// Every other issue, and contrast elsewhere, fails.
+    /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings. SharedKit 0.4.3 applies
+    /// the system-bar contrast scope itself (D-115, D-128); every other issue fails.
     private func audit() throws {
-        try SharedUIFlows.accessibilityAudit(of: app) { [app] issue in
-            guard issue.auditType == .contrast, let frame = issue.element?.frame else { return false }
-            let bars = app.navigationBars.allElementsBoundByIndex + app.toolbars.allElementsBoundByIndex
-            guard bars.contains(where: { $0.frame.intersects(frame) }) else { return false }
-            XCTExpectFailure("SK 0.4.2 system-bar audit scope (D-115, D-124)", strict: false) {
-                XCTFail("Contrast in a system bar: \(issue.element?.label ?? "?")")
-            }
-            return true
-        }
+        try SharedUIFlows.accessibilityAudit(of: app)
     }
 
     func testAccessibilityAudit() throws {
