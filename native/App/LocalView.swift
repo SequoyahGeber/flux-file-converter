@@ -197,6 +197,14 @@ struct LocalView: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): model.select(urls); case .failure(let error): model.error = error.localizedDescription }
             }
+            #if os(iOS)
+            // "Open in Flux" from Files, Mail or Safari, and files dropped from another app (FX-B-16).
+            .onOpenURL { url in model.open([url]) }
+            .dropDestination(for: URL.self) { urls, _ in
+                guard !model.busy, !saving else { return false }
+                model.open(urls); return true
+            }
+            #endif
             .sheet(isPresented: $showingFormats) { FormatView() }
             .onChange(of: model.target) { model.configurationChanged() }
             .onChange(of: model.options) { model.configurationChanged() }

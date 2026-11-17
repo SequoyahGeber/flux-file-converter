@@ -330,3 +330,41 @@ final class NameRuleTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: renamed.url), Data("x".utf8))
     }
 }
+
+/// FX-B-16: files opened in Flux from another app are kept only as private copies, and those copies go away.
+final class OpenedFilesTests: XCTestCase {
+    var root: URL!
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try FileManager.default.removeItem(at: root) }
+
+    func testInboxCopiesMoveOtherFilesCopyAndDiscardOnlyTouchesPrivateCopies() throws {
+        let fm = FileManager.default
+        let container = root.appendingPathComponent("container"), inbox = container.appendingPathComponent("Documents/Inbox")
+        let opened = root.appendingPathComponent("opened"), elsewhere = root.appendingPathComponent("elsewhere")
+        try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+        try fm.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let fromInbox = inbox.appendingPathComponent("photo.heic"); try Data("inbox".utf8).write(to: fromInbox)
+        let dropped = elsewhere.appendingPathComponent("notes.txt"); try Data("drop".utf8).write(to: dropped)
+
+        let moved = try OpenedFiles.adopt(fromInbox, root: opened, container: container)
+        XCTAssertFalse(fm.fileExists(atPath: fromInbox.path), "iOS's own copy is moved, not left in Documents")
+        XCTAssertEqual(moved.lastPathComponent, "photo.heic")
+        XCTAssertEqual(try Data(contentsOf: moved), Data("inbox".utf8))
+        let copied = try OpenedFiles.adopt(dropped, root: opened, container: container)
+        XCTAssertTrue(fm.fileExists(atPath: dropped.path), "Another app's file is copied, never moved")
+        XCTAssertEqual(try opened.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+
+        OpenedFiles.discard([moved, dropped], root: opened)
+        XCTAssertFalse(fm.fileExists(atPath: moved.deletingLastPathComponent().path))
+        XCTAssertTrue(fm.fileExists(atPath: dropped.path), "A file outside the private folder is never deleted")
+        XCTAssertTrue(fm.fileExists(atPath: copied.path))
+        try Data("left".utf8).write(to: inbox.appendingPathComponent("left.txt"))
+        OpenedFiles.clear(root: opened, inboxes: [inbox])
+        XCTAssertFalse(fm.fileExists(atPath: opened.path))
+        XCTAssertFalse(fm.fileExists(atPath: inbox.path))
+        XCTAssertThrowsError(try OpenedFiles.adopt(elsewhere, root: opened, container: container), "Folders are refused")
+    }
+}

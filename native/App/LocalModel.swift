@@ -42,6 +42,7 @@ import UIKit
     var media: Bool { LocalFormats.audio.contains(source) || LocalFormats.video.contains(source) }
     init() {
         OfflineEngine.clearTemporaryFiles()
+        OpenedFiles.clear()
         FluxDiagnostics.fileNames = { [weak self] in
             guard let self else { return [] }
             return self.inputs.map(\.lastPathComponent) + [self.filename] + (self.result.map { [$0.url.lastPathComponent] } ?? [])
@@ -55,12 +56,27 @@ import UIKit
         guard !busy else { return }
         guard urls.count <= 100 else { error = "Choose up to 100 files at a time."; return }
         result?.remove(); result = nil; message = ""; error = ""; notice = ""
+        OpenedFiles.discard(inputs.filter { !urls.contains($0) })
         inputs = Array(urls.prefix(100))
         // A derived name always passes the name rules, whatever the file is called (FX-A-09).
         filename = inputs.count == 1 ? LocalPolicy.defaultOutputName(for: inputs[0]) : "Archive"
         target = formats.first ?? "zip"
         if inputs.count == 1, formats.contains("jpg"), source == "png" { target = "jpg" }
         if inputs.count == 1, media, formats.contains("mkv") { target = "mkv" }
+    }
+    /// "Open in Flux" from another app, or a drop (FX-B-16): Flux keeps a private copy, then selects it as if chosen.
+    func open(_ urls: [URL]) {
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        guard !busy else {
+            notice = "Finish or cancel the current conversion, then open the file again."
+            return
+        }
+        guard files.count <= 100 else { error = "Choose up to 100 files at a time."; return }
+        var adopted: [URL] = []
+        do { for url in files { adopted.append(try OpenedFiles.adopt(url)) } }
+        catch { OpenedFiles.discard(adopted); self.error = error.localizedDescription; return }
+        select(adopted)
     }
     func convert() {
         guard !busy, !inputs.isEmpty else { return }
@@ -129,6 +145,6 @@ import UIKit
     }
     func clear() {
         guard !busy else { return }
-        result?.remove(); result = nil; inputs = []; message = ""; error = ""; notice = ""
+        result?.remove(); result = nil; OpenedFiles.discard(inputs); inputs = []; message = ""; error = ""; notice = ""
     }
 }
