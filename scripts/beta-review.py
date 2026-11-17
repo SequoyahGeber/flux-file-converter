@@ -26,6 +26,11 @@ DESCRIPTION = ("Flux converts files entirely on your Mac or iPhone, with no acco
     "Keep Flux open during conversion. No advertising, analytics or tracking. Support: " + SITE + "/support/")
 
 
+# Files whose later changes leave an already-built app unchanged: a receipt or proof made at an earlier commit still
+# describes HEAD's app when only these differ (2026111702: iOS built at 4ae8678, Mac at c08e9aa, D-125 follow-up).
+RELEASE_TOOLING = {"scripts/mac-release.py", "scripts/ios-release.py", "scripts/testflight.sh", "scripts/beta-review.py"}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("build", help="Exact shared numeric build, never latest")
@@ -50,9 +55,18 @@ def main():
         except (OSError, UnicodeError): live = False
         print(page + ": " + ("live" if live else "NOT LIVE"))
         if not live: issues.append("Publish the public " + page + " page.")
+    def verified_at(source):
+        """True when `source` is HEAD, or an ancestor of HEAD whose later commits change only the release tooling below
+        (the app built from it is identical). Each platform's receipt and the reviewer proof are checked this way."""
+        if source == commit: return True
+        if not isinstance(source, str) or not source or subprocess.run(
+                ["git", "merge-base", "--is-ancestor", source, commit], cwd=ROOT, capture_output=True).returncode:
+            return False
+        changed = subprocess.check_output(["git", "diff", "--name-only", source, commit], cwd=ROOT, text=True).split()
+        return bool(changed) and set(changed) <= RELEASE_TOOLING
     proof_path = ROOT / ".test-output/beta-review-verification.json"
     proof = json.loads(proof_path.read_text()) if proof_path.is_file() else {}
-    if proof.get("sourceCommit") != commit or not all(proof.get(key) for key in ["macReviewerWalkthrough", "iphoneReleaseReviewerUITest", "inputPreservationTests"]):
+    if not verified_at(proof.get("sourceCommit")) or not all(proof.get(key) for key in ["macReviewerWalkthrough", "iphoneReleaseReviewerUITest", "inputPreservationTests"]):
         issues.append("Record reviewer-flow verification for this exact source commit.")
     r = asc.call("/builds?filter[app]=" + APP + "&filter[version]=" + args.build + "&include=preReleaseVersion,buildBetaDetail")
     included = {item["id"]: item for item in r.get("included", [])}
@@ -72,7 +86,8 @@ def main():
         path = ROOT / f"release/native/{prefix}-{version}-{args.build}{suffix}.json"
         receipt = json.loads(path.read_text()) if path.is_file() else {}
         artifact = Path(receipt.get("artifact", "/nonexistent-flux-artifact"))
-        if receipt.get("sourceCommit") != commit or not receipt.get("appleUploadAccepted") or not receipt.get("appleValidationVerified") or not artifact.is_file() or hashlib.sha256(artifact.read_bytes()).hexdigest() != receipt.get("sha256"):
+        print(platform, "receipt source", receipt.get("sourceCommit"), "HEAD", commit)
+        if not verified_at(receipt.get("sourceCommit")) or not receipt.get("appleUploadAccepted") or not receipt.get("appleValidationVerified") or not artifact.is_file() or hashlib.sha256(artifact.read_bytes()).hexdigest() != receipt.get("sha256"):
             issues.append(platform + ": verified artifact/source receipt is missing or mismatched.")
     review = asc.call("/apps/" + APP + "/betaAppReviewDetail")["data"]
     locales = asc.call("/apps/" + APP + "/betaAppLocalizations")["data"]
