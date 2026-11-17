@@ -33,7 +33,8 @@ struct SettingsView: View {
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.accessibilityIdentifier(AccessibilityID.Settings.done)
+                    // Bar buttons stop growing with Dynamic Type; a long press shows it large instead (audit).
+                    Button("Done") { dismiss() }.accessibilityShowsLargeContentViewer().accessibilityIdentifier(AccessibilityID.Settings.done)
                 }
             }
         }

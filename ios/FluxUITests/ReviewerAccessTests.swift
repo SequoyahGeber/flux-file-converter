@@ -64,9 +64,25 @@ final class ReviewerAccessTests: XCTestCase {
     }
 
     /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
+    /// The audit, with D-124's interim scope until the SharedKit 0.4.2 pin: contrast issues on elements whose frame
+    /// overlaps a system navigation bar or toolbar are expected failures (the glass bar is system rendering, D-115).
+    /// Every other issue, and contrast elsewhere, fails.
+    private func audit() throws {
+        try SharedUIFlows.accessibilityAudit(of: app) { [app] issue in
+            guard issue.auditType == .contrast, let frame = issue.element?.frame else { return false }
+            let bars = app.navigationBars.allElementsBoundByIndex + app.toolbars.allElementsBoundByIndex
+            guard bars.contains(where: { $0.frame.intersects(frame) }) else { return false }
+            XCTExpectFailure("SK 0.4.2 system-bar audit scope (D-115, D-124)", strict: false) {
+                XCTFail("Contrast in a system bar: \(issue.element?.label ?? "?")")
+            }
+            return true
+        }
+    }
+
     func testAccessibilityAudit() throws {
+        continueAfterFailure = true  // report every audit issue in one run, not only the first
         start()
-        try SharedUIFlows.accessibilityAudit(of: app)
+        try audit()
         // FX-B-06: also the result card with its success text, after converting the sample image.
         app.buttons[AccessibilityID.Converter.trySample].firstMatch.tap()
         app.buttons[AccessibilityID.Converter.sample("image")].firstMatch.tap()
@@ -75,11 +91,19 @@ final class ReviewerAccessTests: XCTestCase {
         if !convert.isHittable { app.scrollViews[AccessibilityID.Converter.workspace].swipeUp() }
         convert.tap()
         XCTAssertTrue(app.buttons[AccessibilityID.Converter.save].waitForExistence(timeout: 60))
-        try SharedUIFlows.accessibilityAudit(of: app)
+        try audit()
         app.scrollViews[AccessibilityID.Converter.workspace].swipeDown()
         openSettings()
-        XCTAssertTrue(SharedUIFlows.appears(app.buttons[AccessibilityID.Settings.done], within: 10))
-        try SharedUIFlows.accessibilityAudit(of: app)
+        let done = app.buttons[AccessibilityID.Settings.done]
+        XCTAssertTrue(SharedUIFlows.appears(done, within: 10))
+        // Audit the settled sheet: mid-presentation, the dimmed Done button measures as low contrast.
+        var frame = CGRect.null
+        SharedUIFlows.waitUntil(5) {
+            let now = done.frame; defer { frame = now }
+            return done.isHittable && now == frame
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))  // the dimming fades after the frame stops
+        try audit()
     }
 
     func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {
