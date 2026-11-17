@@ -8,6 +8,12 @@ final class ReviewerAccessTests: XCTestCase {
     static let bundleID = "com.sequoyah.flux.mac"
     let app = XCUIApplication()
 
+    /// D-134: the app stays up between tests (D-083) and quits after the last one.
+    override class func tearDown() {
+        MainActor.assumeIsolated { XCUIApplication().terminate() }
+        super.tearDown()
+    }
+
     /// Reuses the running app with an in-place reset when the previous test passed (D-083), else launches it.
     func start() {
         continueAfterFailure = false

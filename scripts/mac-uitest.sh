@@ -15,13 +15,30 @@ derived="${FLUX_MAC_UITEST_DERIVED:-/tmp/flux-heavy/macui}"
 out_dir="$PWD/.test-output/mac-uitests"
 app="$out_dir/Flux UITests.app"
 mode="${1:-all}"
+runner="$derived/Build/Products/Debug/FluxMacUITests-Runner.app"
+# D-134: whatever happens (failure, timeout, kill), quit the test-built copy and the test runner this run started, and
+# nothing else: only processes whose executable lives in those bundles. The owner's installed Flux is never touched.
+cleanup() {
+    status=$?
+    [ -n "${staging:-}" ] && rm -rf "$staging"
+    pkill -f "$app/Contents/MacOS/" 2>/dev/null || true
+    pkill -f "$runner/Contents/MacOS/" 2>/dev/null || true
+    sleep 2
+    if pgrep -f "$app/Contents/MacOS/|$runner/Contents/MacOS/" >/dev/null; then
+        pkill -9 -f "$app/Contents/MacOS/" 2>/dev/null || true
+        pkill -9 -f "$runner/Contents/MacOS/" 2>/dev/null || true
+    fi
+    if pgrep -fl "$app/Contents/MacOS/|$runner/Contents/MacOS/"; then echo "D-134: test-built processes still running" >&2; status=1
+    else echo "D-134: no test-built Flux or runner left running"; fi
+    exit "$status"
+}
+trap cleanup EXIT INT TERM
 if [ "$mode" = build ] || [ "$mode" = all ]; then
     python3 scripts/mac-project.py
     xcodebuild -project mac/Flux.xcodeproj -scheme Flux -configuration Debug -derivedDataPath "$derived" \
         CODE_SIGNING_ALLOWED=NO -quiet build
     mkdir -p "$out_dir"
     staging="$(mktemp -d "$out_dir/.staging.XXXXXX")"
-    trap 'rm -rf "$staging"' EXIT
     stage="$staging/Flux UITests.app"
     ditto "$derived/Build/Products/Debug/Flux File Converter.app" "$stage"
     plutil -replace CFBundleIdentifier -string "$APP_ID" "$stage/Contents/Info.plist"

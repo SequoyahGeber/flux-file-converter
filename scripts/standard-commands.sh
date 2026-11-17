@@ -20,6 +20,16 @@ test)
     ;;
 ui-test)
     device=$(python3 -I "$SHAREDKIT/tools/simulators.py" udid "${2:-Shared-iPhone}")
+    # D-134: whatever happens, quit the app and the test runner on the simulator, and Simulator.app if this run opened it.
+    simulator_was_open=$(pgrep -x Simulator >/dev/null && echo yes || echo no)
+    cleanup() {
+        status=$?
+        xcrun simctl terminate "$device" com.sequoyah.flux.mac 2>/dev/null || true
+        xcrun simctl terminate "$device" com.sequoyah.flux.reviewtests.xctrunner 2>/dev/null || true
+        if [ "$simulator_was_open" = no ] && pgrep -x Simulator >/dev/null; then osascript -e 'quit app "Simulator"' || true; fi
+        exit "$status"
+    }
+    trap cleanup EXIT INT TERM
     python3 scripts/ios-project.py
     # Build once, then test without building (D-083).
     xcodebuild -project ios/Flux.xcodeproj -scheme Flux -destination "id=$device" -derivedDataPath /tmp/flux-ui \

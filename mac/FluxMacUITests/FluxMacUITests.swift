@@ -18,6 +18,14 @@ final class FluxMacUITests: XCTestCase {
 
     private var app: XCUIApplication!
 
+    /// D-134: the app stays up between tests (D-083), and its in-place reset closes Settings, the shortcuts window and
+    /// sheets. After the last test it quits, so nothing is left on the owner's screen; scripts/mac-uitest.sh also quits
+    /// it on failure or timeout.
+    override class func tearDown() {
+        MainActor.assumeIsolated { XCUIApplication(bundleIdentifier: bundleID).terminate() }
+        super.tearDown()
+    }
+
     private func start(_ flags: [String] = [], waitForPage: Bool = true) {
         continueAfterFailure = false
         app = XCUIApplication(url: Self.appURL)
