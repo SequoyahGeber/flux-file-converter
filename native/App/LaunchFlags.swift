@@ -18,6 +18,8 @@ enum LaunchFlags {
     static var resetData: Bool { arguments.contains("-resetData") }
     /// Start with the fictional sample image selected.
     static var demo: Bool { arguments.contains("-demo") }
+    /// Mac: the first load of the page fails, so UI tests reach the launch-failure alert (FX-B-22). Debug only.
+    static var simulateLaunchFailure: Bool { arguments.contains("-simulateLaunchFailure") }
     /// Feedback goes to SharedKit's stand-in inbox instead of CloudKit (UI tests and screenshots, Debug only).
     static var feedbackStandIn: Bool { uiTesting || demo }
 

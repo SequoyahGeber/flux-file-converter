@@ -2,6 +2,7 @@
 import SwiftUI
 import WebKit
 import SharedAbout
+import SharedDiagnostics
 import SharedFeedback
 
 @main
@@ -19,7 +20,13 @@ struct FluxApp: App {
         #if DEBUG
         FluxFeedback.sendTestReportIfAsked()
         #endif
-        _desktop = StateObject(wrappedValue: DesktopBridge())
+        let desktop = DesktopBridge()
+        _desktop = StateObject(wrappedValue: desktop)
+        // Fast Mac UI tests (D-083): the next test resets this app in place instead of relaunching it. Listens only
+        // in a Debug build launched with -uiTesting; declines (and the test relaunches) when it asks for other arguments.
+        #if DEBUG
+        UITestResetListener.start { desktop.resetForUITests() }
+        #endif
     }
 
     var body: some Scene {

@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import WebKit
 import SharedDiagnostics
 import SharedFeedback
@@ -65,30 +66,67 @@ import OfflineKit
             do { self.emit("files", try self.register(urls)) }
             catch { self.emit("update", ["bridgeError": error.localizedDescription]) }
         }
-        // WebKit requires the client entitlement to start even for local pages.
-        // Its UI has a separate fail-closed blocker for all network resources.
+        loadInterface()
+    }
+    #if DEBUG
+    /// -simulateLaunchFailure (Debug only, D-116): the first load fails, so the Mac UI test reaches the retry path.
+    private var launchFailureSimulated = false
+    #endif
+    /// Compiles the network blocker, then loads the bundled page. WebKit requires the client entitlement to start even
+    /// for local pages; the page has a separate fail-closed blocker for all network resources.
+    private func loadInterface() {
+        #if DEBUG
+        if LaunchFlags.simulateLaunchFailure && !launchFailureSimulated {
+            launchFailureSimulated = true
+            // Never inside App.init: the alert waits until the app has finished launching.
+            Task { @MainActor in self.showLaunchFailure(URLError(.resourceUnavailable)) }
+            return
+        }
+        #endif
         let rules = #"[{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^wss?://"},"action":{"type":"block"}},{"trigger":{"url-filter":"^ftp://"},"action":{"type":"block"}}]"#
         WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "FluxOfflineUI", encodedContentRuleList: rules) { [weak self] list, error in
             guard let self else { return }
-            guard let list, error == nil else {
-                let alert = NSAlert()
-                alert.messageText = "Flux could not start"
-                alert.informativeText = "The local interface protection could not be loaded. Close Flux and open it again."
-                alert.addButton(withTitle: "Quit Flux")
-                alert.addButton(withTitle: "Send Feedback…")
-                let failure: any Error = error ?? URLError(.unknown)
-                FluxDiagnostics.center.journal.record(.error, .lifecycle, "launchFailed", ["error": .error(failure)])
-                if alert.runModal() == .alertSecondButtonReturn {
-                    // The form opens over the window; the person quits Flux when done.
-                    // The page never loaded, so a screenshot would be blank: send none (FX-A-17).
-                    Task { await FluxFeedback.center.open(.launchProblem) { nil } }
-                    return
-                }
-                NSApplication.shared.terminate(nil)
-                return
-            }
+            guard let list, error == nil else { self.showLaunchFailure(error ?? URLError(.unknown)); return }
             self.webView.configuration.userContentController.add(list)
             self.webView.load(URLRequest(url: URL(string: "flux-app://app/index.html")!))
+        }
+    }
+    /// The page can't load without its network blocker. The alert keeps a way forward: Try Again recompiles and loads,
+    /// Send Feedback… opens the form and brings the choice back when it closes (never an empty window), and Quit
+    /// quits (FX-B-22).
+    private func showLaunchFailure(_ failure: any Error) {
+        FluxDiagnostics.center.journal.record(.error, .lifecycle, "launchFailed", ["error": .error(failure)])
+        let alert = NSAlert()
+        alert.messageText = "Flux could not start"
+        alert.informativeText = "The local interface protection could not be loaded. Try again, or send feedback so the problem can be fixed."
+        alert.addButton(withTitle: "Try Again")
+        alert.addButton(withTitle: "Send Feedback…")
+        alert.addButton(withTitle: "Quit Flux")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            loadInterface()
+        case .alertSecondButtonReturn:
+            Task { @MainActor in
+                // The page never loaded, so a screenshot would be blank: send none (FX-A-17).
+                await FluxFeedback.center.open(.launchProblem) { nil }
+                await Self.feedbackClosed()
+                self.showLaunchFailure(failure)
+            }
+        default:
+            NSApplication.shared.terminate(nil)
+        }
+    }
+    /// Returns once the feedback form is no longer presented.
+    private static func feedbackClosed() async {
+        // The form may appear a moment after `open` returns.
+        for _ in 0..<20 where !FluxFeedback.center.isPresented { try? await Task.sleep(for: .milliseconds(100)) }
+        while FluxFeedback.center.isPresented {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                // onChange runs before the new value is stored, so look again on the next main-actor turn.
+                withObservationTracking { _ = FluxFeedback.center.isPresented } onChange: {
+                    Task { @MainActor in continuation.resume() }
+                }
+            }
         }
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -149,7 +187,7 @@ import OfflineKit
         emit("update", ["outputDir": outputLabel])
     }
     private func restoreOutputFolder() {
-        guard let bookmark = UserDefaults.standard.data(forKey: FluxSettings.Key.outputFolder) else { return }
+        guard let bookmark = UserDefaults.standard.data(forKey: FluxSettings.Key.outputFolder) else { useUITestOutputFolder(); return }
         var stale = false
         // The saved choice is only replaced when the person chooses again or forgets it: a folder on
         // an unmounted volume comes back once the volume does. Until then saves start where macOS left off.
@@ -165,6 +203,39 @@ import OfflineKit
             catch { FluxDiagnostics.center.journal.record(.error, .lifecycle, "outputFolderNotRefreshed", ["error": .error(error)]) }
         }
     }
+    /// Mac UI tests save into a folder inside the test app's own sandbox container, never a real folder (Debug,
+    /// -uiTesting only). It acts as the Settings folder, so Save All writes there without a panel.
+    private func useUITestOutputFolder() {
+        #if DEBUG
+        guard LaunchFlags.uiTesting else { return }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Flux UI test saves", isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        outputFolder = folder; outputScoped = false
+        #endif
+    }
+    #if DEBUG
+    /// What a -resetData launch does, done in place for the next Mac UI test (D-083): no feedback form, no files,
+    /// results or history, default settings and text size, only the main window, and a freshly loaded page.
+    func resetForUITests() {
+        FluxFeedback.center.close()
+        FluxFeedback.center.discardDraft()
+        if control != nil { cancelled = true; control?.cancel() }
+        for result in results.values { result.remove() }
+        results = [:]; saved = [:]; history = []
+        for id in scopedFiles { files[id]?.stopAccessingSecurityScopedResource() }
+        files = [:]; scopedFiles = []
+        if outputScoped { outputFolder?.stopAccessingSecurityScopedResource() }
+        outputFolder = nil; outputScoped = false
+        FluxSettings.reset()
+        useUITestOutputFolder()
+        quitConfirmed = false; demoPending = LaunchFlags.demo
+        webView.pageZoom = 1
+        for window in NSApp.windows where window !== webView.window && window.isVisible { window.close() }
+        webView.window?.makeKeyAndOrderFront(nil)
+        webView.load(URLRequest(url: URL(string: "flux-app://app/index.html")!))
+    }
+    #endif
     /// "Clear history" is always confirmed when there is history to clear (D-023).
     private func confirmClearHistory() async -> Bool {
         guard !history.isEmpty else { return true }
