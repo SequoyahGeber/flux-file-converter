@@ -2,6 +2,7 @@
 #if os(iOS)
 import SwiftUI
 import SharedAbout
+import SharedDesign
 import SharedDiagnostics
 import SharedFeedback
 
@@ -27,7 +28,9 @@ struct SettingsView: View {
                 } header: { header("Diagnostics") }
                 // "Support", "Send feedback" (no screenshot from Settings, D-011); then "Version",
                 // "Acknowledgements", "Privacy policy".
+                // System blue on white fails the audit's contrast check; Flux's link colour passes (as on the converter).
                 HelpSettingsSection(configuration: FluxAbout.configuration) { FluxFeedback.center.open(.settings) }
+                    .tint(FluxColor.link)
                 AboutSettingsSection(configuration: FluxAbout.configuration) { FluxAbout.privacyPolicyText }
             }
             .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
@@ -41,9 +44,10 @@ struct SettingsView: View {
         .presentationDetents([.large])
     }
 
-    /// The system grey section header fails the accessibility audit's contrast check ("nearly passed"); `caption` is tuned to pass it.
+    /// The system grey section header fails the accessibility audit's contrast check ("nearly passed"); SharedKit's
+    /// Help and About headers use this colour (SK-B-03).
     private func header(_ title: LocalizedStringKey) -> some View {
-        Text(title).foregroundStyle(FluxPalette.caption.color)
+        Text(title).foregroundStyle(SharedTextColor.secondary.color)
     }
 }
 #endif
