@@ -287,7 +287,6 @@ async function announcementFixtures(electronApp, url) {
           engines: { data: true, local: true },
           nativeLocal: window.a11yFixture.native,
           samples: [{ id: 'json', title: 'JSON to CSV', target: 'csv' }],
-          privacyText: 'Fixture privacy policy. Files are converted locally.',
           enginePaths: {},
           outputDir: '/fixture/results',
           families: [{ id: 'data', name: 'Data', formats: ['json'] }],
@@ -529,11 +528,8 @@ async function announcementFixtures(electronApp, url) {
     await page.evaluate(() => {
       window.a11yFixture.native = true;
     });
+    // The Mac app never shows this page (its Settings is native), so its privacy dialog is gone (B-19).
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await page.getByRole('button', { name: 'Privacy policy', exact: true }).click();
-    await page.getByRole('dialog', { name: 'Privacy policy', exact: true }).waitFor();
-    await textSizes(page, 'Native privacy dialog', ['.policy-text']);
-    await page.keyboard.press('Escape');
     await nativeMenuAction(page, 'convert');
     // These CSS viewports cover the minimum window and the space available at
     // 150% zoom. They do not prove WKWebView pageZoom or native key equivalents.
