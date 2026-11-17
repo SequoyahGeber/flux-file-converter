@@ -1,7 +1,7 @@
 #!/bin/bash
 # Flux's Mac UI tests (FX-A-14/B-20; PLAN §4.11 shared flows, D-086, D-105), after Mac Control's harness:
-#   build  a Debug build of Flux, copied as "Flux UITests.app" with bundle id com.sequoyah.flux.uitests, ad-hoc signed
-#          with Config/uitests-mac.entitlements (sandboxed, no iCloud), plus the FluxMacUITests bundle;
+#   build  a Debug build of Flux, copied as "Flux UITests.app" with the Debug bundle id com.sequoyah.flux.mac.uitest (D-142), ad-hoc signed
+#          with mac/Flux/Flux-Debug.entitlements (sandboxed, no iCloud), plus the FluxMacUITests bundle;
 #   test   runs the bundle against that copy without rebuilding (D-083), one app process reset in place.
 # The copy's own bundle id and sandbox container mean -uiTesting -resetData never touch the installed Flux.
 # A Mac UI test moves the pointer and brings windows forward: run it only under heavy.sh with --uses mac-ui.
@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 unset SDKROOT  # D-062
-APP_ID=com.sequoyah.flux.uitests
+APP_ID=com.sequoyah.flux.mac.uitest  # the Debug id (scripts/mac-project.py); never the release id (D-143)
 derived="${FLUX_MAC_UITEST_DERIVED:-/tmp/flux-heavy/macui}"
 out_dir="$PWD/.test-output/mac-uitests"
 app="$out_dir/Flux UITests.app"
@@ -41,9 +41,8 @@ if [ "$mode" = build ] || [ "$mode" = all ]; then
     staging="$(mktemp -d "$out_dir/.staging.XXXXXX")"
     stage="$staging/Flux UITests.app"
     ditto "$derived/Build/Products/Debug/Flux File Converter.app" "$stage"
-    plutil -replace CFBundleIdentifier -string "$APP_ID" "$stage/Contents/Info.plist"
     xattr -cr "$stage"
-    codesign --force --sign - --entitlements Config/uitests-mac.entitlements "$stage"
+    codesign --force --sign - --entitlements mac/Flux/Flux-Debug.entitlements "$stage"
     codesign --verify --strict "$stage"
     rm -rf "$app"
     mv "$stage" "$app"

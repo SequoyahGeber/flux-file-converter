@@ -8,9 +8,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAC = ROOT / "mac"
 PROJECT = MAC / "Flux.xcodeproj"
 
-# Pinned exactly; the coordinator says when to move (0.4.1 for release, D-117).
+# Pinned exactly; the coordinator says when to move (0.4.3, D-130).
 SHAREDKIT_URL = "https://github.com/SequoyahGeber/SharedKit.git"
-SHAREDKIT_VERSION = "0.4.1"
+SHAREDKIT_VERSION = "0.4.3"
+# The installed app's id is used only in Release; Debug (and UI-test) builds get their own id and entitlements without
+# iCloud, so they never share its container or CloudKit data (D-142, owner rule of 18 Nov).
+RELEASE_ID = "com.sequoyah.flux.mac"
+DEBUG_ID = "com.sequoyah.flux.mac.uitest"
 
 
 def identifier(name):
@@ -75,14 +79,22 @@ def generate(build_ui=True):
     shared_links = [add("sharedkit-link-" + product, f'isa = PBXBuildFile; productRef = {product};') for product in shared_products]
     product_dependencies = ", ".join([dependency] + shared_products)
     frameworks = add("frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join([link] + shared_links)}); runOnlyForDeploymentPostprocessing = 0;")
+    # A sandboxed build signed as the release id runs inside the owner's installed (TestFlight) Flux container, so
+    # Debug builds have their own id and this phase fails any non-Release build that carries the release id.
+    guard = add("release-id-guard", 'isa = PBXShellScriptBuildPhase; buildActionMask = 2147483647; files = (); '
+                'inputPaths = (); outputPaths = (); alwaysOutOfDate = 1; name = "Release id only in Release"; '
+                'runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "'
+                + f'if [ \\"$CONFIGURATION\\" != Release ] && [ \\"$PRODUCT_BUNDLE_IDENTIFIER\\" = {RELEASE_ID} ]; then '
+                + f'echo \\"error: a $CONFIGURATION build must not use the release bundle id {RELEASE_ID} '
+                + '(it would run in the installed Flux container)\\"; exit 1; fi\\n";')
     project_configs, target_configs = [], []
     for mode in ["Debug", "Release"]:
         project_configs.append(add("project" + mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_USER_SCRIPT_SANDBOXING = YES; }};'))
         target_configs.append(add("target" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
-            PRODUCT_NAME = "Flux File Converter"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac;
+            PRODUCT_NAME = "Flux File Converter"; PRODUCT_MODULE_NAME = Flux; PRODUCT_BUNDLE_IDENTIFIER = {RELEASE_ID if mode == "Release" else DEBUG_ID};
             DEVELOPMENT_TEAM = 8MLN9FH4F9; CODE_SIGN_STYLE = Manual;
             CODE_SIGN_IDENTITY = "$(FLUX_SIGNING_IDENTITY)"; PROVISIONING_PROFILE_SPECIFIER = "$(FLUX_PROFILE)";
-            CODE_SIGN_ENTITLEMENTS = Flux/Flux.entitlements; ENABLE_APP_SANDBOX = YES;
+            CODE_SIGN_ENTITLEMENTS = {"Flux/Flux.entitlements" if mode == "Release" else "Flux/Flux-Debug.entitlements"}; ENABLE_APP_SANDBOX = YES;
             ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; SWIFT_EMIT_LOC_STRINGS = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
             INFOPLIST_FILE = Flux/Info.plist; CURRENT_PROJECT_VERSION = 1;
             MARKETING_VERSION = {(ROOT / "native/VERSION").read_text().strip()}; COMBINE_HIDPI_IMAGES = YES;
@@ -94,7 +106,7 @@ def generate(build_ui=True):
     project_list = add("project-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(project_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;")
     target_list = add("target-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(target_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;")
     target = add("target", f'''isa = PBXNativeTarget; buildConfigurationList = {target_list};
-        buildPhases = ({source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
+        buildPhases = ({guard}, {source_phase}, {frameworks}, {resources}); buildRules = (); dependencies = ();
         packageProductDependencies = ({product_dependencies}); name = Flux; productName = "Flux File Converter"; productReference = {product}; productType = "com.apple.product-type.application";''')
     # Mac UI tests (FX-A-14/B-20, D-086, D-105). Like Mac Control's, the bundle has no host target: it drives a
     # separately built "Flux UITests.app" (scripts/mac-uitest.sh: Debug, its own bundle id, ad-hoc signed and
@@ -115,7 +127,7 @@ def generate(build_ui=True):
     test_links = [add("sharedkit-mac-test-link-" + item, f"isa = PBXBuildFile; productRef = {item};") for item in test_products]
     test_frameworks = add("mac-test-frameworks", f"isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({', '.join(test_links)}); runOnlyForDeploymentPostprocessing = 0;")
     test_configs = [add("mac-test-" + mode, f'''isa = XCBuildConfiguration; name = {mode}; buildSettings = {{
-        PRODUCT_NAME = FluxMacUITests; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.uitests.runner;
+        PRODUCT_NAME = FluxMacUITests; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac.uitest.runner;
         GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; DEVELOPMENT_TEAM = "";
         SWIFT_VERSION = 5.0; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SUPPORTED_PLATFORMS = macosx;
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};

@@ -8,8 +8,8 @@ final class ReviewerAccessTests: XCTestCase {
     static let bundleID = "com.sequoyah.flux.mac"
     let app = XCUIApplication()
 
-    /// D-134: the app stays up between tests (D-083) and quits after the last one.
-    override class func tearDown() {
+    /// D-134: quit the app once the class is done (tests reuse it in between, D-083), pass or fail.
+    nonisolated override class func tearDown() {
         MainActor.assumeIsolated { XCUIApplication().terminate() }
         super.tearDown()
     }
@@ -45,20 +45,26 @@ final class ReviewerAccessTests: XCTestCase {
         XCTAssertTrue(SharedUIFlows.appears(done, within: 10)); done.tap()
     }
 
-    func testFeedbackFromTheConverterButtonReachesTheStandInInbox() {
+    /// The stand-in inbox exists only in Debug (D-116: a Release build ignores launch flags), so Release runs skip the
+    /// feedback tests; the Release gate for feedback is a send from the TestFlight build (D-119).
+    func requireStandIn() throws {
+        #if !DEBUG
+        throw XCTSkip("Release build: feedback has no stand-in inbox (D-116); the TestFlight send is the gate (D-119)")
+        #endif
+    }
+
+    func testFeedbackFromTheConverterButtonReachesTheStandInInbox() throws {
+        try requireStandIn()
         start()
         continueAfterFailure = true
-        // D-119: SharedKit 0.4.1's iOS flow leaves the keyboard over "Review report" and races vanishing cells.
-        XCTExpectFailure("SharedKit 0.4.2 SharedUIFlows iOS feedback-flow fix (D-119)", strict: false)
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromButton(app) }
         keepScreenOnFailure("feedback-button")
     }
 
-    func testFeedbackFromSettingsReachesTheStandInInbox() {
+    func testFeedbackFromSettingsReachesTheStandInInbox() throws {
+        try requireStandIn()
         start()
         continueAfterFailure = true
-        // D-119: SharedKit 0.4.1's iOS flow leaves the keyboard over "Review report" and races vanishing cells.
-        XCTExpectFailure("SharedKit 0.4.2 SharedUIFlows iOS feedback-flow fix (D-119)", strict: false)
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromSettings(app) { openSettings() } }
         keepScreenOnFailure("feedback-settings")
     }
@@ -69,20 +75,23 @@ final class ReviewerAccessTests: XCTestCase {
         shot.name = name; shot.lifetime = .deleteOnSuccess; add(shot)
     }
 
-    /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings.
-    /// The audit, with D-124's interim scope until the SharedKit 0.4.2 pin: contrast issues on elements whose frame
-    /// overlaps a system navigation bar or toolbar are expected failures (the glass bar is system rendering, D-115).
-    /// Every other issue, and contrast elsewhere, fails.
+    /// Release gate (Phase 5): the system accessibility audit on the converter and on Settings. SharedKit 0.4.3 applies
+    /// the system-bar contrast scope itself (D-115, D-128); every other issue fails.
     private func audit() throws {
-        try SharedUIFlows.accessibilityAudit(of: app) { [app] issue in
-            guard issue.auditType == .contrast, let frame = issue.element?.frame else { return false }
-            let bars = app.navigationBars.allElementsBoundByIndex + app.toolbars.allElementsBoundByIndex
-            guard bars.contains(where: { $0.frame.intersects(frame) }) else { return false }
-            XCTExpectFailure("SK 0.4.2 system-bar audit scope (D-115, D-124)", strict: false) {
-                XCTFail("Contrast in a system bar: \(issue.element?.label ?? "?")")
-            }
-            return true
-        }
+        try SharedUIFlows.accessibilityAudit(of: app)
+    }
+
+    /// The Settings sheet's system-styled rows and bar button: on the iOS 27 simulator the audit cannot resize system
+    /// text, and flagged a different one of these per run (Privacy policy, Acknowledgements, Done) with "Dynamic Type
+    /// font sizes are partially unsupported". SharedKit's named workaround ignores only `.dynamicType`/`.textClipped`
+    /// on exactly these; every other issue, and all of Flux's own text, stays strict.
+    private func auditSettings() throws {
+        let reason = "system-styled Settings row the iOS 27 simulator cannot resize"
+        try SharedUIFlows.accessibilityAudit(of: app, systemStyled: [
+            .init(AccessibilityID.Settings.done, reason: "system bar button; long press shows the large content viewer"),
+            .init("Recent log", reason: reason), .init("Support", reason: reason), .init("Send feedback", reason: reason),
+            .init("Version", reason: reason), .init("Acknowledgements", reason: reason), .init("Privacy policy", reason: reason),
+        ])
     }
 
     func testAccessibilityAudit() throws {
@@ -109,7 +118,7 @@ final class ReviewerAccessTests: XCTestCase {
             return done.isHittable && now == frame
         }
         RunLoop.current.run(until: Date().addingTimeInterval(1))  // the dimming fades after the frame stops
-        try audit()
+        try auditSettings()
     }
 
     func testReviewerCanConvertSamplesAndReachSystemSaveWithoutLogin() {

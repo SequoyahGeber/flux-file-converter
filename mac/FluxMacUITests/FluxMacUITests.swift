@@ -8,7 +8,7 @@ import SharedTestSupport
 /// installed Flux's settings, and Save All writes only into a folder inside that app's own container.
 @MainActor
 final class FluxMacUITests: XCTestCase {
-    static let bundleID = "com.sequoyah.flux.uitests"
+    static let bundleID = "com.sequoyah.flux.mac.uitest"
     /// `.test-output/mac-uitests/Flux UITests.app` in this repository; `FLUX_MAC_UITEST_APP` overrides it.
     static var appURL: URL {
         if let path = ProcessInfo.processInfo.environment["FLUX_MAC_UITEST_APP"] { return URL(fileURLWithPath: path) }
@@ -21,7 +21,7 @@ final class FluxMacUITests: XCTestCase {
     /// D-134: the app stays up between tests (D-083), and its in-place reset closes Settings, the shortcuts window and
     /// sheets. After the last test it quits, so nothing is left on the owner's screen; scripts/mac-uitest.sh also quits
     /// it on failure or timeout.
-    override class func tearDown() {
+    nonisolated override class func tearDown() {
         MainActor.assumeIsolated { XCUIApplication(bundleIdentifier: bundleID).terminate() }
         super.tearDown()
     }
