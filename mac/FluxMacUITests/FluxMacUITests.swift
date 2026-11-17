@@ -39,6 +39,11 @@ final class FluxMacUITests: XCTestCase {
 
     private var page: XCUIElement { app.webViews.firstMatch }
     private func menuItem(_ menu: String, _ title: String) -> XCUIElement { app.menuBars.menuBarItems[menu].menuItems[title] }
+    /// Page and Settings headings are AXHeading (XCUI type Other, not StaticText), and web buttons carry their text as
+    /// `title`: look for any element whose label, title or value starts with `text`.
+    private func element(in root: XCUIElement, startingWith text: String, type: XCUIElement.ElementType = .any) -> XCUIElement {
+        root.descendants(matching: type).matching(NSPredicate(format: "label BEGINSWITH %@ OR title BEGINSWITH %@ OR value BEGINSWITH %@", text, text, text)).firstMatch
+    }
     private func becomes(_ element: XCUIElement, _ format: String, within timeout: TimeInterval = 10) -> Bool {
         XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: format), object: element)], timeout: timeout) == .completed
     }
@@ -51,7 +56,9 @@ final class FluxMacUITests: XCTestCase {
     func testKeyboardShortcutsListEveryMenuShortcut() {
         start()
         app.menuBars.menuBarItems["Help"].click()
-        menuItem("Help", "Keyboard Shortcuts").click()
+        let item = menuItem("Help", "Keyboard Shortcuts")
+        XCTAssertTrue(item.waitForExistence(timeout: SharedUIFlows.timeout), "The Help menu lists Keyboard Shortcuts")
+        item.click()
         XCTAssertTrue(SharedUIFlows.appears(app.descendants(matching: .any)[SharedAccessibilityID.Shortcuts.window], within: SharedUIFlows.timeout))
         for shortcut in ["⌥⌘/", "⌘F", "⌘K", "⌘↩"] {
             XCTAssertTrue(app.staticTexts[shortcut].exists, "The shortcuts window lists \(shortcut)")
@@ -61,7 +68,7 @@ final class FluxMacUITests: XCTestCase {
     func testSettingsHasTheStandardSectionsAndVersion() {
         start()
         app.typeKey(",", modifierFlags: .command)
-        XCTAssertTrue(SharedUIFlows.appears(app.staticTexts["Output folder"].firstMatch, within: SharedUIFlows.timeout), "Settings did not open on ⌘,")
+        XCTAssertTrue(SharedUIFlows.appears(element(in: app, startingWith: "Output folder"), within: SharedUIFlows.timeout), "Settings did not open on ⌘,")
         SharedUIFlows.assertSettingsSections(in: app, appSections: ["Output folder", "Appearance", "Diagnostics"])
         SharedUIFlows.assertAboutShowsVersion(in: app)
     }
@@ -84,7 +91,7 @@ final class FluxMacUITests: XCTestCase {
     func testSearchFormatsShortcutOpensTheFormatList() {
         start()
         app.typeKey("f", modifierFlags: .command)
-        XCTAssertTrue(SharedUIFlows.appears(page.staticTexts["A world of formats"].firstMatch, within: SharedUIFlows.timeout),
+        XCTAssertTrue(SharedUIFlows.appears(element(in: page, startingWith: "A world of formats"), within: SharedUIFlows.timeout),
                       "⌘F opens All Formats")
     }
 
@@ -98,15 +105,15 @@ final class FluxMacUITests: XCTestCase {
         let saveAs = page.buttons["Save as…"].firstMatch
         XCTAssertTrue(saveAs.waitForExistence(timeout: 60), "The sample converted")
         XCTAssertTrue(becomes(startItem, "enabled == false"), "Start dims once nothing is left to start")
-        let saveAll = page.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save all'")).firstMatch
+        let saveAll = element(in: page, startingWith: "Save all", type: .button)
         XCTAssertTrue(saveAll.waitForExistence(timeout: 10), "Save all is offered for the unsaved result")
-        XCTAssertEqual(saveAll.label, "Save all to “Flux UI test saves”")
+        XCTAssertTrue([saveAll.label, saveAll.title].contains("Save all to “Flux UI test saves”"), "\(saveAll.title) \(saveAll.label)")
         saveAll.click()
-        let toast = page.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Saved 1 file to'")).firstMatch
+        let toast = element(in: page, startingWith: "Saved 1 file to")
         XCTAssertTrue(toast.waitForExistence(timeout: 20), "Save all reports what it saved")
         XCTAssertTrue(page.buttons["Show in Finder"].firstMatch.waitForExistence(timeout: 10), "The result is marked saved")
         XCTAssertFalse(saveAll.exists, "Nothing is left to save")
-        XCTAssertTrue(page.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Share '")).firstMatch.exists, "Each result has a Share button")
+        XCTAssertTrue(element(in: page, startingWith: "Share", type: .button).exists, "Each result has a Share button")
     }
 
     /// FX-B-22: when the page can't load, the alert keeps a way forward: feedback brings the alert back when the form

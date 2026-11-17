@@ -55,8 +55,11 @@ if [ "$mode" = build ] || [ "$mode" = all ]; then
 fi
 if [ "$mode" = test ] || [ "$mode" = all ]; then
     results="$out_dir/results-$(date -u +%Y%m%d-%H%M%S).xcresult"
+    # Rerun only what failed (D-136): FLUX_MAC_UITEST_ONLY="testA testB" limits the run to those tests.
+    only=()
+    for name in ${FLUX_MAC_UITEST_ONLY:-}; do only+=("-only-testing:FluxMacUITests/FluxMacUITests/$name"); done
     FLUX_MAC_UITEST_APP="$app" TEST_RUNNER_FLUX_MAC_UITEST_APP="$app" \
     xcodebuild test-without-building -project mac/Flux.xcodeproj -scheme FluxMacUITests -destination 'platform=macOS,arch=arm64' \
-        -derivedDataPath "$tests_derived" -parallel-testing-enabled NO -resultBundlePath "$results" -quiet
+        -derivedDataPath "$tests_derived" -parallel-testing-enabled NO -resultBundlePath "$results" -quiet ${only[@]+"${only[@]}"}
     echo "Mac UI tests passed; results in $results"
 fi
