@@ -115,6 +115,7 @@ DD4110C86B37F945B4D3C239 = { isa = PBXFrameworksBuildPhase; buildActionMask = 21
         DEVELOPMENT_TEAM = 8MLN9FH4F9; TARGETED_DEVICE_FAMILY = 1; SWIFT_VERSION = 5.0;
         IPHONEOS_DEPLOYMENT_TARGET = 18.4; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+        ONLY_ACTIVE_ARCH = YES;
     }; };
 A4ABE6A1E0758036AD329F5C = { isa = XCBuildConfiguration; name = Release; buildSettings = {
         PRODUCT_NAME = FluxUITests; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.reviewtests;
@@ -122,6 +123,7 @@ A4ABE6A1E0758036AD329F5C = { isa = XCBuildConfiguration; name = Release; buildSe
         DEVELOPMENT_TEAM = 8MLN9FH4F9; TARGETED_DEVICE_FAMILY = 1; SWIFT_VERSION = 5.0;
         IPHONEOS_DEPLOYMENT_TARGET = 18.4; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+        ONLY_ACTIVE_ARCH = NO;
     }; };
 D953E959A20DFCAA205C4FFE = { isa = XCConfigurationList; buildConfigurations = (3B1913600B34D01F0B87E4DD, A4ABE6A1E0758036AD329F5C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 80C129AA435C577F919EA360 = { isa = PBXNativeTarget; buildConfigurationList = D953E959A20DFCAA205C4FFE;
