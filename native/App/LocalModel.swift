@@ -54,7 +54,8 @@ import UIKit
         guard urls.count <= 100 else { error = "Choose up to 100 files at a time."; return }
         result?.remove(); result = nil; message = ""; error = ""; notice = ""
         inputs = Array(urls.prefix(100))
-        filename = inputs.count == 1 ? inputs[0].deletingPathExtension().lastPathComponent + "-converted" : "Archive"
+        // A derived name always passes the name rules, whatever the file is called (FX-A-09).
+        filename = inputs.count == 1 ? LocalPolicy.defaultOutputName(for: inputs[0]) : "Archive"
         target = formats.first ?? "zip"
         if inputs.count == 1, formats.contains("jpg"), source == "png" { target = "jpg" }
         if inputs.count == 1, media, formats.contains("mkv") { target = "mkv" }
@@ -121,12 +122,7 @@ import UIKit
         guard let result else { throw LocalError.invalid("Convert a file first.") }
         let newName = result.isDirectory ? String(try LocalPolicy.safeName(filename, extension: "folder").dropLast(7)) : try LocalPolicy.safeName(filename, extension: result.url.pathExtension)
         if newName == result.url.lastPathComponent { return result }
-        let destination = result.directory.appendingPathComponent(newName, isDirectory: result.isDirectory)
-        let renamed = try await Task.detached {
-            guard !FileManager.default.fileExists(atPath: destination.path) else { throw LocalError.invalid("This result name already exists. Choose a different name.") }
-            try FileManager.default.moveItem(at: result.url, to: destination)
-            return LocalResult(url: destination, directory: result.directory, note: result.note, isDirectory: result.isDirectory)
-        }.value
+        let renamed = try await Task.detached { try result.renamed(to: newName) }.value
         self.result = renamed; return renamed
     }
     func clear() {

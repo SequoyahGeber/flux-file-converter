@@ -48,14 +48,64 @@ public enum LocalPolicy {
     public static let fileLimit: Int64 = 512 * 1024 * 1024
     public static let textLimit = 16 * 1024 * 1024
     public static let expandedLimit: Int64 = 1024 * 1024 * 1024
-    public static func safeName(_ name: String, extension ext: String) throws -> String {
+    /// Output names (before the extension) are at most this many UTF-8 bytes.
+    public static let nameByteLimit = 180
+    /// Checks a name the person typed and returns the one rule it breaks, or nil when it is fine. Typed names are
+    /// never changed silently; derived names go through `suggestedName` instead (FX-A-09).
+    public static func nameProblem(_ name: String) -> String? {
         let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value.utf8.count <= 180, value != ".", value != "..",
-              !value.contains("/"), !value.contains("\\"), !value.contains(":"),
-              !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              !value.hasPrefix(".") else { throw LocalError.invalid("Enter a file name without slashes or control characters.") }
+        if value.isEmpty { return "Enter a file name." }
+        if value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) {
+            return "File names can’t contain line breaks or other control characters."
+        }
+        if value.contains("/") || value.contains("\\") || value.contains(":") { return "File names can’t contain /, \\ or :." }
+        if value.hasPrefix(".") { return "File names can’t start with a dot." }
+        if value.utf8.count > nameByteLimit { return "This name is too long. Use up to 180 letters (fewer in some languages)." }
+        return nil
+    }
+    public static func safeName(_ name: String, extension ext: String) throws -> String {
+        if let problem = nameProblem(name) { throw LocalError.invalid(problem) }
+        let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let suffix = "." + ext
         return value.lowercased().hasSuffix(suffix) ? value : value + suffix
+    }
+    /// A name Flux derives from a file's name, such as the default output name, always passes `safeName`, so an
+    /// ordinary file ("Report 1/2.pdf" in Finder, ".notes.txt", a long CJK name) never fails a rule the person
+    /// didn't break (FX-A-09). `:`, `/` and `\` become "-", control characters and leading dots go, and the
+    /// name is shortened on a character boundary so `suffix` still fits.
+    public static func suggestedName(from name: String, suffix: String = "", fallback: String = "Converted") -> String {
+        var value = String(String.UnicodeScalarView(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
+        for separator in [":", "/", "\\"] { value = value.replacingOccurrences(of: separator, with: "-") }
+        value = value.trimmingCharacters(in: .whitespaces)
+        while value.hasPrefix(".") { value.removeFirst() }
+        value = truncated(value.trimmingCharacters(in: .whitespaces), toBytes: max(0, nameByteLimit - suffix.utf8.count))
+            .trimmingCharacters(in: .whitespaces)
+        return value.isEmpty ? fallback : value + suffix
+    }
+    /// The default output name for a source file: its name without the extension, plus "-converted".
+    public static func defaultOutputName(for source: URL) -> String {
+        suggestedName(from: source.deletingPathExtension().lastPathComponent, suffix: "-converted")
+    }
+    /// The longest prefix of whole characters that fits in `bytes` UTF-8 bytes.
+    static func truncated(_ value: String, toBytes bytes: Int) -> String {
+        guard value.utf8.count > bytes else { return value }
+        var result = "", used = 0
+        for character in value {
+            let size = character.utf8.count
+            guard used + size <= bytes else { break }
+            result.append(character); used += size
+        }
+        return result
+    }
+    /// `name` if `isTaken` says it is free, otherwise "name 2.ext", "name 3.ext" and so on: used for ZIP entries and
+    /// Save All, which never overwrite. A leading dot is part of the name, not an extension.
+    public static func uniqueName(_ name: String, isDirectory: Bool = false, isTaken: (String) -> Bool) -> String {
+        guard isTaken(name) else { return name }
+        let dot = isDirectory ? nil : name.lastIndex(of: ".").flatMap { $0 == name.startIndex ? nil : $0 }
+        let stem = dot.map { String(name[..<$0]) } ?? name, ext = dot.map { String(name[$0...]) } ?? ""
+        var number = 2
+        while isTaken("\(stem) \(number)\(ext)") { number += 1 }
+        return "\(stem) \(number)\(ext)"
     }
     public static func fileSize(_ url: URL) throws -> Int64 {
         let values = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -146,4 +196,23 @@ public struct LocalResult: Sendable {
     public let isDirectory: Bool
     public init(url: URL, directory: URL, note: String = "", isDirectory: Bool = false) { self.url = url; self.directory = directory; self.note = note; self.isDirectory = isDirectory }
     public func remove() { try? FileManager.default.removeItem(at: directory) }
+    /// Renames the result inside its job folder. `name` must already have passed `LocalPolicy.safeName`. A
+    /// change of case only ("A-converted.jpg" to "a-converted.jpg") works on a case-insensitive volume, where the
+    /// new name already "exists" because it is the same file (FX-A-09).
+    public func renamed(to name: String) throws -> LocalResult {
+        if name == url.lastPathComponent { return self }
+        let destination = directory.appendingPathComponent(name, isDirectory: isDirectory)
+        if FileManager.default.fileExists(atPath: destination.path), !Self.isSameItem(url, destination) {
+            throw LocalError.invalid("This result name already exists. Choose a different name.")
+        }
+        // rename(2) handles the case-only change that FileManager.moveItem refuses.
+        guard Darwin.rename(url.path, destination.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return LocalResult(url: destination, directory: directory, note: note, isDirectory: isDirectory)
+    }
+    static func isSameItem(_ first: URL, _ second: URL) -> Bool {
+        let key: Set<URLResourceKey> = [.fileResourceIdentifierKey]
+        guard let a = try? first.resourceValues(forKeys: key).fileResourceIdentifier,
+              let b = try? second.resourceValues(forKeys: key).fileResourceIdentifier else { return false }
+        return a.isEqual(b)
+    }
 }

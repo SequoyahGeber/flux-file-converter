@@ -298,6 +298,7 @@ import OfflineKit
                     let descriptor = SharedMacEngine.descriptor(ext)
                     let compression = descriptor["compressionOptions"] as? [[String: Any]] ?? [["id": "archive", "name": "Lossless ZIP", "note": "Preserves the complete original file."]]
                     records.append(["id": id, "path": id, "name": url.lastPathComponent, "ext": ext, "size": size, "family": family,
+                        "defaultName": LocalPolicy.defaultOutputName(for: url),
                         "targets": targets(ext), "compressionOptions": compression,
                         "notes": (descriptor["notes"] as? [String: String] ?? [:]).merging(["zip": "Preserves the original file in a ZIP."]) { first, _ in first }])
                 } else {
@@ -308,6 +309,7 @@ import OfflineKit
                         compression.append(["id": "lossy", "name": "Smaller file", "note": ext == "pdf" ? LocalFormats.note(source: "pdf", target: "pdf", lossless: false) : "Re-encodes locally with reduced quality. Size reduction depends on the source."])
                     }
                     records.append(["id": id, "path": id, "name": url.lastPathComponent, "ext": ext, "size": size, "family": family,
+                        "defaultName": LocalPolicy.defaultOutputName(for: url),
                         "targets": targets(ext), "compressionOptions": compression,
                         "notes": Dictionary(uniqueKeysWithValues: targets(ext).map { ($0, LocalFormats.note(source: ext, target: $0, lossless: true)) })])
                 }
@@ -338,7 +340,7 @@ import OfflineKit
                     target = ext == "pdf" ? "pdf" : LocalFormats.images.contains(ext) ? "jpg" : LocalFormats.audio.contains(ext) ? "m4a" : "mp4"
                 } else { target = "zip" }
             } else { target = job["target"] as? String ?? "" }
-            let name = job["outputName"] as? String ?? (operation == "pack" ? "Archive" : source.deletingPathExtension().lastPathComponent + "-converted")
+            let name = job["outputName"] as? String ?? (operation == "pack" ? "Archive" : LocalPolicy.defaultOutputName(for: source))
             // The full engine's worker enforces its own two-hour tool limit.
             let token = full ? JobControl(deadline: 2 * 60 * 60 + 600) : JobControl(); control = token
             // Neither engine reports progress, so the page shows an indeterminate bar, not a made-up percentage (FX-B-03).

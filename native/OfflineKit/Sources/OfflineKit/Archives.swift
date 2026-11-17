@@ -73,6 +73,22 @@ enum Archives {
         }
         return value
     }
+    /// ZIP entry names for the files being packed. Extraction stays strict (`path`), so packing must never write a
+    /// name it would refuse: ":" and "\" become "-", control characters go, and names that are the same apart from
+    /// case or Unicode form (as on a case-insensitive Mac or iPhone volume) get " 2", " 3" (FX-A-09). One awkward
+    /// file name no longer fails the whole ZIP.
+    static func entryNames(_ names: [String]) -> [String] {
+        var seen = Set<String>()
+        func key(_ name: String) -> String { name.precomposedStringWithCanonicalMapping.lowercased() }
+        return names.map { original in
+            var name = String(String.UnicodeScalarView(original.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }))
+            for separator in [":", "\\", "/"] { name = name.replacingOccurrences(of: separator, with: "-") }
+            if name.isEmpty || name == "." || name == ".." { name = "File" }
+            name = LocalPolicy.uniqueName(name) { seen.contains(key($0)) }
+            seen.insert(key(name))
+            return name
+        }
+    }
     static func validate(_ archive: Archive, control: JobControl) throws -> [Entry] {
         let expected = try declaredEntries(archive.url, control: control)
         var entries: [Entry] = [], names = Set<String>(), size: Int64 = 0
@@ -130,11 +146,10 @@ enum Archives {
             total += size
         }
         let archive = try Archive(url: output, accessMode: .create)
-        var seen = Set<String>()
+        let entries = entryNames(names)
         for (index, input) in inputs.enumerated() {
             try control.check()
-            let name = try path(names[index])
-            guard seen.insert(name.precomposedStringWithCanonicalMapping.lowercased()).inserted else { throw LocalError.invalid("Selected files have duplicate names. Rename them before making a ZIP.") }
+            let name = try path(entries[index])
             let size = try LocalPolicy.fileSize(input), handle = try FileHandle(forReadingFrom: input)
             defer { try? handle.close() }
             func add(_ method: CompressionMethod) throws {

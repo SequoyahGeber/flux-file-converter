@@ -227,3 +227,106 @@ final class AuditFixTests: XCTestCase {
         XCTAssertThrowsError(try Documents.stripTags(hostile, control: stopped))
     }
 }
+
+/// FX-A-09: names Flux derives from ordinary file names never fail a rule the person didn't break; typed names stay
+/// strict and say which rule failed.
+final class NameRuleTests: XCTestCase {
+    var root: URL!
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try FileManager.default.removeItem(at: root) }
+
+    func testDerivedDefaultNamesAlwaysPassTheNameRules() throws {
+        let long = String(repeating: "日本語", count: 30)  // 270 bytes
+        let cases: [(String, String)] = [
+            ("Report 1:2.pdf", "Report 1-2-converted"),  // Finder shows ":" as "/"
+            (".notes.txt", "notes-converted"),
+            ("back\\slash.png", "back-slash-converted"),
+            ("tab\there.jpg", "tabhere-converted"),
+        ]
+        for (file, expected) in cases {
+            let name = LocalPolicy.defaultOutputName(for: root.appendingPathComponent(file))
+            XCTAssertEqual(name, expected, file)
+            XCTAssertNoThrow(try LocalPolicy.safeName(name, extension: "jpg"), file)
+        }
+        let cjk = LocalPolicy.defaultOutputName(for: root.appendingPathComponent(long + ".txt"))
+        XCTAssertTrue(cjk.hasSuffix("-converted"))
+        XCTAssertLessThanOrEqual(cjk.utf8.count, LocalPolicy.nameByteLimit)
+        XCTAssertNoThrow(try LocalPolicy.safeName(cjk, extension: "pdf"))
+    }
+
+    func testTruncationNeverSplitsACharacter() {
+        let family = "👨‍👩‍👧‍👦"  // one Character, 25 UTF-8 bytes
+        let value = String(repeating: "a", count: 170) + family
+        let cut = LocalPolicy.suggestedName(from: value)
+        XCTAssertEqual(cut, String(repeating: "a", count: 170))
+        XCTAssertEqual(LocalPolicy.suggestedName(from: String(repeating: "a", count: 155) + family), String(repeating: "a", count: 155) + family)
+        XCTAssertEqual(LocalPolicy.suggestedName(from: " . "), "Converted")
+        XCTAssertEqual(LocalPolicy.suggestedName(from: "..", suffix: "-converted"), "Converted")
+    }
+
+    func testTypedNamesSayWhichRuleFailed() {
+        let expectations: [(String, String)] = [
+            ("", "Enter a file name."),
+            ("a/b", "File names can’t contain /, \\ or :."),
+            ("a:b", "File names can’t contain /, \\ or :."),
+            (".hidden", "File names can’t start with a dot."),
+            ("..", "File names can’t start with a dot."),
+            ("line\nbreak", "File names can’t contain line breaks or other control characters."),
+            (String(repeating: "x", count: 181), "This name is too long. Use up to 180 letters (fewer in some languages)."),
+        ]
+        for (name, message) in expectations {
+            XCTAssertEqual(LocalPolicy.nameProblem(name), message, name)
+            XCTAssertThrowsError(try LocalPolicy.safeName(name, extension: "txt"), name) { error in
+                XCTAssertEqual(error.localizedDescription, message)
+            }
+        }
+        XCTAssertNil(LocalPolicy.nameProblem("Résumé – final (2)"))
+        XCTAssertEqual(try LocalPolicy.safeName(" Report ", extension: "pdf"), "Report.pdf")
+    }
+
+    func testUniqueNamesNeverOverwrite() {
+        var taken: Set<String> = ["photo.jpg", "photo 2.jpg", "Folder", ".env"]
+        XCTAssertEqual(LocalPolicy.uniqueName("photo.jpg") { taken.contains($0) }, "photo 3.jpg")
+        XCTAssertEqual(LocalPolicy.uniqueName("Folder", isDirectory: true) { taken.contains($0) }, "Folder 2")
+        XCTAssertEqual(LocalPolicy.uniqueName(".env") { taken.contains($0) }, ".env 2")
+        taken = []
+        XCTAssertEqual(LocalPolicy.uniqueName("new.txt") { taken.contains($0) }, "new.txt")
+    }
+
+    func testZIPPacksAwkwardAndCollidingNamesAndExtractionStaysStrict() async throws {
+        let dir = root.appendingPathComponent("sources"), other = root.appendingPathComponent("other")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        let colon = dir.appendingPathComponent("a:b.txt"), dash = dir.appendingPathComponent("a-b.txt")
+        let backslash = dir.appendingPathComponent("c\\d.txt"), same = other.appendingPathComponent("A-B.txt")
+        for (url, text) in [(colon, "colon"), (dash, "dash"), (backslash, "backslash"), (same, "same")] {
+            try text.write(to: url, atomically: false, encoding: .utf8)
+        }
+        let zip = try await OfflineEngine.convert(inputs: [colon, dash, backslash, same], target: "zip", name: "Packed", options: ConversionOptions())
+        defer { zip.remove() }
+        let archive = try Archive(url: zip.url, accessMode: .read)
+        XCTAssertEqual(Set(archive.map(\.path)), ["a-b.txt", "a-b 2.txt", "c-d.txt", "A-B 3.txt"])
+        let unpacked = try await OfflineEngine.convert(inputs: [zip.url], target: "unzip", name: "Unpacked", options: ConversionOptions())
+        defer { unpacked.remove() }
+        XCTAssertEqual(try String(contentsOf: unpacked.url.appendingPathComponent("a-b 2.txt"), encoding: .utf8), "dash")
+        XCTAssertThrowsError(try Archives.path("x:y.txt"))
+        XCTAssertThrowsError(try Archives.path("x\\y.txt"))
+    }
+
+    func testCaseOnlyRenameAndRealCollisions() throws {
+        let job = root.appendingPathComponent("job"); try FileManager.default.createDirectory(at: job, withIntermediateDirectories: true)
+        let original = job.appendingPathComponent("A-converted.jpg"); try Data("x".utf8).write(to: original)
+        let other = job.appendingPathComponent("other.jpg"); try Data("y".utf8).write(to: other)
+        let result = LocalResult(url: original, directory: job)
+        XCTAssertThrowsError(try result.renamed(to: "other.jpg")) { XCTAssertEqual($0.localizedDescription, "This result name already exists. Choose a different name.") }
+        let renamed = try result.renamed(to: "a-converted.jpg")
+        XCTAssertEqual(renamed.url.lastPathComponent, "a-converted.jpg")
+        let listed = try FileManager.default.contentsOfDirectory(atPath: job.path)
+        XCTAssertTrue(listed.contains("a-converted.jpg"), "\(listed)")
+        XCTAssertFalse(listed.contains("A-converted.jpg"), "\(listed)")
+        XCTAssertEqual(try Data(contentsOf: renamed.url), Data("x".utf8))
+    }
+}

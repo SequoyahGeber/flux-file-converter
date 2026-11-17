@@ -233,7 +233,8 @@ function App() {
           compression: f.compressionOptions?.[0]?.id || '',
           status: 'ready',
           progress: 0,
-          outputName: f.name.replace(/\.[^.]+$/, '') + '-converted',
+          // The Mac app sends a default that already passes its name rules (FX-A-09); other hosts derive it here.
+          outputName: f.defaultName ?? f.name.replace(/\.[^.]+$/, '') + '-converted',
         })),
     ]);
     setError('');
