@@ -131,6 +131,7 @@ def generate(build_ui=True):
         GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; DEVELOPMENT_TEAM = "";
         SWIFT_VERSION = 5.0; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SUPPORTED_PLATFORMS = macosx;
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};
+        ARCHS = "$(ARCHS_STANDARD)"; ONLY_ACTIVE_ARCH = {"YES" if mode == "Debug" else "NO"};
     }};''') for mode in ["Debug", "Release"]]
     test_config_list = add("mac-test-config-list", f"isa = XCConfigurationList; buildConfigurations = ({', '.join(test_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;")
     test_target = add("mac-test-target", f'''isa = PBXNativeTarget; buildConfigurationList = {test_config_list};

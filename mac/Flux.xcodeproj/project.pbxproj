@@ -126,12 +126,14 @@ CD9178100FD595C04DA8CB5E = { isa = XCBuildConfiguration; name = Debug; buildSett
         GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; DEVELOPMENT_TEAM = "";
         SWIFT_VERSION = 5.0; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SUPPORTED_PLATFORMS = macosx;
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+        ARCHS = "$(ARCHS_STANDARD)"; ONLY_ACTIVE_ARCH = YES;
     }; };
 A7615E52BF50277930ECF550 = { isa = XCBuildConfiguration; name = Release; buildSettings = {
         PRODUCT_NAME = FluxMacUITests; PRODUCT_BUNDLE_IDENTIFIER = com.sequoyah.flux.mac.uitest.runner;
         GENERATE_INFOPLIST_FILE = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-"; DEVELOPMENT_TEAM = "";
         SWIFT_VERSION = 5.0; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 14.0; SUPPORTED_PLATFORMS = macosx;
         SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+        ARCHS = "$(ARCHS_STANDARD)"; ONLY_ACTIVE_ARCH = NO;
     }; };
 5AD29F93BC992FCF803058F4 = { isa = XCConfigurationList; buildConfigurations = (CD9178100FD595C04DA8CB5E, A7615E52BF50277930ECF550); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
 4A31FD47B9A67A6916664094 = { isa = PBXNativeTarget; buildConfigurationList = 5AD29F93BC992FCF803058F4;

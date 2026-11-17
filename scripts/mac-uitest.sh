@@ -15,7 +15,10 @@ derived="${FLUX_MAC_UITEST_DERIVED:-/tmp/flux-heavy/macui}"
 out_dir="$PWD/.test-output/mac-uitests"
 app="$out_dir/Flux UITests.app"
 mode="${1:-all}"
-runner="$derived/Build/Products/Debug/FluxMacUITests-Runner.app"
+# The test bundle builds in its own derived data: package modules built for the app build are not reused (they came
+# out "built for incompatible target" for the test bundle when the two shared a folder).
+tests_derived="$derived-tests"
+runner="$tests_derived/Build/Products/Debug/FluxMacUITests-Runner.app"
 # D-134: whatever happens (failure, timeout, kill), quit the test-built copy and the test runner this run started, and
 # nothing else: only processes whose executable lives in those bundles. The owner's installed Flux is never touched.
 cleanup() {
@@ -47,13 +50,13 @@ if [ "$mode" = build ] || [ "$mode" = all ]; then
     rm -rf "$app"
     mv "$stage" "$app"
     [ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" = "$APP_ID" ]
-    xcodebuild build-for-testing -project mac/Flux.xcodeproj -scheme FluxMacUITests -destination 'platform=macOS' \
-        -derivedDataPath "$derived" -quiet
+    xcodebuild build-for-testing -project mac/Flux.xcodeproj -scheme FluxMacUITests -destination 'platform=macOS,arch=arm64' \
+        -derivedDataPath "$tests_derived" -quiet
 fi
 if [ "$mode" = test ] || [ "$mode" = all ]; then
     results="$out_dir/results-$(date -u +%Y%m%d-%H%M%S).xcresult"
     FLUX_MAC_UITEST_APP="$app" TEST_RUNNER_FLUX_MAC_UITEST_APP="$app" \
-    xcodebuild test-without-building -project mac/Flux.xcodeproj -scheme FluxMacUITests -destination 'platform=macOS' \
-        -derivedDataPath "$derived" -parallel-testing-enabled NO -resultBundlePath "$results" -quiet
+    xcodebuild test-without-building -project mac/Flux.xcodeproj -scheme FluxMacUITests -destination 'platform=macOS,arch=arm64' \
+        -derivedDataPath "$tests_derived" -parallel-testing-enabled NO -resultBundlePath "$results" -quiet
     echo "Mac UI tests passed; results in $results"
 fi
