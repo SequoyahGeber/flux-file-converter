@@ -2,9 +2,11 @@
 
 Flux’s native Mac and iPhone apps work entirely on the device. No Unraid connection, invitation, login or MFA is required. The website is a separate server converter with Cloudflare login and invitations.
 
-Choose one file, select an output format and set a name. Tap or click Convert, then use Save as… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving. Select several regular files to create a ZIP. Choose Extract archive to unzip into a folder. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
+Choose one file, select an output format and set a name. Tap or click Convert, then use Save as… to choose a destination with the Mac save dialog or iPhone Files export picker. You can edit the name after conversion before saving; a name Flux can’t use is explained under the field as you type. On iPhone, Share… sends the result to AirDrop, Messages, Mail or another app. On Mac, Save all saves every unsaved result at once, into the save folder chosen in Settings or one folder you pick, adding a number to names that are already taken; the share button beside each result opens the share menu. Select several regular files to create a ZIP. Choose Extract archive to unzip into a folder. Originals stay untouched; an explicitly confirmed Mac save can replace an existing destination atomically.
 
 Explore a sample file includes fictional PNG, DOCX, MP4, JSON and ZIP files. On Mac, choose the sample from the empty conversion workspace. On iPhone, tap Explore a sample file before choosing your own file. Samples exercise the real converter; there is no separate demo engine. Read the privacy policy offline in Settings › Privacy policy, on iPhone and on Mac.
+
+To open a file in Flux from Files, Mail or Safari on iPhone, use Share or Open in and choose Flux, or drag the file onto Flux. Flux keeps a private copy until you clear the job, choose another file or restart the app.
 
 In the iPhone Files picker, Recents is a view of recently accessed files, not a separate storage folder. Files shown there can live in Downloads, iCloud Drive or another provider. Browse shows their actual folders. Selecting a PDF through Recents and saving a PNG in Downloads does not move the PDF. If a save picker asks to replace an existing file, choose a different name to keep both copies.
 
