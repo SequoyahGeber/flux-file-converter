@@ -45,14 +45,24 @@ final class ReviewerAccessTests: XCTestCase {
         XCTAssertTrue(SharedUIFlows.appears(done, within: 10)); done.tap()
     }
 
-    func testFeedbackFromTheConverterButtonReachesTheStandInInbox() {
+    /// The stand-in inbox exists only in Debug (D-116: a Release build ignores launch flags), so Release runs skip the
+    /// feedback tests; the Release gate for feedback is a send from the TestFlight build (D-119).
+    func requireStandIn() throws {
+        #if !DEBUG
+        throw XCTSkip("Release build: feedback has no stand-in inbox (D-116); the TestFlight send is the gate (D-119)")
+        #endif
+    }
+
+    func testFeedbackFromTheConverterButtonReachesTheStandInInbox() throws {
+        try requireStandIn()
         start()
         continueAfterFailure = true
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromButton(app) }
         keepScreenOnFailure("feedback-button")
     }
 
-    func testFeedbackFromSettingsReachesTheStandInInbox() {
+    func testFeedbackFromSettingsReachesTheStandInInbox() throws {
+        try requireStandIn()
         start()
         continueAfterFailure = true
         SharedUIFlows.sendFeedback(in: app) { SharedUIFlows.openFeedbackFromSettings(app) { openSettings() } }

@@ -104,6 +104,7 @@ def generate():
         GENERATE_INFOPLIST_FILE = YES; TEST_TARGET_NAME = Flux; CODE_SIGN_STYLE = Automatic;
         DEVELOPMENT_TEAM = 8MLN9FH4F9; TARGETED_DEVICE_FAMILY = 1; SWIFT_VERSION = 5.0;
         IPHONEOS_DEPLOYMENT_TARGET = 18.4; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS = {"DEBUG" if mode == "Debug" else '""'};
     }};''') for mode in ["Debug", "Release"]]
     test_configs_list = add("review-test-config-list", f'isa = XCConfigurationList; buildConfigurations = ({", ".join(test_configs)}); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
     test_target = add("review-test-target", f'''isa = PBXNativeTarget; buildConfigurationList = {test_configs_list};

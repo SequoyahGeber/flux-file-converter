@@ -13,18 +13,18 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Appearance") {
+                Section {
                     Picker("Appearance", selection: $appearance) {
                         ForEach(AppearanceMode.allCases) { Text($0.title).tag($0.rawValue) }
                     }.pickerStyle(.segmented).accessibilityIdentifier(AccessibilityID.Settings.appearance)
-                }
-                Section("Diagnostics") {
+                } header: { header("Appearance") }
+                Section {
                     // The row names what it opens, so it never repeats its section header.
                     NavigationLink("Recent log") {
                         DiagnosticsView(center: FluxDiagnostics.center, sensitiveTerms: { FluxDiagnostics.fileNames() })
                             .navigationTitle("Diagnostics").navigationBarTitleDisplayMode(.inline)
                     }.accessibilityIdentifier(AccessibilityID.Settings.diagnostics)
-                }
+                } header: { header("Diagnostics") }
                 // "Support", "Send feedback" (no screenshot from Settings, D-011); then "Version",
                 // "Acknowledgements", "Privacy policy".
                 HelpSettingsSection(configuration: FluxAbout.configuration) { FluxFeedback.center.open(.settings) }
@@ -39,6 +39,11 @@ struct SettingsView: View {
             }
         }
         .presentationDetents([.large])
+    }
+
+    /// The system grey section header fails the accessibility audit's contrast check ("nearly passed"); `caption` is tuned to pass it.
+    private func header(_ title: LocalizedStringKey) -> some View {
+        Text(title).foregroundStyle(FluxPalette.caption.color)
     }
 }
 #endif
