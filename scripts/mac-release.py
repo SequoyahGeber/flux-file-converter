@@ -109,6 +109,15 @@ def main():
             build_args.append("OTHER_CODE_SIGN_FLAGS=--keychain " + shlex.quote(keychain))
         if args.development:
             build_args.append("CODE_SIGN_INJECT_BASE_ENTITLEMENTS=YES")
+        else:
+            # Distribution: the profile allows both CloudKit environments, and without the key Apple's validation reads
+            # an empty value and refuses the package (altool 90046). Sign Production here only; the checked-in
+            # entitlements (Debug and development builds) stay without it, so those keep Development.
+            signing = plistlib.loads((ROOT / "mac/Flux/Flux.entitlements").read_bytes())
+            signing["com.apple.developer.icloud-container-environment"] = "Production"
+            distribution_entitlements = temporary / "Flux-distribution.entitlements"
+            distribution_entitlements.write_bytes(plistlib.dumps(signing))
+            build_args.append("CODE_SIGN_ENTITLEMENTS=" + str(distribution_entitlements))
         with (logs / ("mac-" + mode + "-archive.txt")).open("w") as log:
             subprocess.run(build_args, check=True, env=env, stdout=log, stderr=subprocess.STDOUT)
         app = archive / "Products/Applications/Flux File Converter.app"
@@ -139,6 +148,9 @@ def main():
             raise SystemExit("Unexpected entitlements in the signed archive.")
         if entitlements.get("com.apple.developer.icloud-container-identifiers") != ["iCloud.com.sequoyah.flux"]:
             raise SystemExit("The signed archive lacks the iCloud container iCloud.com.sequoyah.flux (feedback).")
+        if not args.development and entitlements.get("com.apple.developer.icloud-container-environment") != "Production":
+            raise SystemExit("The distribution archive must sign com.apple.developer.icloud-container-environment = Production "
+                             "(Apple rejects an empty value, altool 90046).")
         binary = app / "Contents/MacOS/Flux File Converter"
         architectures = command(["lipo", "-archs", str(binary)], text=True).strip()
         if set(architectures.split()) != {"arm64", "x86_64"}:
